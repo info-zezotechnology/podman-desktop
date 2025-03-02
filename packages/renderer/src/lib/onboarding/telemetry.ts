@@ -1,3 +1,21 @@
+/**********************************************************************
+ * Copyright (C) 2023-2024 Red Hat, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ ***********************************************************************/
+
 export interface OnboardingTelemetryStep {
   id: string;
   title: string;
@@ -5,11 +23,13 @@ export interface OnboardingTelemetryStep {
   error: undefined | string;
 }
 
+type StepTeletetryData = { count: number; durationMs: number[]; errors: string[] };
+
 export interface OnboardingTelemetryData {
   extension: string;
   skipped: boolean;
   steps: OnboardingTelemetryStep[];
-  stepsDetails?: any;
+  stepsDetails?: { [key: string]: StepTeletetryData };
   durationMs: number;
   skipAtStep?: string;
   errors?: string[];
@@ -35,13 +55,13 @@ export class OnboardingTelemetrySession {
     this.previousStepId = '';
   }
 
-  restart() {
+  restart(): void {
     this.onboardingStartTime = performance.now();
     this.stepStartTime = performance.now();
     this.previousStepIndex = -1;
   }
 
-  startStep(i: number, id: string, title: string) {
+  startStep(i: number, id: string, title: string): void {
     if (id === this.previousStepId) {
       return;
     }
@@ -53,19 +73,21 @@ export class OnboardingTelemetrySession {
     this.data = telemetryAddStep(this.data, i, id, title);
   }
 
-  setStepError(i: number, id: string, error: Error) {
+  setStepError(i: number, id: string, error: Error): void {
     this.data = telemetrySetStepError(this.data, i, id, error);
   }
 
-  send(extensionName: string, skipped: boolean) {
+  send(extensionName: string, skipped: boolean): void {
     this.savePreviousDuration();
     this.data.extension = extensionName;
     this.data.skipped = skipped;
     this.data.durationMs = Math.round(performance.now() - this.onboardingStartTime);
-    window.telemetryTrack('onboarding', telemetryToSend(this.data));
+    window
+      .telemetryTrack('onboarding', telemetryToSend(this.data))
+      .catch((err: unknown) => console.error(`Error sending onboarding telemetry`, err));
   }
 
-  private savePreviousDuration() {
+  private savePreviousDuration(): void {
     const endTime = performance.now();
     try {
       const duration = Math.round(endTime - this.stepStartTime);
@@ -119,14 +141,14 @@ function telemetrySetStepError(
   return data;
 }
 
-function telemetryToSend(data: OnboardingTelemetryData) {
+function telemetryToSend(data: OnboardingTelemetryData): OnboardingTelemetryData {
   if (data.skipped) {
     data.skipAtStep = data.steps[data.steps.length - 1].id;
   }
   data.stepsDetails = {};
   data.errors = [];
-  for (let i = 0; i < data.steps.length; i++) {
-    const step = data.steps[i];
+  for (const element of data.steps) {
+    const step = element;
     if (!data.stepsDetails[step.id]) {
       data.stepsDetails[step.id] = {
         count: 0,

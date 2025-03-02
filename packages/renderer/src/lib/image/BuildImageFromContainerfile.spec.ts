@@ -1,5 +1,5 @@
 /**********************************************************************
- * Copyright (C) 2023 Red Hat, Inc.
+ * Copyright (C) 2023-2025 Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,39 +16,56 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 import '@testing-library/jest-dom/vitest';
-import { test, expect, vi, beforeAll } from 'vitest';
-import { render, screen } from '@testing-library/svelte';
-import { providerInfos } from '../../stores/providers';
+
 import type { ProviderStatus } from '@podman-desktop/api';
-import type { ProviderContainerConnectionInfo, ProviderInfo } from '../../../../main/src/plugin/api/provider-info';
+import { render, screen, waitFor } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
+import { beforeAll, beforeEach, expect, test, vi } from 'vitest';
+
 import BuildImageFromContainerfile from '/@/lib/image/BuildImageFromContainerfile.svelte';
 import { buildImagesInfo } from '/@/stores/build-images';
+import { providerInfos } from '/@/stores/providers';
+import { recommendedRegistries } from '/@/stores/recommendedRegistries';
+import type { ProviderContainerConnectionInfo, ProviderInfo } from '/@api/provider-info';
+
+// xterm is used in the UI, but not tested, added in order to avoid the multiple warnings being shown during the test.
+vi.mock('@xterm/xterm', () => {
+  return {
+    Terminal: vi
+      .fn()
+      .mockReturnValue({ loadAddon: vi.fn(), open: vi.fn(), write: vi.fn(), clear: vi.fn(), dispose: vi.fn() }),
+  };
+});
 
 // fake the window.events object
 beforeAll(() => {
   (window.events as unknown) = {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    receive: (_channel: string, func: any) => {
+    receive: (_channel: string, func: () => void): void => {
       func();
     },
   };
-  (window as any).getConfigurationValue = vi.fn();
-  (window as any).matchMedia = vi.fn().mockReturnValue({
-    addListener: vi.fn(),
-  });
-  (window as any).openFileDialog = vi.fn().mockResolvedValue({ canceled: false, filePaths: ['Containerfile'] });
-  (window as any).telemetryPage = vi.fn().mockResolvedValue(undefined);
+  vi.mocked(window.openDialog).mockResolvedValue(['Containerfile']);
+  vi.mocked(window.getCancellableTokenSource).mockResolvedValue(1234);
 });
 
+beforeEach(() => {
+  vi.clearAllMocks();
+});
+
+async function waitRender(): Promise<void> {
+  render(BuildImageFromContainerfile);
+
+  // Wait 200ms for "cards" for platform render correctly
+  await new Promise(resolve => setTimeout(resolve, 200));
+}
+
 // the build image page expects to have a valid provider connection, so let's mock one
-function setup() {
+function setup(): void {
   const pStatus: ProviderStatus = 'started';
   const pInfo: ProviderContainerConnectionInfo = {
     name: 'test',
+    displayName: 'test',
     status: 'started',
     endpoint: {
       socketPath: '',
@@ -92,11 +109,11 @@ test('Expect Build button is enabled', async () => {
   setup();
   render(BuildImageFromContainerfile, {});
 
-  const containerFilePath = screen.getByRole('textbox', { name: 'Containerfile Path' });
+  const containerFilePath = screen.getByRole('textbox', { name: 'Containerfile path' });
   expect(containerFilePath).toBeInTheDocument();
   await userEvent.type(containerFilePath, '/somepath/containerfile');
 
-  const buildFolder = screen.getByRole('textbox', { name: 'Build Context Directory' });
+  const buildFolder = screen.getByRole('textbox', { name: 'Build context directory' });
   expect(buildFolder).toBeInTheDocument();
   await userEvent.type(buildFolder, '/somepath');
 
@@ -109,11 +126,11 @@ test('Expect Done button is enabled once build is done', async () => {
   setup();
   render(BuildImageFromContainerfile, {});
 
-  const containerFilePath = screen.getByRole('textbox', { name: 'Containerfile Path' });
+  const containerFilePath = screen.getByRole('textbox', { name: 'Containerfile path' });
   expect(containerFilePath).toBeInTheDocument();
   await userEvent.type(containerFilePath, '/somepath/containerfile');
 
-  const buildFolder = screen.getByRole('textbox', { name: 'Build Context Directory' });
+  const buildFolder = screen.getByRole('textbox', { name: 'Build context directory' });
   expect(buildFolder).toBeInTheDocument();
   await userEvent.type(buildFolder, '/somepath');
 
@@ -125,6 +142,179 @@ test('Expect Done button is enabled once build is done', async () => {
   const doneButton = screen.getByRole('button', { name: 'Done' });
   expect(doneButton).toBeInTheDocument();
   expect(doneButton).toBeEnabled();
+});
+
+test('Select multiple platforms and expect pressing Build will do two buildImage builds', async () => {
+  // Auto select amd64
+  vi.mocked(window.getOsArch).mockResolvedValue('amd64');
+  setup();
+  await waitRender();
+
+  const containerFilePath = screen.getByRole('textbox', { name: 'Containerfile path' });
+  expect(containerFilePath).toBeInTheDocument();
+  await userEvent.type(containerFilePath, '/somepath/containerfile');
+
+  // Type in the image name a test value 'foobar'
+  const containerImageName = screen.getByRole('textbox', { name: 'Image name' });
+  expect(containerImageName).toBeInTheDocument();
+  await userEvent.type(containerImageName, 'foobar');
+
+  // Wait until 'linux/arm64' checkboxes exist and are enabled
+  await waitFor(() => {
+    const platform1 = screen.getByRole('checkbox', { name: 'Intel and AMD x86_64 systems' });
+    expect(platform1).toBeInTheDocument();
+    expect(platform1).toBeChecked();
+  });
+
+  // Click on the 'linux/arm64' button
+  const platform2button = screen.getByRole('button', { name: 'linux/arm64' });
+  expect(platform2button).toBeInTheDocument();
+  await userEvent.click(platform2button);
+
+  const platform2 = screen.getByRole('checkbox', { name: 'ARM® aarch64 systems' });
+  expect(platform2).toBeInTheDocument();
+  expect(platform2).toBeChecked();
+
+  // Mock first buildImage to return sha256:1234
+  // Mock second buildImage to return sha256:5678
+  vi.mocked(window.buildImage)
+    .mockResolvedValueOnce([
+      { stream: 'test123' },
+      {
+        aux: { ID: 'sha256:1234' },
+      },
+    ])
+    .mockResolvedValueOnce([
+      { stream: 'test123' },
+      {
+        aux: { ID: 'sha256:5678' },
+      },
+    ]);
+
+  const buildButton = screen.getByRole('button', { name: 'Build' });
+  expect(buildButton).toBeInTheDocument();
+  expect(buildButton).toBeEnabled();
+  await userEvent.click(buildButton);
+
+  // Expect buildImage to be called twice, once with the platform 'linux/arm64' and once with 'linux/amd64',
+  // Make SURE that the 3rd parameter is undefined as that is the 'blank' image name
+  expect(window.buildImage).toHaveBeenCalledWith(
+    '/somepath',
+    'containerfile',
+    undefined,
+    'linux/amd64',
+    expect.anything(),
+    expect.anything(),
+    expect.anything(),
+    expect.anything(),
+    expect.anything(),
+  );
+
+  expect(window.buildImage).toHaveBeenCalledWith(
+    '/somepath',
+    'containerfile',
+    undefined,
+    'linux/arm64',
+    expect.anything(),
+    expect.anything(),
+    expect.anything(),
+    expect.anything(),
+    expect.anything(),
+  );
+});
+
+test('Select multiple platforms without image name should disable Build button', async () => {
+  // Auto select amd64
+  vi.mocked(window.getOsArch).mockResolvedValue('amd64');
+  setup();
+  await waitRender();
+
+  const containerFilePath = screen.getByRole('textbox', { name: 'Containerfile path' });
+  expect(containerFilePath).toBeInTheDocument();
+  await userEvent.type(containerFilePath, '/somepath/containerfile');
+
+  // Wait until 'linux/arm64' checkboxes exist and are enabled
+  await waitFor(() => {
+    const platform1 = screen.getByRole('checkbox', { name: 'Intel and AMD x86_64 systems' });
+    expect(platform1).toBeInTheDocument();
+    expect(platform1).toBeChecked();
+  });
+
+  // Click on the 'linux/arm64' button
+  const platform2button = screen.getByRole('button', { name: 'linux/arm64' });
+  expect(platform2button).toBeInTheDocument();
+  await userEvent.click(platform2button);
+
+  const platform2 = screen.getByRole('checkbox', { name: 'ARM® aarch64 systems' });
+  expect(platform2).toBeInTheDocument();
+  expect(platform2).toBeChecked();
+
+  const buildButton = screen.getByRole('button', { name: 'Build' });
+  expect(buildButton).toBeInTheDocument();
+  expect(buildButton).toBeDisabled();
+});
+
+test('Selecting no platforms should disable Build button', async () => {
+  // Auto select amd64
+  vi.mocked(window.getOsArch).mockResolvedValue('amd64');
+  setup();
+  await waitRender();
+
+  const containerFilePath = screen.getByRole('textbox', { name: 'Containerfile path' });
+  expect(containerFilePath).toBeInTheDocument();
+  await userEvent.type(containerFilePath, '/somepath/containerfile');
+
+  // Wait until 'linux/arm64' checkboxes exist and are enabled
+  await waitFor(() => {
+    const linuxAmd64Button = screen.getByRole('checkbox', { name: 'Intel and AMD x86_64 systems' });
+    expect(linuxAmd64Button).toBeInTheDocument();
+    expect(linuxAmd64Button).toBeChecked();
+  });
+
+  // disable the platform
+  const linuxAmd64Button = screen.getByRole('button', { name: 'linux/amd64' });
+  expect(linuxAmd64Button).toBeInTheDocument();
+  await userEvent.click(linuxAmd64Button);
+
+  const buildButton = screen.getByRole('button', { name: 'Build' });
+  expect(buildButton).toBeInTheDocument();
+  expect(buildButton).toBeDisabled();
+});
+
+test('Selecting one platform only calls buildImage once with the selected platform, make sure that it has a name', async () => {
+  // Auto select amd64
+  vi.mocked(window.getOsArch).mockResolvedValue('amd64');
+  setup();
+  await waitRender();
+
+  vi.mocked(window.pathRelative).mockResolvedValue('containerfile');
+  const containerFilePath = screen.getByRole('textbox', { name: 'Containerfile path' });
+  expect(containerFilePath).toBeInTheDocument();
+  await userEvent.type(containerFilePath, '/somepath/containerfile');
+
+  const imageName = screen.getByRole('textbox', { name: 'Image name' });
+  expect(imageName).toBeInTheDocument();
+  await userEvent.type(imageName, 'foobar');
+
+  const buildButton = screen.getByRole('button', { name: 'Build' });
+  expect(buildButton).toBeInTheDocument();
+  expect(buildButton).toBeEnabled();
+
+  await userEvent.click(buildButton);
+
+  // Expect buildImage to be called once, with the platform 'linux/amd64',
+  // make sure it has a name 'foobar' that was added.
+  expect(window.buildImage).toHaveBeenCalledWith(
+    '/somepath',
+    'containerfile',
+    'foobar',
+    'linux/amd64',
+    expect.anything(),
+    expect.anything(),
+    expect.anything(),
+    expect.anything(),
+    expect.anything(),
+  );
 });
 
 test('Expect Abort button to hidden when image build is not in progress', async () => {
@@ -146,4 +336,96 @@ test('Expect Abort button to being visible when image build is in progress', asy
   const abortButton = screen.getByRole('button', { name: 'Cancel' });
   expect(abortButton).toBeInTheDocument();
   expect(abortButton).toBeEnabled();
+});
+
+test('Expect no value for containerImageName input field (no my-custom-image value), just show the placeholder.', async () => {
+  setup();
+  render(BuildImageFromContainerfile);
+
+  const containerImageName = screen.getByRole('textbox', { name: 'Image name' });
+  expect(containerImageName).toBeInTheDocument();
+  expect(containerImageName).toHaveValue('');
+  expect(containerImageName).toHaveAttribute('placeholder', 'Image name (e.g. quay.io/namespace/my-custom-image)');
+});
+
+test('Expect recommended extension in case of build error', async () => {
+  setup();
+
+  // add registries as recommended
+  recommendedRegistries.set([
+    {
+      id: 'my.registry.com',
+      name: 'Hello',
+      errors: ['Image does not exists'],
+      extensionId: 'myExtension.id',
+      isInstalled: false,
+      extensionDetails: {
+        id: 'myExtension.id',
+        fetchable: true,
+        displayName: 'My Custom Extension',
+        fetchLink: 'myCustomLinkToDownloadExtension',
+        fetchVersion: '1.0.0',
+      },
+    },
+  ]);
+
+  vi.mocked(window.buildImage).mockImplementation(
+    async (_ignore1, _ignore2, _ignore3, _ignore4, _ignore5, key, collect) => {
+      collect(key, 'error', 'initializing source docker://my.registry.com/foo-image:latest: Image does not exists');
+    },
+  );
+
+  render(BuildImageFromContainerfile, {});
+
+  const containerFilePath = screen.getByRole('textbox', { name: 'Containerfile path' });
+  expect(containerFilePath).toBeInTheDocument();
+  await userEvent.type(containerFilePath, '/somepath/containerfile');
+
+  const buildFolder = screen.getByRole('textbox', { name: 'Build context directory' });
+  expect(buildFolder).toBeInTheDocument();
+  await userEvent.type(buildFolder, '/somepath');
+
+  const buildButton = screen.getByRole('button', { name: 'Build' });
+  expect(buildButton).toBeInTheDocument();
+  expect(buildButton).toBeEnabled();
+  await userEvent.click(buildButton);
+
+  // expect to find the widget to install extension
+  const proposal = screen.getByRole('button', { name: 'Install myExtension.id Extension' });
+  expect(proposal).toBeInTheDocument();
+});
+
+test('Expect build to include build arguments', async () => {
+  setup();
+  render(BuildImageFromContainerfile);
+
+  const containerFilePath = screen.getByRole('textbox', { name: 'Containerfile path' });
+  expect(containerFilePath).toBeInTheDocument();
+  await userEvent.type(containerFilePath, '/somepath/containerfile');
+
+  const buildFolder = screen.getByRole('textbox', { name: 'Build context directory' });
+  expect(buildFolder).toBeInTheDocument();
+  await userEvent.type(buildFolder, '/somepath');
+
+  const containerImageName = screen.getByRole('textbox', { name: 'Image name' });
+  expect(containerImageName).toBeInTheDocument();
+  await userEvent.type(containerImageName, 'foobar');
+
+  const addArgButton = screen.getByRole('button', { name: 'Add build argument' });
+  expect(addArgButton).toBeInTheDocument();
+  await userEvent.click(addArgButton);
+
+  // Expect "Key" input to exist
+  const keyInputs = screen.getAllByPlaceholderText('Key');
+  await userEvent.type(keyInputs[1], 'ARG_KEY');
+
+  // Expect "Value" input to exist
+  const valueInputs = screen.getAllByPlaceholderText('Value');
+  await userEvent.type(valueInputs[1], 'ARG_VALUE');
+
+  // Expect to be able to build fine with the build arguments / no errors.
+  const buildButton = screen.getByRole('button', { name: 'Build' });
+  expect(buildButton).toBeInTheDocument();
+  expect(buildButton).toBeEnabled();
+  await userEvent.click(buildButton);
 });

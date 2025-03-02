@@ -22,14 +22,15 @@
 // based on https://github.com/microsoft/vscode/blob/76415ef0b1f60e0479bdfee173c1a4f97e785b52/src/vs/platform/contextkey/test/common/contextkey.test.ts
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import assert from 'assert';
+import assert from 'node:assert';
+
 import { suite, test, vi } from 'vitest';
 
-import { ContextKeyExpr, implies, type ContextKeyExpression, initContextKeysPlatform } from './contextKey.js';
+import { ContextKeyExpr, type ContextKeyExpression, implies, initContextKeysPlatform } from './contextKey.js';
 
-function createContext(ctx: any) {
+function createContext(ctx: any): { getValue: (key: string) => any } {
   return {
-    getValue: (key: string) => {
+    getValue: (key: string): any => {
       return ctx[key];
     },
   };

@@ -21,11 +21,14 @@
 /* eslint-disable @typescript-eslint/no-empty-function */
 
 import '@testing-library/jest-dom/vitest';
-import { test, expect, vi, beforeAll } from 'vitest';
+
 import { render, screen } from '@testing-library/svelte';
+import { Terminal } from '@xterm/xterm';
+import { beforeAll, expect, test, vi } from 'vitest';
+
+import type { ProviderContainerConnectionInfo } from '/@api/provider-info';
+
 import PreferencesConnectionDetailsLogs from './PreferencesConnectionDetailsLogs.svelte';
-import { Terminal } from 'xterm';
-import type { ProviderContainerConnectionInfo } from '../../../../main/src/plugin/api/provider-info';
 
 global.ResizeObserver = vi.fn().mockImplementation(() => ({
   observe: vi.fn(),
@@ -34,6 +37,7 @@ global.ResizeObserver = vi.fn().mockImplementation(() => ({
 
 const containerConnection: ProviderContainerConnectionInfo = {
   name: 'connection',
+  displayName: 'connection',
   endpoint: {
     socketPath: 'socket',
   },

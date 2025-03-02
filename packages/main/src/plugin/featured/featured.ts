@@ -1,5 +1,5 @@
 /**********************************************************************
- * Copyright (C) 2023 Red Hat, Inc.
+ * Copyright (C) 2023-2024 Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,11 +16,12 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
-import { featured as featuredJSONFile } from '../../../../../featured.json';
-import type { CatalogFetchableExtension } from '../extensions-catalog/extensions-catalog-api.js';
-import type { ExtensionsCatalog } from '../extensions-catalog/extensions-catalog.js';
-import type { ExtensionLoader } from '/@/plugin/extension-loader.js';
+import type { ExtensionsCatalog } from '/@/plugin/extension/catalog/extensions-catalog.js';
+import type { CatalogFetchableExtension } from '/@/plugin/extension/catalog/extensions-catalog-api.js';
+import type { ExtensionLoader } from '/@/plugin/extension/extension-loader.js';
 import type { FeaturedExtension } from '/@/plugin/featured/featured-api.js';
+
+import { featured as featuredJSONFile } from '../../../../../featured.json';
 
 /**
  * Manages the Featured extensions
@@ -91,12 +92,8 @@ export class Featured {
 
     // now, randomize the list to have only 6 items and list first the non installed extensions and then the installed one
     // shuffle the list of featured extensions
+    // eslint-disable-next-line sonarjs/pseudo-random
     featuredExtensions.sort(() => Math.random() - 0.5);
-
-    // take only 6 of them
-    if (featuredExtensions.length > 6) {
-      featuredExtensions.splice(6);
-    }
 
     // and then by non installed first
     featuredExtensions.sort((b, a) => Number(b.installed) - Number(a.installed));

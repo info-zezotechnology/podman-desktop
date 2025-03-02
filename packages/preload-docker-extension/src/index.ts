@@ -21,13 +21,14 @@
  */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { contextBridge, ipcRenderer } from 'electron';
 import type { v1 as dockerDesktopAPI } from '@docker/extension-api-client-types';
-
-import type { ImageInfo } from '../../main/src/plugin/api/image-info';
-import type { SimpleContainerInfo } from '../../main/src/plugin/api/container-info';
-import type { Dialog, OpenDialogResult } from '@docker/extension-api-client-types/dist/v1/dialog';
 import type { ExecStreamOptions, NavigationIntents, RequestConfig } from '@docker/extension-api-client-types/dist/v1';
+import type { Dialog, OpenDialogResult } from '@docker/extension-api-client-types/dist/v1/dialog';
+import { contextBridge, ipcRenderer } from 'electron';
+
+import type { SimpleContainerInfo } from '/@api/container-info';
+import type { ImageInfo } from '/@api/image-info';
+
 import { lines, parseJsonLines, parseJsonObject } from './exec-result-helper';
 
 interface ErrorMessage {
@@ -36,14 +37,14 @@ interface ErrorMessage {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   extra: any;
 }
-function decodeError(error: ErrorMessage) {
+function decodeError(error: ErrorMessage): Error {
   const e = new Error(error.message);
   e.name = error.name;
   Object.assign(e, error.extra);
   return e;
 }
 
-async function ipcInvoke(channel: string, ...args: any) {
+async function ipcInvoke(channel: string, ...args: any): Promise<any> {
   const { error, result } = await ipcRenderer.invoke(channel, ...args);
   if (error) {
     throw decodeError(error);
@@ -155,7 +156,7 @@ export class DockerExtensionPreload {
   getExec(launcher: string | undefined): dockerDesktopAPI.Exec {
     const queryString = window.location.search;
     const urlParams = new URLSearchParams(queryString);
-    const nameParam = urlParams.get('extensionName') || '';
+    const nameParam = urlParams.get('extensionName') ?? '';
 
     const execFunction: dockerDesktopAPI.Exec = (
       cmd: string,
@@ -281,9 +282,9 @@ export class DockerExtensionPreload {
     const desktopUI: dockerDesktopAPI.DesktopUI = { toast, dialog, navigate };
     const queryString = window.location.search;
     const urlParams = new URLSearchParams(queryString);
-    const arch = urlParams.get('arch') || '';
-    const hostname = urlParams.get('hostname') || '';
-    const platform = urlParams.get('platform') || '';
+    const arch = urlParams.get('arch') ?? '';
+    const hostname = urlParams.get('hostname') ?? '';
+    const platform = urlParams.get('platform') ?? '';
     const host: dockerDesktopAPI.Host = {
       openExternal: (link: string) => {
         ipcInvoke('shell:openExternal', link).catch((err: unknown) => {
@@ -295,7 +296,7 @@ export class DockerExtensionPreload {
       hostname,
     };
 
-    const vmServicePort = urlParams.get('vmServicePort') || undefined;
+    const vmServicePort = urlParams.get('vmServicePort') ?? undefined;
 
     // do we have a service being exposed ?
     const doRequest = async (config: RequestConfig): Promise<unknown> => {
@@ -369,7 +370,7 @@ export class DockerExtensionPreload {
       docker,
     };
 
-    const toastError = (error: Error) => {
+    const toastError = (error: Error): void => {
       console.error(error);
       ipcRenderer.invoke('docker-desktop-adapter:desktopUIToast', 'error', error?.toString()).catch((err: unknown) => {
         console.error('docker-desktop-adapter:desktopUIToast', err);
@@ -383,19 +384,6 @@ export class DockerExtensionPreload {
 
 // initialize extension loader mechanism
 function initExposure(): void {
-  /*
-ipcRenderer.on(
-  'docker-plugin-adapter:exec-onClose',
-  (_, onDockerPluginExecOnCloseCallbackId: number) => {
-    // grab callback from the map
-    const callback = this.onDockerPluginExecOnCloseCallback.get(onDockerPluginExecOnCloseCallbackId);
-    if (callback) {
-      callback();
-    }
-  },
-);
-*/
-
   const dockerExtensionPreload = new DockerExtensionPreload();
   const ddClient = dockerExtensionPreload.initializeDesktopClientAPI();
   contextBridge.exposeInMainWorld('ddClient', ddClient);

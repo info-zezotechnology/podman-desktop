@@ -1,7 +1,8 @@
 <script lang="ts">
 import { faRocket } from '@fortawesome/free-solid-svg-icons';
-import type { CheckStatus, ProviderInfo } from '../../../../main/src/plugin/api/provider-info';
-import Button from '../ui/Button.svelte';
+import { Button } from '@podman-desktop/ui-svelte';
+
+import type { CheckStatus, ProviderInfo } from '/@api/provider-info';
 
 export let provider: ProviderInfo;
 
@@ -13,7 +14,7 @@ let checksStatus: CheckStatus[] = [];
 
 let preflightChecksFailed = false;
 
-async function performInstallation(provider: ProviderInfo) {
+async function performInstallation(provider: ProviderInfo): Promise<void> {
   installInProgress = true;
   checksStatus = [];
   let checkSuccess = false;
@@ -51,10 +52,10 @@ async function performInstallation(provider: ProviderInfo) {
 
 {#if provider.installationSupport}
   <Button
-    inProgress="{installInProgress}"
-    disabled="{preflightChecksFailed}"
-    icon="{faRocket}"
-    on:click="{() => performInstallation(provider)}">
+    inProgress={installInProgress}
+    disabled={preflightChecksFailed}
+    icon={faRocket}
+    on:click={(): Promise<void> => performInstallation(provider)}>
     Install
   </Button>
 {/if}

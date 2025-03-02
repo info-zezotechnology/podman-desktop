@@ -1,6 +1,6 @@
-<!-- The markdown rendered has it's own style that you'll have to customize / check against podman desktop 
+<!-- The markdown rendered has it's own style that you'll have to customize / check against podman desktop
 UI guidelines -->
-<style>
+<style lang="postcss">
 .markdown > :global(p) {
   line-height: normal;
   padding-bottom: 8px;
@@ -34,16 +34,26 @@ UI guidelines -->
   opacity: 0.8;
   line-height: normal;
 }
+.markdown :global(a) {
+  color: var(--pd-link);
+  text-decoration: none;
+  border-radius: 4px;
+  padding: 0.125rem;
+}
+.markdown :global(a):hover {
+  background-color: var(--pd-link-hover-bg);
+}
 </style>
 
 <script lang="ts">
-import { onDestroy, onMount } from 'svelte';
 import { micromark } from 'micromark';
 import { directive, directiveHtml } from 'micromark-extension-directive';
+import { onDestroy, onMount } from 'svelte';
+
 import { button } from './micromark-button-directive';
 import { link } from './micromark-link-directive';
-import { warnings } from './micromark-warnings-directive';
 import { createListener } from './micromark-listener-handler';
+import { warnings } from './micromark-warnings-directive';
 
 let text: string;
 let html: string;
@@ -62,7 +72,7 @@ export let inProgressMarkdownCommandExecutionCallback: (
 ) => void = () => {};
 
 // Create an event listener for updating the in-progress markdown command execution callback
-const eventListeners: ((e: any) => void)[] = [];
+const eventListeners: EventListener[] = [];
 
 // Render the markdown or the html+micromark markdown reactively
 $: markdown
@@ -83,6 +93,41 @@ onMount(() => {
     htmlExtensions: [directiveHtml({ button, link, warnings })],
   });
 
+  // remove href values in each anchor using # for links
+  // and set the attribute data-pd-jump-in-page
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(html, 'text/html');
+  const links = doc.querySelectorAll('a');
+  links.forEach(link => {
+    const currentHref = link.getAttribute('href');
+    // remove and replace href attribute if matching
+    if (currentHref?.startsWith('#')) {
+      // get current value of href
+      link.removeAttribute('href');
+
+      // remove from current href the #
+      const withoutHashHRef = currentHref.substring(1);
+
+      // add an attribute to handle onclick
+      link.setAttribute('data-pd-jump-in-page', withoutHashHRef);
+
+      // add a class for cursor
+      link.classList.add('cursor-pointer');
+    }
+  });
+
+  // for all h1/h2/h3/h4/h5/h6, add an id attribute being the name of the attibute all in lowercase without spaces (replaced by -)
+  const headers = doc.querySelectorAll('h1, h2, h3, h4, h5, h6');
+  headers.forEach(header => {
+    const headerText = header.textContent;
+    const headerId = headerText?.toLowerCase().replace(/\s/g, '-');
+    if (headerId) {
+      header.setAttribute('id', headerId);
+    }
+  });
+
+  html = doc.body.innerHTML;
+
   // We create a click listener in order to execute any internal micromark commands
   // We add the clickListener here since we're unable to add it in the directive typescript file.
   const clickListener = createListener(inProgressMarkdownCommandExecutionCallback);
@@ -99,7 +144,7 @@ onDestroy(() => {
 </script>
 
 <!-- Placeholder to grab the content if people are using <Markdown>**bold</Markdown> -->
-<span contenteditable="false" bind:textContent="{text}" class="hidden">
+<span contenteditable="false" bind:textContent={text} class="hidden">
   <slot />
 </span>
 

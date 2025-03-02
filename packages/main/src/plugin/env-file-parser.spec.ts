@@ -1,5 +1,5 @@
 /**********************************************************************
- * Copyright (C) 2023 Red Hat, Inc.
+ * Copyright (C) 2023-2024 Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,12 +16,12 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable no-useless-escape */
 
-import { test, expect, describe, vi, beforeAll } from 'vitest';
+import { promises, type Stats } from 'node:fs';
 
-import { promises } from 'node:fs';
+import { beforeAll, describe, expect, test, vi } from 'vitest';
+
 import { EnvfileParser } from './env-file-parser.js';
 
 let envfileParser: TestEnvfileParser;
@@ -31,11 +31,11 @@ beforeAll(() => {
 });
 
 class TestEnvfileParser extends EnvfileParser {
-  public async parseEnvFile(envFile: string): Promise<string[]> {
+  public override async parseEnvFile(envFile: string): Promise<string[]> {
     return super.parseEnvFile(envFile);
   }
 
-  public envFileCleanEntry(entry: string): { key: string | undefined; value: string | undefined } {
+  public override envFileCleanEntry(entry: string): { key: string | undefined; value: string | undefined } {
     return super.envFileCleanEntry(entry);
   }
 }
@@ -150,6 +150,13 @@ describe('check values', () => {
     expect(result.key).toBe('VAR');
     expect(result.value).toBe(`{"hello": "json"}`);
   });
+
+  test('simple value containing equal signs', () => {
+    const item = `VAR=dGhpcyBpcyBqdXN0IGEgdGVzdA==`;
+    const result = envfileParser.envFileCleanEntry(item);
+    expect(result.key).toBe('VAR');
+    expect(result.value).toBe(`dGhpcyBpcyBqdXN0IGEgdGVzdA==`);
+  });
 });
 
 test('check parseEnvFile', async () => {
@@ -159,7 +166,7 @@ test('check parseEnvFile', async () => {
   readFileMock.mockResolvedValue(content);
 
   const statsFileMock = vi.spyOn(promises, 'stat');
-  statsFileMock.mockResolvedValue({ size: 100 } as any);
+  statsFileMock.mockResolvedValue({ size: 100 } as Stats);
 
   const result = await envfileParser.parseEnvFile('foo');
 
@@ -175,7 +182,7 @@ test('check parseEnvFiles', async () => {
   readFileMock.mockResolvedValueOnce(content2);
 
   const statsFileMock = vi.spyOn(promises, 'stat');
-  statsFileMock.mockResolvedValue({ size: 100 } as any);
+  statsFileMock.mockResolvedValue({ size: 100 } as Stats);
 
   const result = await envfileParser.parseEnvFiles(['foo1', 'foo2']);
 
@@ -189,7 +196,7 @@ test('check parseEnvFile with comments', async () => {
   readFileMock.mockResolvedValue(content1);
 
   const statsFileMock = vi.spyOn(promises, 'stat');
-  statsFileMock.mockResolvedValue({ size: 100 } as any);
+  statsFileMock.mockResolvedValue({ size: 100 } as Stats);
 
   const result = await envfileParser.parseEnvFile('foo1');
 
@@ -199,7 +206,7 @@ test('check parseEnvFile with comments', async () => {
 test('check parseEnvFile and expect error with a file too big', async () => {
   // big file
   const statsFileMock = vi.spyOn(promises, 'stat');
-  statsFileMock.mockResolvedValue({ size: 2048 * 1024 } as any);
+  statsFileMock.mockResolvedValue({ size: 2048 * 1024 } as Stats);
 
   await expect(envfileParser.parseEnvFile('foo')).rejects.toThrowError(
     'Environment file foo is too big. Maximum size is 1MB.',
@@ -209,7 +216,7 @@ test('check parseEnvFile and expect error with a file too big', async () => {
 test('check parseEnvFile and expect error with invalid entries', async () => {
   // big file
   const statsFileMock = vi.spyOn(promises, 'stat');
-  statsFileMock.mockResolvedValue({ size: 1024 } as any);
+  statsFileMock.mockResolvedValue({ size: 1024 } as Stats);
 
   const content = 'hello world';
   const readFileMock = vi.spyOn(promises, 'readFile');

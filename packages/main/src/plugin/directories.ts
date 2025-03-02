@@ -16,9 +16,9 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
-import * as path from 'node:path';
-import * as os from 'node:os';
 import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 
 // handle the different directories for the different OSes for Podman Desktop
 export class Directories {
@@ -31,12 +31,13 @@ export class Directories {
   private pluginsScanDirectory: string;
   private extensionsStorageDirectory: string;
   private contributionStorageDirectory: string;
+  private safeStorageDirectory: string;
   protected desktopAppHomeDir: string;
 
   constructor() {
     // read ENV VAR to override the Desktop App Home Dir
     this.desktopAppHomeDir =
-      process.env[Directories.PODMAN_DESKTOP_HOME_DIR] || path.resolve(os.homedir(), Directories.XDG_DATA_DIRECTORY);
+      process.env[Directories.PODMAN_DESKTOP_HOME_DIR] ?? path.resolve(os.homedir(), Directories.XDG_DATA_DIRECTORY);
 
     // create the Desktop App Home Dir if it does not exist
     if (!fs.existsSync(this.desktopAppHomeDir)) {
@@ -47,6 +48,7 @@ export class Directories {
     this.pluginsScanDirectory = path.resolve(this.desktopAppHomeDir, 'plugins-scanning');
     this.extensionsStorageDirectory = path.resolve(this.desktopAppHomeDir, 'extensions-storage');
     this.contributionStorageDirectory = path.resolve(this.desktopAppHomeDir, 'contributions');
+    this.safeStorageDirectory = path.resolve(this.desktopAppHomeDir, 'safe-storage');
   }
 
   getConfigurationDirectory(): string {
@@ -67,5 +69,9 @@ export class Directories {
 
   public getContributionStorageDir(): string {
     return this.contributionStorageDirectory;
+  }
+
+  public getSafeStorageDirectory(): string {
+    return this.safeStorageDirectory;
   }
 }

@@ -17,8 +17,10 @@
  ***********************************************************************/
 
 import type { Context } from '@kubernetes/client-node';
+
+import type { KubeContext } from '/@api/kubernetes-context';
+
 import { kubernetesIconBase64 } from './KubeIcon';
-import type { KubeContext } from '../../../../main/src/plugin/kubernetes-context';
 
 // Function that goes through KubeContext and adds kubernetesIconBase64 icon to each context
 // TODO: In the future we will analyze which icon to use based on the cluster name and cluster information
@@ -34,11 +36,17 @@ export function setKubeUIContextError(contexts: Context[], contextName: string, 
     if (ctx.name === contextName) {
       return { ...ctx, error: String(error) };
     } else {
-      return ctx;
+      return { ...ctx };
     }
   });
 }
 
-export function clearKubeUIContextErrors(contexts: Context[]): Context[] {
-  return contexts.map(ctx => ({ ...ctx, error: undefined }));
+export function clearKubeUIContextErrors(contexts: Context[], contextName?: string): Context[] {
+  return contexts.map(ctx => {
+    if (!contextName || ctx.name === contextName) {
+      return { ...ctx, error: undefined };
+    } else {
+      return { ...ctx };
+    }
+  });
 }

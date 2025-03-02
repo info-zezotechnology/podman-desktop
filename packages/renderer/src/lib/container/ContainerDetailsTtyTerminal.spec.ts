@@ -17,21 +17,26 @@
  ***********************************************************************/
 
 import '@testing-library/jest-dom/vitest';
-import { test, expect, vi, beforeAll } from 'vitest';
+
 import { render, waitFor } from '@testing-library/svelte';
-import type { ContainerInfoUI } from './ContainerInfoUI';
+import { beforeAll, expect, test, vi } from 'vitest';
+
 import ContainerDetailsTtyTerminal from './ContainerDetailsTtyTerminal.svelte';
+import type { ContainerInfoUI } from './ContainerInfoUI';
 
 const getConfigurationValueMock = vi.fn();
 const attachContainerMock = vi.fn();
 
 beforeAll(() => {
-  (window as any).getConfigurationValue = getConfigurationValueMock;
-  (window as any).attachContainer = attachContainerMock;
-  (window as any).attachContainerSend = vi.fn();
+  Object.defineProperty(window, 'getConfigurationValue', { value: getConfigurationValueMock });
+  Object.defineProperty(window, 'attachContainer', { value: attachContainerMock });
+  Object.defineProperty(window, 'attachContainerSend', { value: vi.fn() });
 
-  (window as any).matchMedia = vi.fn().mockReturnValue({
-    addListener: vi.fn(),
+  Object.defineProperty(window, 'matchMedia', {
+    value: vi.fn().mockReturnValue({
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+    }),
   });
 });
 
@@ -65,17 +70,17 @@ test('expect being able to attach terminal ', async () => {
   // wait attachContainerMock is called
   await waitFor(() => expect(attachContainerMock).toHaveBeenCalled());
 
+  await new Promise(resolve => setTimeout(resolve, 1000));
+
   // write some data on the terminal
   onDataCallback(Buffer.from('hello\nworld'));
 
-  // wait 1s
-  await new Promise(resolve => setTimeout(resolve, 1000));
-
   // search a div having aria-live="assertive" attribute
+  await waitFor(() => expect(renderObject.container.querySelector('div[aria-live="assertive"]')));
   const terminalLinesLiveRegion = renderObject.container.querySelector('div[aria-live="assertive"]');
 
   // check the content
-  expect(terminalLinesLiveRegion).toHaveTextContent('hello world');
+  await vi.waitFor(() => expect(terminalLinesLiveRegion).toHaveTextContent('hello world'), { timeout: 2500 });
 
   // check we have called attachContainer
   expect(attachContainerMock).toHaveBeenCalledTimes(1);

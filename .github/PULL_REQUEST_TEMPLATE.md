@@ -1,15 +1,18 @@
 ### What does this PR do?
 
-### Screenshot/screencast of this PR
+### Screenshot / video of UI
 
-<!-- Please include a screenshot or a screencast 
-explaining what is doing this PR -->
+<!-- If this PR is changing UI, please include
+screenshots or screencasts showing the difference -->
 
 ### What issues does this PR fix or reference?
 
-<!-- Include any related issues from Podman Desktop 
+<!-- Include any related issues from Podman Desktop
 repository (or from another issue tracker). -->
 
 ### How to test this PR?
 
-<!-- Please explain steps to reproduce -->
+<!-- Please explain steps to verify the functionality,
+do not forget to provide unit/component tests -->
+
+- [ ] Tests are covering the bug fix or the new feature

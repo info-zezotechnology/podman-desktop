@@ -1,5 +1,5 @@
 /**********************************************************************
- * Copyright (C) 2023 Red Hat, Inc.
+ * Copyright (C) 2023-2024 Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,24 +16,17 @@
  ***********************************************************************/
 
 import * as extensionApi from '@podman-desktop/api';
-import * as fs from 'node:fs';
 
-// The image path for the registry logos
-const imagePath = __dirname + '/images/';
-const imageExtension = '.png';
+import dockerIoImage from './images/docker.io.png';
+import gcrIoImage from './images/gcr.io.png';
+import ghcrIoImageDark from './images/ghcr.io-dark.png';
+import ghcrIoImageLight from './images/ghcr.io-light.png';
+import quayIoImage from './images/quay.io.png';
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 export async function activate(extensionContext: extensionApi.ExtensionContext): Promise<void> {
   // For each defaultRegistries, suggest the registry to Podman Desktop
   for (const registry of defaultRegistries) {
-    // Let's check the folder for <registry.url>.png
-    const iconLocation = imagePath.concat(registry.url, imageExtension);
-
-    // If the icon exists, load the image, convert it to base64 and add it
-    if (fs.existsSync(iconLocation)) {
-      registry.icon = await base64EncodeFile(iconLocation);
-    }
-
     // Suggest it to the registry and add to subscriptions
     const disposable = extensionApi.registry.suggestRegistry(registry);
     extensionContext.subscriptions.push(disposable);
@@ -50,22 +43,21 @@ const defaultRegistries: extensionApi.RegistrySuggestedProvider[] = [
   {
     name: 'Docker Hub',
     url: 'docker.io',
+    icon: dockerIoImage,
   },
   {
     name: 'Red Hat Quay',
     url: 'quay.io',
+    icon: quayIoImage,
   },
   {
     name: 'GitHub',
     url: 'ghcr.io',
+    icon: { light: ghcrIoImageDark, dark: ghcrIoImageLight },
   },
   {
     name: 'Google Container Registry',
     url: 'gcr.io',
+    icon: gcrIoImage,
   },
 ];
-
-// Return the base64 of the file
-async function base64EncodeFile(file: string): Promise<string> {
-  return fs.promises.readFile(file).then(buffer => buffer.toString('base64'));
-}

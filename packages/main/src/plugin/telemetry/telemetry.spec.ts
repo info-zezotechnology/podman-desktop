@@ -1,5 +1,5 @@
 /**********************************************************************
- * Copyright (C) 2023 Red Hat, Inc.
+ * Copyright (C) 2023-2024 Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,15 +18,15 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+import type { TelemetrySender } from '@podman-desktop/api';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import type { ConfigurationRegistry } from '../configuration-registry.js';
 
+import type { ExtensionInfo } from '/@api/extension-info.js';
+
+import type { ConfigurationRegistry } from '../configuration-registry.js';
+import { TelemetryTrustedValue } from '../types/telemetry.js';
 import { Telemetry, TelemetryLoggerImpl } from './telemetry.js';
 import { TelemetrySettings } from './telemetry-settings.js';
-import type { ExtensionInfo } from '../api/extension-info.js';
-import type { TelemetrySender } from '@podman-desktop/api';
-import { TelemetryTrustedValue } from '../types/telemetry.js';
-import type { Proxy } from '../proxy.js';
 
 const getConfigurationMock = vi.fn();
 const onDidChangeConfigurationMock = vi.fn();
@@ -36,23 +36,36 @@ const configurationRegistryMock = {
   onDidChangeConfiguration: onDidChangeConfigurationMock,
 } as unknown as ConfigurationRegistry;
 
+vi.mock('../../../../../telemetry.json', () => ({
+  default: {
+    rules: [
+      {
+        event: 'dropMe',
+        disabled: true,
+      },
+      { event: 'sometimes', ratio: 0.5 },
+      { event: 'list', frequency: 'dailyPerInstance' },
+    ],
+  },
+}));
+
 class TelemetryTest extends Telemetry {
   constructor() {
-    super(configurationRegistryMock, {} as Proxy);
+    super(configurationRegistryMock);
   }
   public getLastTimeEvents(): Map<string, number> {
     return this.lastTimeEvents;
   }
 
-  public shouldDropEvent(eventName: string): boolean {
+  public override shouldDropEvent(eventName: string): boolean {
     return super.shouldDropEvent(eventName);
   }
 
-  public listenForTelemetryUpdates(): void {
+  public override listenForTelemetryUpdates(): void {
     super.listenForTelemetryUpdates();
   }
 
-  public createBuiltinTelemetrySender(extensionInfo: ExtensionInfo): TelemetrySender {
+  public override createBuiltinTelemetrySender(extensionInfo: ExtensionInfo): TelemetrySender {
     return super.createBuiltinTelemetrySender(extensionInfo);
   }
 }
@@ -72,20 +85,37 @@ test('Should not filter out basic event', async () => {
   expect(telemetry.shouldDropEvent('basic')).toBeFalsy();
 });
 
-test('Should not filter out a list event if it is first time', async () => {
+test('Should not filter out a dailyPerInstance event if it is first time', async () => {
   expect(telemetry.shouldDropEvent('listFirstTime')).toBeFalsy();
 });
 
-test('Should filter out a list event if last event was < 24h', async () => {
+test('Should filter out a dailyPerInstance event if last event was < 24h', async () => {
   // last call was 23h ago
   telemetry.getLastTimeEvents().set('listSecondTime', Date.now() - 1000 * 60 * 60 * 23);
   expect(telemetry.shouldDropEvent('listSecondTime')).toBeTruthy();
 });
 
-test('Should not filter out a list event if last event was > 24h', async () => {
+test('Should not filter out a dailyPerInstance event if last event was > 24h', async () => {
   // last call was 25h ago, so it should not be filtered out
   telemetry.getLastTimeEvents().set('listVeryVeryOldime', Date.now() - 1000 * 60 * 60 * 25);
   expect(telemetry.shouldDropEvent('listVeryVeryOldime')).toBeFalsy();
+});
+
+test('Should filter out a disabled event', async () => {
+  expect(telemetry.shouldDropEvent('dropMe')).toBeTruthy();
+});
+
+test('Should filter out a ratio event sometimes', async () => {
+  // this test will flake once every 8x10^62 times. if you are *that* unlucky, sorry
+  let count = 0;
+  for (let i = 0; i < 100; i++) {
+    if (telemetry.shouldDropEvent('sometimes')) {
+      count++;
+    }
+  }
+
+  expect(count === 0).toBeFalsy();
+  expect(count === 100).toBeFalsy();
 });
 
 test('Check Telemetry is enabled', async () => {
@@ -202,7 +232,7 @@ describe('TelemetryLoggerImpl', () => {
   test('dispose', async () => {
     const telemetryLogger = new TelemetryLoggerImpl(dummyExtensionInfo, senderMock);
 
-    expect((telemetryLogger as any).commonProperties).toContain({ 'common.extensionVersion': '1.0.0' });
+    expect((telemetryLogger as any).commonProperties).toMatchObject({ 'common.extensionVersion': '1.0.0' });
     telemetryLogger.dispose();
     expect((telemetryLogger as any).commonProperties).toStrictEqual({});
   });

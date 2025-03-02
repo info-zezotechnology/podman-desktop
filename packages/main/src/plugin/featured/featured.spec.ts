@@ -18,9 +18,10 @@
 
 import { afterEach, beforeAll, beforeEach, expect, test, vi } from 'vitest';
 
+import type { ExtensionsCatalog } from '/@/plugin/extension/catalog/extensions-catalog.js';
+import type { ExtensionLoader } from '/@/plugin/extension/extension-loader.js';
+
 import { Featured } from './featured.js';
-import type { ExtensionLoader } from '../extension-loader.js';
-import type { ExtensionsCatalog } from '../extensions-catalog/extensions-catalog.js';
 
 let featured: Featured;
 
@@ -58,7 +59,7 @@ test('init should call init on certificates', async () => {
 test('readFeaturedJson should be valid', async () => {
   const extensionsJson = featured.readFeaturedJson();
   expect(extensionsJson).toBeDefined();
-  expect(extensionsJson.length).toBeGreaterThan(3);
+  expect(extensionsJson.length).toBeGreaterThanOrEqual(2);
 });
 
 test('getFeaturedExtensions should check installable extensions', async () => {
@@ -121,12 +122,12 @@ test('getFeaturedExtensions should check installable extensions', async () => {
   expect(crcExtension?.fetchLink).toBe(ociLink);
 });
 
-test('getFeaturedExtensions should shuffle and limit to 6 extensions', async () => {
+test('getFeaturedExtensions', async () => {
   // mock the set of featured JSON extensions
   const spyReadJson = vi.spyOn(featured, 'readFeaturedJson');
 
   const jsonValues = [];
-  for (let i = 1; i < 10; i++) {
+  for (let i = 1; i <= 10; i++) {
     jsonValues.push({
       extensionId: `podman-desktop.${i}`,
       displayName: `Podman${i}`,
@@ -144,17 +145,6 @@ test('getFeaturedExtensions should shuffle and limit to 6 extensions', async () 
 
   expect(featuredExtensions1).toBeDefined();
 
-  // should be limited to 6
-  expect(featuredExtensions1.length).toBe(6);
-
-  // call again to check the shuffle
-  const featuredExtensions2 = await featured.getFeaturedExtensions();
-
-  // compare id from the 2 lists
-  // they should be in a different order
-  const idsList1 = featuredExtensions1.map(e => e.id);
-  const idsList2 = featuredExtensions2.map(e => e.id);
-
-  // check that the 2 lists are not the same
-  expect(idsList1).not.toStrictEqual(idsList2);
+  // should not be limited
+  expect(featuredExtensions1.length).toBe(10);
 });

@@ -19,8 +19,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import '@testing-library/jest-dom/vitest';
-import { beforeAll, test, expect, vi } from 'vitest';
+
 import { fireEvent, render, screen } from '@testing-library/svelte';
+import { tick } from 'svelte';
+import { beforeAll, expect, test, vi } from 'vitest';
+
 import TroubleshootingDevToolsConsoleLogs from './TroubleshootingDevToolsConsoleLogs.svelte';
 
 const getDevtoolsConsoleLogsMock = vi.fn();
@@ -33,10 +36,8 @@ beforeAll(() => {
 });
 
 async function waitRender(customProperties: object): Promise<void> {
-  const result = render(TroubleshootingDevToolsConsoleLogs, { ...customProperties });
-  while (result.component.$$.ctx[0].length === 0) {
-    await new Promise(resolve => setTimeout(resolve, 100));
-  }
+  render(TroubleshootingDevToolsConsoleLogs, { ...customProperties });
+  await tick();
 }
 
 test('Check logs are displayed with clipboard button', async () => {

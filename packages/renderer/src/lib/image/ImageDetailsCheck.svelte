@@ -1,43 +1,49 @@
 <script lang="ts">
-import type { ImageCheckerInfo } from '../../../../main/src/plugin/api/image-checker-info';
-import Fa from 'svelte-fa';
 import { faStethoscope } from '@fortawesome/free-solid-svg-icons';
-import Button from '../ui/Button.svelte';
-import type { Unsubscriber } from 'svelte/store';
-import { onDestroy, onMount } from 'svelte';
-import { imageCheckerProviders } from '/@/stores/image-checker-providers';
-import ProviderResultPage from '../ui/ProviderResultPage.svelte';
-import { type CheckUI, type ProviderUI } from '../ui/ProviderResultPage';
 import type { ImageInfo } from '@podman-desktop/api';
+import { Button } from '@podman-desktop/ui-svelte';
+import { onDestroy, onMount } from 'svelte';
+import type { Unsubscriber } from 'svelte/store';
+import Fa from 'svelte-fa';
+
+import { imageCheckerProviders } from '/@/stores/image-checker-providers';
+import type { ImageCheckerInfo } from '/@api/image-checker-info';
+
+import type { CheckUI, ProviderUI } from '../ui/ProviderResultPage';
+import ProviderResultPage from '../ui/ProviderResultPage.svelte';
 
 const orderStatus = ['failed', 'success'];
 const orderSeverity = ['critical', 'high', 'medium', 'low', undefined];
 
-export let imageInfo: ImageInfo | undefined;
+interface Props {
+  imageInfo?: ImageInfo;
+}
 
-let providers: ProviderUI[];
-let results: CheckUI[] = [];
-let cancellableTokenId: number = 0;
+const { imageInfo }: Props = $props();
 
-let remainingProviders: number;
-let aborted = false;
+let providers: ProviderUI[] = $state([]);
+let results: CheckUI[] = $state([]);
+let cancellableTokenId: number = $state(0);
+
+let remainingProviders: number = $state(0);
+let aborted = $state(false);
 
 let providersUnsubscribe: Unsubscriber;
 
 onMount(async () => {
   providersUnsubscribe = imageCheckerProviders.subscribe(providers => {
-    callProviders(providers);
+    callProviders(providers).catch((err: unknown) => console.error('Error calling image providers', err));
   });
 });
 
-onDestroy(() => {
+onDestroy(async () => {
   // unsubscribe from the store
   providersUnsubscribe?.();
 
-  handleAbort();
+  await handleAbort();
 });
 
-async function callProviders(_providers: readonly ImageCheckerInfo[]) {
+async function callProviders(_providers: readonly ImageCheckerInfo[]): Promise<void> {
   providers = _providers.map(p => ({
     info: p,
     state: 'running',
@@ -101,14 +107,16 @@ async function callProviders(_providers: readonly ImageCheckerInfo[]) {
         }
       })
       .finally(() => {
-        window.telemetryTrack('imageCheck', telemetryOptions);
+        window
+          .telemetryTrack('imageCheck', telemetryOptions)
+          .catch((err: unknown) => console.error('Error sending imageCheck telemetry', err));
       });
   });
 }
 
-function handleAbort() {
+async function handleAbort(): Promise<void> {
   if (cancellableTokenId !== 0 && remainingProviders > 0) {
-    window.cancelToken(cancellableTokenId);
+    await window.cancelToken(cancellableTokenId);
     providers = providers.map(p => {
       if (p.state === 'running') {
         p.state = 'canceled';
@@ -116,16 +124,18 @@ function handleAbort() {
       return p;
     });
     aborted = true;
-    window.telemetryTrack('imageCheck.aborted');
+    await window.telemetryTrack('imageCheck.aborted');
     cancellableTokenId = 0;
   }
 }
 </script>
 
-<ProviderResultPage providers="{providers}" results="{results}">
-  <div class="flex flex-row" slot="header-info">
+<ProviderResultPage providers={providers} results={results}>
+  <!-- eslint-disable-next-line sonarjs/no-unused-vars -->
+  {#snippet headerInfo()}
+  <div class="flex flex-row">
     <div class="w-full flex mb-4 space-x-4">
-      <Fa size="24" icon="{faStethoscope}" />
+      <Fa size="1.5x" icon={faStethoscope} />
       {#if aborted}
         <span>Image analysis canceled</span>
       {:else if remainingProviders > 0}
@@ -136,8 +146,9 @@ function handleAbort() {
     </div>
     {#if remainingProviders > 0}
       <div class="mr-4">
-        <Button on:click="{() => handleAbort()}">Cancel</Button>
+        <Button on:click={handleAbort}>Cancel</Button>
       </div>
     {/if}
   </div>
+  {/snippet}
 </ProviderResultPage>

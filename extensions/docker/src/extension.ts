@@ -1,5 +1,5 @@
 /**********************************************************************
- * Copyright (C) 2022 Red Hat, Inc.
+ * Copyright (C) 2022-2024 Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,12 +16,18 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
-import * as extensionApi from '@podman-desktop/api';
-import * as os from 'node:os';
 import * as http from 'node:http';
+import * as os from 'node:os';
+
+import * as extensionApi from '@podman-desktop/api';
+
+import { UNIX_SOCKET_PATH, WINDOWS_NPIPE } from './docker-api';
+import { getDockerInstallation } from './docker-cli';
+import { DockerCompatibilitySetup } from './docker-compatibility-setup';
+import { DockerConfig } from './docker-config';
+import { DockerContextHandler } from './docker-context-handler';
 
 let stopLoop = false;
-
 let socketPath: string;
 let provider: extensionApi.Provider;
 let providerState: extensionApi.ProviderConnectionStatus = 'stopped';
@@ -101,13 +107,28 @@ async function monitorDaemon(extensionContext: extensionApi.ExtensionContext): P
       if (err instanceof Error) {
         extensionApi.env.createTelemetryLogger().logError(err);
       } else {
-        extensionApi.env.createTelemetryLogger().logError(err.toString());
+        extensionApi.env.createTelemetryLogger().logError(String(err));
       }
     });
   }
 }
 
-async function updateProvider(extensionContext: extensionApi.ExtensionContext) {
+async function updateProvider(extensionContext: extensionApi.ExtensionContext): Promise<void> {
+  try {
+    const installedDocker = await getDockerInstallation();
+    if (!installedDocker) {
+      provider.updateStatus('not-installed');
+    } else if (installedDocker.version) {
+      provider.updateVersion(installedDocker.version);
+      // update provider status if someone has installed docker externally
+      if (provider.status === 'not-installed') {
+        provider.updateStatus('installed');
+      }
+    }
+  } catch (error) {
+    // ignore the update
+  }
+
   // check if the daemon is alive
   const isAlive = await isDockerDaemonAlive(socketPath);
 
@@ -131,24 +152,29 @@ async function updateProvider(extensionContext: extensionApi.ExtensionContext) {
         provider.updateStatus('started');
       }
     }
-  } else {
+  } else if (providerState === 'started') {
     // no longer alive but it was running before so we need to update status
-    if (providerState === 'started') {
-      // dispose the current connection
-      containerProviderConnectionDisposable?.dispose();
-      providerState = 'stopped';
-      provider.updateStatus('stopped');
-    }
+    // dispose the current connection
+    containerProviderConnectionDisposable?.dispose();
+    providerState = 'stopped';
+    provider.updateStatus('stopped');
   }
 }
 
 export async function activate(extensionContext: extensionApi.ExtensionContext): Promise<void> {
   const isWindows = os.platform() === 'win32';
   if (isWindows) {
-    socketPath = '//./pipe/docker_engine';
+    socketPath = WINDOWS_NPIPE;
   } else {
-    socketPath = '/var/run/docker.sock';
+    socketPath = UNIX_SOCKET_PATH;
   }
+
+  const dockerConfig = new DockerConfig();
+  const dockerContextHandler = new DockerContextHandler(dockerConfig);
+  const dockerCompatibilitySetup = new DockerCompatibilitySetup(dockerContextHandler);
+  dockerCompatibilitySetup.init().catch((err: unknown) => {
+    console.error('Error while initializing docker compatibility setup', err);
+  });
 
   // monitor daemon
   monitorDaemon(extensionContext).catch((err: unknown) => {
@@ -156,12 +182,12 @@ export async function activate(extensionContext: extensionApi.ExtensionContext):
     if (err instanceof Error) {
       extensionApi.env.createTelemetryLogger().logError(err);
     } else {
-      extensionApi.env.createTelemetryLogger().logError(err.toString());
+      extensionApi.env.createTelemetryLogger().logError(String(err));
     }
   });
 }
 
-function initProvider(extensionContext: extensionApi.ExtensionContext) {
+function initProvider(extensionContext: extensionApi.ExtensionContext): void {
   provider = extensionApi.provider.createProvider({
     name: 'Docker',
     id: 'docker',
@@ -175,7 +201,7 @@ function initProvider(extensionContext: extensionApi.ExtensionContext) {
   containerProviderConnection = {
     name: 'Docker',
     type: 'docker',
-    status: () => providerState,
+    status: (): extensionApi.ProviderConnectionStatus => providerState,
     endpoint: {
       socketPath,
     },

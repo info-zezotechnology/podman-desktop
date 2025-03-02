@@ -16,15 +16,16 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
-import { afterEach, expect, test, vi } from 'vitest';
-import type { ComposeGitHubReleases, ComposeGithubReleaseArtifactMetadata } from './compose-github-releases';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { ComposeDownload } from './download';
+
 import * as extensionApi from '@podman-desktop/api';
+import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+
+import type { ComposeGithubReleaseArtifactMetadata, ComposeGitHubReleases } from './compose-github-releases';
+import { ComposeDownload } from './download';
 import { OS } from './os';
 import * as utils from './utils';
-import { beforeEach } from 'node:test';
 
 // Create the OS class as well as fake extensionContext
 const os = new OS();
@@ -54,13 +55,15 @@ const fsActual = await vi.importActual<typeof import('node:fs')>('node:fs');
 const resultREST = JSON.parse(
   fsActual.readFileSync(path.resolve(__dirname, '../tests/resources/compose-github-release-all.json'), 'utf8'),
 );
-const releases: ComposeGithubReleaseArtifactMetadata[] = resultREST.map(release => {
-  return {
-    label: release.name || release.tag_name,
-    tag: release.tag_name,
-    id: release.id,
-  };
-});
+const releases: ComposeGithubReleaseArtifactMetadata[] = resultREST.map(
+  (release: { name: string; tag_name: string; id: number }) => {
+    return {
+      label: release.name || release.tag_name,
+      tag: release.tag_name,
+      id: release.id,
+    };
+  },
+);
 
 beforeEach(() => {
   vi.resetAllMocks();
@@ -99,8 +102,11 @@ test('pick the 4th option option in the quickpickmenu and expect it to return th
   });
   const showQuickPickMock = vi.spyOn(extensionApi.window, 'showQuickPick');
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  showQuickPickMock.mockResolvedValue({ id: 86626999, label: 'v2.14.2', tag: 'v2.14.2' } as any);
+  showQuickPickMock.mockResolvedValue({
+    id: 129676495,
+    label: 'v2.23.1',
+    tag: 'v2.23.1',
+  } as ComposeGithubReleaseArtifactMetadata);
 
   // Expect the test to return the first release from the list (as the function simply returns the first one)
   const composeDownload = new ComposeDownload(extensionContext, composeGitHubReleasesMock, os);

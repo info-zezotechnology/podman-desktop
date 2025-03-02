@@ -16,12 +16,14 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
+import { join } from 'node:path';
+
+import type { AnalyzedExtension } from '/@/plugin/extension/extension-analyzer.js';
+import type { FontDefinition } from '/@api/font-info.js';
+import type { IconDefinition, IconInfo } from '/@api/icon-info.js';
+
 import { isWindows } from '../util.js';
 import type { ApiSenderType } from './api.js';
-import type { FontDefinition } from './api/font-info.js';
-import type { IconDefinition, IconInfo } from './api/icon-info.js';
-import type { AnalyzedExtension } from './extension-loader.js';
-import { join } from 'node:path';
 
 export class IconRegistry {
   private icons: Map<string, IconDefinition>;
@@ -75,7 +77,7 @@ export class IconRegistry {
       }
 
       // get file extension of the font path
-      const format = defaultAttributes.fontPath.split('.').pop() || '';
+      const format = defaultAttributes.fontPath.split('.').pop() ?? '';
       if (format !== 'woff2') {
         console.warn(
           `Expected contributes.icons.default.fontPath to have file extension 'woff2' but found '${format}'."`,

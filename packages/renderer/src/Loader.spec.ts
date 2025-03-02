@@ -1,5 +1,5 @@
 /**********************************************************************
- * Copyright (C) 2023 Red Hat, Inc.
+ * Copyright (C) 2023-2024 Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,15 +18,21 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { beforeAll, expect, test, vi } from 'vitest';
-import Loader from './Loader.svelte';
 import { render } from '@testing-library/svelte';
+/* eslint-disable import/no-duplicates */
+import { tick } from 'svelte';
+import { get } from 'svelte/store';
+/* eslint-enable import/no-duplicates */
 import { router } from 'tinro';
+import { beforeAll, expect, test, vi } from 'vitest';
+
+import Loader from './Loader.svelte';
+import { lastPage } from './stores/breadcrumb';
 
 // first, patch window object
 const callbacks = new Map<string, any>();
 const eventEmitter = {
-  receive: (message: string, callback: any) => {
+  receive: (message: string, callback: any): void => {
     callbacks.set(message, callback);
   },
 };
@@ -82,8 +88,16 @@ test('Loader should redirect to the installation page when receiving the event',
   expect(callback).toBeDefined();
   await callback();
 
+  await tick();
+
   // check that we have been redirected
-  expect(router.goto).toHaveBeenCalledWith(`/preferences/extensions/install-from-id/${dummyExtensionId}`);
+  expect(router.goto).toHaveBeenCalledWith(`/extensions/details/${dummyExtensionId}`);
+
+  // check that breadcrumb is correct
+  expect(get(lastPage)).toStrictEqual({
+    name: 'Extensions',
+    path: '/extensions',
+  });
 });
 
 test('Loader should send the event if extensions take time to start', async () => {

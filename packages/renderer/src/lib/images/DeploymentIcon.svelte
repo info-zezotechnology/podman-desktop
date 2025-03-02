@@ -4,11 +4,12 @@ export let solid = false;
 </script>
 
 <svg
-  width="{size}"
-  height="{size}"
-  class="{$$props.class}"
-  style="{$$props.style}"
+  width={size}
+  height={size}
+  class={$$props.class}
+  style={$$props.style}
   version="1.1"
+  aria-label="Deployment"
   xml:space="preserve"
   viewBox="0 0 16 16">
   {#if solid}

@@ -16,8 +16,10 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
-import { writable, type Writable } from 'svelte/store';
-import type { CommandInfo } from '../../../main/src/plugin/api/command-info';
+import { type Writable, writable } from 'svelte/store';
+
+import type { CommandInfo } from '/@api/command-info';
+
 import { EventStore } from './event-store';
 
 const windowEvents: string[] = ['commands-added', 'commands-removed'];

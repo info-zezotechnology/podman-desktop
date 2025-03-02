@@ -1,5 +1,5 @@
 /**********************************************************************
- * Copyright (C) 2023 Red Hat, Inc.
+ * Copyright (C) 2023-2024 Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,29 +16,46 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
+import * as fs from 'node:fs';
+import { cp } from 'node:fs/promises';
+import * as os from 'node:os';
+import * as path from 'node:path';
+
 import type { IpcMainEvent } from 'electron';
 import { ipcMain } from 'electron';
-import * as fs from 'node:fs';
-import * as path from 'node:path';
-import * as os from 'node:os';
-import { cp } from 'node:fs/promises';
 import * as tarFs from 'tar-fs';
-import type { AnalyzedExtension, ExtensionLoader } from '../extension-loader.js';
+
+import type { Directories } from '/@/plugin/directories.js';
+import type { ExtensionsCatalog } from '/@/plugin/extension/catalog/extensions-catalog.js';
+import type { AnalyzedExtension } from '/@/plugin/extension/extension-analyzer.js';
+import type { ExtensionLoader } from '/@/plugin/extension/extension-loader.js';
+
 import type { ApiSenderType } from '../api.js';
+import type { ContributionManager } from '../contribution-manager.js';
+import { DockerDesktopContribution, DockerDesktopInstaller } from '../docker-extension/docker-desktop-installer.js';
 import type { ImageRegistry } from '../image-registry.js';
-import type { ExtensionsCatalog } from '../extensions-catalog/extensions-catalog.js';
 import type { Telemetry } from '../telemetry/telemetry.js';
 
 export class ExtensionInstaller {
+  #dockerDesktopInstaller: DockerDesktopInstaller;
+
   constructor(
     private apiSender: ApiSenderType,
     private extensionLoader: ExtensionLoader,
     private imageRegistry: ImageRegistry,
     private extensionCatalog: ExtensionsCatalog,
     private telemetry: Telemetry,
-  ) {}
+    private directories: Directories,
+    contributionManager: ContributionManager,
+  ) {
+    this.#dockerDesktopInstaller = new DockerDesktopInstaller(contributionManager);
+  }
 
-  async extractExtensionFiles(tmpFolderPath: string, finalFolderPath: string, reportLog: (message: string) => void) {
+  async extractExtensionFiles(
+    tmpFolderPath: string,
+    finalFolderPath: string,
+    reportLog: (message: string) => void,
+  ): Promise<void> {
     // files or folder to grab
     const filesExtension: string[] = [];
     const hostFiles: string[] = [];
@@ -75,9 +92,6 @@ export class ExtensionInstaller {
         return cp(sourceFile, path.join(finalFolderPath, 'host', destFile), { recursive: true });
       }),
     );
-
-    // delete the tmp folder
-    fs.rmSync(tmpFolderPath, { recursive: true });
   }
 
   async unpackTarFile(tarFilePath: string, destFolder: string): Promise<void> {
@@ -100,7 +114,8 @@ export class ExtensionInstaller {
     sendLog: (message: string) => void,
     sendError: (message: string) => void,
     imageName: string,
-  ): Promise<AnalyzedExtension | undefined> {
+    catatlogExtensionId?: string,
+  ): Promise<AnalyzedExtension | DockerDesktopContribution | undefined> {
     imageName = imageName.trim();
     sendLog(`Analyzing image ${imageName}...`);
     let imageConfigLabels;
@@ -116,20 +131,37 @@ export class ExtensionInstaller {
       return;
     }
 
-    const titleLabel = imageConfigLabels['org.opencontainers.image.title'];
+    const titleLabel = imageConfigLabels['org.opencontainers.image.title'] as string | undefined;
     const descriptionLabel = imageConfigLabels['org.opencontainers.image.description'];
     const vendorLabel = imageConfigLabels['org.opencontainers.image.vendor'];
     const apiVersion = imageConfigLabels['io.podman-desktop.api.version'];
+    const apiDDVersion = imageConfigLabels['com.docker.desktop.extension.api.version'];
 
-    if (!titleLabel || !descriptionLabel || !vendorLabel || !apiVersion) {
+    if (!titleLabel || !descriptionLabel || !vendorLabel || (!apiVersion && !apiDDVersion)) {
       sendError(`Image ${imageName} is not a Podman Desktop Extension`);
       return;
+    }
+
+    const isDDExtension = apiDDVersion ? true : false;
+    const isPDExtension = apiVersion ? true : false;
+
+    let unpackedFolder;
+    // where to unpack the extension
+    if (isPDExtension) {
+      unpackedFolder = this.directories.getPluginsDirectory();
+    } else {
+      unpackedFolder = this.directories.getContributionStorageDir();
     }
 
     // strip the tag (ending with :something) from the image name if any
     let imageNameWithoutTag: string;
     if (imageName.includes(':')) {
-      imageNameWithoutTag = imageName.split(':')[0];
+      const splitten = imageName.split(':')[0];
+      if (!splitten) {
+        sendError(`Image ${imageName} is not a Podman Desktop Extension`);
+        return;
+      }
+      imageNameWithoutTag = splitten;
     } else {
       imageNameWithoutTag = imageName;
     }
@@ -141,37 +173,55 @@ export class ExtensionInstaller {
     const tmpFolderPath = path.join(os.tmpdir(), `/tmp/${imageNameWithoutSpecialChars}-tmp`);
 
     // final folder
-    const finalFolderPath = path.join(this.extensionLoader.getPluginsDirectory(), imageNameWithoutSpecialChars);
+    const finalFolderPath = path.join(unpackedFolder, imageNameWithoutSpecialChars);
 
     // grab all extensions
-    const extensions = await this.extensionLoader.listExtensions();
+    if (isPDExtension) {
+      const extensions = await this.extensionLoader.listExtensions();
 
-    // check if the extension is already installed for that path
-    const alreadyInstalledExtension = extensions.find(extension => extension.path === finalFolderPath);
+      // check if the extension is already installed for that path
+      const alreadyInstalledExtension = extensions.find(extension => extension.path === finalFolderPath);
 
-    if (alreadyInstalledExtension) {
-      sendError(`Extension ${alreadyInstalledExtension.name} is already installed`);
-      return;
+      if (alreadyInstalledExtension) {
+        sendError(`Extension ${alreadyInstalledExtension.name} is already installed`);
+        return;
+      }
     }
 
     sendLog('Downloading and extract layers...');
     await this.imageRegistry.downloadAndExtractImage(imageName, tmpFolderPath, sendLog);
 
     sendLog('Filtering image content...');
-    await this.extractExtensionFiles(tmpFolderPath, finalFolderPath, sendLog);
-
-    let analyzedExtension: AnalyzedExtension | undefined;
-    try {
-      analyzedExtension = await this.extensionLoader.analyzeExtension(finalFolderPath, true);
-    } catch (error) {
-      sendError('Error while analyzing extension: ' + error);
-    }
-    if (analyzedExtension?.error) {
-      sendError('Could not load extension: ' + analyzedExtension?.error);
-      return;
+    if (isPDExtension) {
+      await this.extractExtensionFiles(tmpFolderPath, finalFolderPath, sendLog);
+    } else if (isDDExtension) {
+      await this.#dockerDesktopInstaller.extractExtensionFiles(
+        tmpFolderPath,
+        finalFolderPath,
+        sendLog,
+        catatlogExtensionId,
+      );
     }
 
-    return analyzedExtension;
+    // delete the tmp folder
+    fs.rmSync(tmpFolderPath, { recursive: true });
+
+    if (isPDExtension) {
+      let analyzedExtension: AnalyzedExtension | undefined;
+      try {
+        analyzedExtension = await this.extensionLoader.analyzeExtension(finalFolderPath, true);
+      } catch (error) {
+        sendError('Error while analyzing extension: ' + error);
+      }
+      if (analyzedExtension?.error) {
+        sendError('Could not load extension: ' + analyzedExtension?.error);
+        return;
+      }
+      return analyzedExtension;
+    } else if (isDDExtension) {
+      return this.#dockerDesktopInstaller.setupContribution(titleLabel, imageName, finalFolderPath, sendLog, sendError);
+    }
+    return undefined;
   }
 
   async analyzeTransitiveDependencies(
@@ -205,7 +255,7 @@ export class ExtensionInstaller {
       // need to analyze extensions that are in dependency minus the one installed or already analyzed
       const extensionsToAnalyze = dependencyExtensionIds.filter(
         dependency =>
-          !alreadyInstalledExtensionIds.includes(dependency) ||
+          !alreadyInstalledExtensionIds.includes(dependency) &&
           !analyzedExtensions.find(extension => extension.id === dependency),
       );
 
@@ -234,7 +284,7 @@ export class ExtensionInstaller {
         try {
           const imageToAnalyze = await this.analyzeFromImage(sendLog, sendError, imageNameToAnalyze);
 
-          if (!imageToAnalyze) {
+          if (!imageToAnalyze || imageToAnalyze instanceof DockerDesktopContribution) {
             return false;
           }
           await this.analyzeTransitiveDependencies(imageToAnalyze, analyzedExtensions, errors, sendLog, sendError);
@@ -252,11 +302,16 @@ export class ExtensionInstaller {
     sendEnd: (message: string) => void,
     imageName: string,
     extensionAnalyzed?: (extension: AnalyzedExtension) => void,
+    catalogExtensionId?: string,
   ): Promise<void> {
     // now collect all transitive dependencies
     const analyzedExtensions: AnalyzedExtension[] = [];
     const errors: string[] = [];
-    const analyzedExtension = await this.analyzeFromImage(sendLog, sendError, imageName);
+    const analyzedExtension = await this.analyzeFromImage(sendLog, sendError, imageName, catalogExtensionId);
+    if (analyzedExtension instanceof DockerDesktopContribution) {
+      sendEnd('Docker Desktop Extension Successfully installed.');
+      return;
+    }
 
     if (analyzedExtension) extensionAnalyzed?.(analyzedExtension);
 
@@ -273,7 +328,9 @@ export class ExtensionInstaller {
       analyzedExtensions
         .filter(extension => extension !== undefined)
         .forEach(extension => {
-          extension?.path && fs.rmdirSync(extension.path, { recursive: true });
+          if (extension?.path) {
+            fs.rmdirSync(extension.path, { recursive: true });
+          }
         });
       sendError(`Error while installing extension ${imageName}: ${errors.join('\n')}`);
       return;
@@ -284,6 +341,8 @@ export class ExtensionInstaller {
     }
 
     // load all extensions
+    analyzedExtensions.forEach(extension => this.extensionLoader.ensureExtensionIsEnabled(extension.id));
+
     await this.extensionLoader.loadExtensions(analyzedExtensions);
 
     sendEnd('Extension Successfully installed.');
@@ -293,7 +352,7 @@ export class ExtensionInstaller {
   async init(): Promise<void> {
     ipcMain.on(
       'extension-installer:install-from-image',
-      (event: IpcMainEvent, imageName: string, logCallbackId: number): void => {
+      (event: IpcMainEvent, imageName: string, logCallbackId: number, catalogExtensionId?: string): void => {
         const telemetryData: {
           extensionId?: string;
           error?: string;
@@ -312,13 +371,13 @@ export class ExtensionInstaller {
           event.reply('extension-installer:install-from-image-end', logCallbackId, message);
         };
 
-        const extAnalyzed = (extension: AnalyzedExtension) => {
+        const extAnalyzed = (extension: AnalyzedExtension): void => {
           if (extension) {
             telemetryData.extensionId = extension.id;
           }
         };
 
-        this.installFromImage(sendLog, sendError, sendEnd, imageName, extAnalyzed)
+        this.installFromImage(sendLog, sendError, sendEnd, imageName, extAnalyzed, catalogExtensionId)
           .catch((error: unknown) => {
             sendError('' + error);
             telemetryData.error = `${error}`;

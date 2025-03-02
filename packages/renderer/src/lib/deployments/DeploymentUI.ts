@@ -1,5 +1,5 @@
 /**********************************************************************
- * Copyright (C) 2023 Red Hat, Inc.
+ * Copyright (C) 2023-2025 Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,11 +16,18 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
-export interface DeploymentUI {
-  name: string;
-  namespace: string;
+import type { KubernetesNamespacedObjectUI } from '../objects/KubernetesObjectUI.ts';
+
+export interface DeploymentUI extends KubernetesNamespacedObjectUI {
+  uid: string;
   replicas: number;
   ready: number;
-  age: string;
-  selected: boolean;
+  created?: Date;
+  conditions: DeploymentCondition[];
+}
+
+export interface DeploymentCondition {
+  type: string;
+  reason?: string;
+  message?: string;
 }

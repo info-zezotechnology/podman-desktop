@@ -19,8 +19,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import '@testing-library/jest-dom/vitest';
-import { test, expect, vi, describe } from 'vitest';
+
 import { fireEvent, render, screen } from '@testing-library/svelte';
+import { describe, expect, test, vi } from 'vitest';
+
 import ControlButtons from './ControlButtons.svelte';
 
 describe.each([{ platform: 'linux' }, { platform: 'win32' }])('Platform($platform)', ({ platform }) => {
@@ -55,7 +57,7 @@ describe.each([{ platform: 'linux' }, { platform: 'win32' }])('Platform($platfor
   test('Expect maximize is called', async () => {
     render(ControlButtons, { platform });
 
-    const maximizeMock = vi.fn();
+    const maximizeMock = vi.fn().mockResolvedValue(undefined);
     (window as any).windowMaximize = maximizeMock;
 
     const maximizeButton = screen.getByRole('button', { name: 'Maximize' });
@@ -66,7 +68,7 @@ describe.each([{ platform: 'linux' }, { platform: 'win32' }])('Platform($platfor
   test('Expect close is called', async () => {
     render(ControlButtons, { platform });
 
-    const closeMock = vi.fn();
+    const closeMock = vi.fn().mockResolvedValue(undefined);
     (window as any).windowClose = closeMock;
 
     const closeButton = screen.getByRole('button', { name: 'Close' });

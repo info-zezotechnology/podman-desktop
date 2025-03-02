@@ -16,9 +16,11 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
-import { writable, type Writable } from 'svelte/store';
+import { type Writable, writable } from 'svelte/store';
+
+import type { CliToolInfo } from '/@api/cli-tool-info';
+
 import { EventStore } from './event-store';
-import type { CliToolInfo } from '../../../main/src/plugin/api/cli-tool-info';
 
 const windowEvents: string[] = ['extensions-started', 'cli-tool-create', 'cli-tool-remove', 'cli-tool-change'];
 const windowListeners = ['system-ready', 'extensions-already-started'];
@@ -28,7 +30,8 @@ let extensionsStarted = false;
 export async function checkForUpdate(eventName: string): Promise<boolean> {
   // trigger update after all extensions started
   if (eventName === 'extensions-already-started') {
-    return (extensionsStarted = true);
+    extensionsStarted = true;
+    return true;
   }
 
   // ignore individual tools created from extension activation methods until

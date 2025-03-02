@@ -1,31 +1,39 @@
 ---
-sidebar_position: 4
+sidebar_position: 1
 title: Installing
 description: Install Podman Desktop extension
 tags: [podman-desktop, extension, publishing]
-keywords: [podman desktop, extension, publishing]
+keywords: [podman desktop, extension, installing-an-extension]
 ---
 
 # Installing a Podman Desktop extension
 
-Consider installing Podman Desktop extensions to enrich the default capabilities of Podman Desktop.
-
-#### Prerequisites
-
-- The extension Open Container Initiative (OCI) image name, such as: `quay.io/fbenoit/my-first-extension`.
-
-  See [Publishing a Podman Desktop extension](/docs/extensions/publish).
+Installing an extension is a great way to expand the capabilities of Podman Desktop. You have the option to install an extension from the catalog or a custom extension of your choice.
 
 #### Procedure
 
-1. Go to the **<Icon icon="fa-solid fa-cog" size="lg" /> Settings > Extensions**.
+1. Click the **Extensions** button. <!-- markdownlint-disable-line MD029 -->
 
-1. In the **Name of the Image** field, write the extension OCI image name.
+   ![Extension Screenshot](../img/extensions-icon.png)
 
-1. Click the **Install extension from the OCI image** button.
+2. Perform one of the following steps:
+
+   - Browse the **Catalog** and install the required extension. <!-- markdownlint-disable-line MD029 -->
+
+     ![Catalog Screenshot](../img/browse-catalog.png)
+
+   - Click the **Install custom...** button to install an extension from a container image: <!-- markdownlint-disable-line MD029 -->
+     1. Go to any registry, such as Docker Hub, GitHub, or any other registry.
+     1. Find your extension.
+     1. Copy the OCI image name of the extension, such as `redhatdeveloper/openshift-dd-ext:0.0.1-100`, and paste it into the **OCI Image** field.
+        ![Install Custom Extension Dialoge](../img/install-custom.png)
+     1. Click **Install**. A successful operation notification opens.
+        ![install a custom extension](../img/install-a-custom-extension.png)
+     1. Click **Done**.
+        ![extension installed successfully](../img/extension-installed-successfully.png)
 
 #### Verification
 
-- If Podman Desktop satisfies the minimum required version of the extension, the extension activates.
+- Verify the extension by checking the **Installed** tab on the Extensions page.
 
-- Depending on the extension, items can appear in the status bar, tray menu, or other contributions.
+- Depending on the extension, items can appear in the status bar, tray menu, or other areas of Podman Desktop.

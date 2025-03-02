@@ -15,24 +15,28 @@
  *
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
-import * as extensionApi from '@podman-desktop/api';
 import * as fs from 'node:fs';
-import * as path from 'node:path';
 import * as os from 'node:os';
-import { getKindPath, getMemTotalInfo } from './util';
+import * as path from 'node:path';
+
+import type { AuditRecord, AuditRequestItems, AuditResult, CancellationToken } from '@podman-desktop/api';
+import * as extensionApi from '@podman-desktop/api';
+// @ts-expect-error ignore type error https://github.com/janl/mustache.js/issues/797
 import mustache from 'mustache';
+import type { Tags } from 'yaml';
 import { parseAllDocuments } from 'yaml';
 
-import createClusterConfTemplate from './templates/create-cluster-conf.mustache?raw';
-import type { AuditRecord, AuditResult, CancellationToken, AuditRequestItems } from '@podman-desktop/api';
 import ingressManifests from '/@/resources/contour.yaml?raw';
+
+import createClusterConfTemplate from './templates/create-cluster-conf.mustache?raw';
+import { getKindPath, getMemTotalInfo } from './util';
 
 export function getKindClusterConfig(
   clusterName: string,
   httpHostPort: number,
   httpsHostPort: number,
   controlPlaneImage?: string,
-) {
+): string {
   return mustache.render(createClusterConfTemplate, {
     clusterName: clusterName,
     httpHostPort: httpHostPort,
@@ -41,21 +45,22 @@ export function getKindClusterConfig(
   });
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function getTags(tags: any[]): any[] {
+function getTags(tags: Tags): Tags {
   for (const tag of tags) {
-    if (tag.tag === 'tag:yaml.org,2002:int') {
-      const newTag = { ...tag };
-      newTag.test = /^(0[0-7][0-7][0-7])$/;
-      newTag.resolve = str => parseInt(str, 8);
-      tags.unshift(newTag);
-      break;
+    if (typeof tag === 'object' && 'tag' in tag) {
+      if (tag.tag === 'tag:yaml.org,2002:int') {
+        const newTag = { ...tag };
+        newTag.test = /^(0[0-7][0-7][0-7])$/;
+        newTag.resolve = (str: string): number => parseInt(str, 8);
+        tags.unshift(newTag);
+        break;
+      }
     }
   }
   return tags;
 }
 
-export async function setupIngressController(clusterName: string) {
+export async function setupIngressController(clusterName: string): Promise<void> {
   const manifests = parseAllDocuments(ingressManifests, { customTags: getTags });
   await extensionApi.kubernetes.createResources(
     'kind-' + clusterName,
@@ -74,6 +79,14 @@ export async function connectionAuditor(provider: string, items: AuditRequestIte
     records.push({
       type: 'warning',
       record: 'It is recommend to include the @sha256:{image digest} for the image used.',
+    });
+  }
+
+  const configFile = items['kind.cluster.creation.configFile'];
+  if (configFile) {
+    records.push({
+      type: 'warning',
+      record: 'By specifying a config file, all other options will be ignored.',
     });
   }
 
@@ -97,25 +110,30 @@ export async function connectionAuditor(provider: string, items: AuditRequestIte
 }
 
 export async function createCluster(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  params: { [key: string]: any },
-  logger: extensionApi.Logger,
+  params: { [key: string]: unknown },
   kindCli: string,
   telemetryLogger: extensionApi.TelemetryLogger,
+  logger?: extensionApi.Logger,
   token?: CancellationToken,
 ): Promise<void> {
+  // grab config file
+  let configFile;
+  if (params['kind.cluster.creation.configFile'] && typeof params['kind.cluster.creation.configFile'] === 'string') {
+    configFile = String(params['kind.cluster.creation.configFile']);
+  }
+
   let clusterName = 'kind';
-  if (params['kind.cluster.creation.name']) {
-    clusterName = params['kind.cluster.creation.name'];
+  if (params['kind.cluster.creation.name'] && typeof params['kind.cluster.creation.name'] === 'string') {
+    clusterName = String(params['kind.cluster.creation.name']);
   }
 
   // grab provider
   let provider = 'docker';
   if (params['kind.cluster.creation.provider']) {
-    provider = params['kind.cluster.creation.provider'];
+    provider = String(params['kind.cluster.creation.provider']);
   }
 
-  const env = Object.assign({}, process.env);
+  const env: { [key: string]: string } = {};
   // add KIND_EXPERIMENTAL_PROVIDER env variable if needed
   if (provider === 'podman') {
     env['KIND_EXPERIMENTAL_PROVIDER'] = 'podman';
@@ -123,24 +141,36 @@ export async function createCluster(
 
   // grab http host port
   let httpHostPort = 9090;
-  if (params['kind.cluster.creation.http.port']) {
-    httpHostPort = params['kind.cluster.creation.http.port'];
+  if (
+    params['kind.cluster.creation.http.port'] &&
+    ['string', 'number'].includes(typeof params['kind.cluster.creation.http.port'])
+  ) {
+    httpHostPort = Number(params['kind.cluster.creation.http.port']);
   }
 
   // grab https host port
   let httpsHostPort = 9443;
-  if (params['kind.cluster.creation.https.port']) {
-    httpsHostPort = params['kind.cluster.creation.https.port'];
+  if (
+    params['kind.cluster.creation.https.port'] &&
+    ['string', 'number'].includes(typeof params['kind.cluster.creation.https.port'])
+  ) {
+    httpsHostPort = Number(params['kind.cluster.creation.https.port']);
   }
 
   let ingressController = false;
-
+  // The params['kind.cluster.creation.ingress'] can be only "on" or "undefined"
   if (params['kind.cluster.creation.ingress']) {
-    ingressController = params['kind.cluster.creation.ingress'] === 'on';
+    ingressController = Boolean(params['kind.cluster.creation.ingress']);
   }
 
   // grab custom kind node image if defined
-  const controlPlaneImage = params['kind.cluster.creation.controlPlaneImage'];
+  let controlPlaneImage = undefined;
+  if (
+    params['kind.cluster.creation.controlPlaneImage'] &&
+    typeof params['kind.cluster.creation.controlPlaneImage'] === 'string'
+  ) {
+    controlPlaneImage = String(params['kind.cluster.creation.controlPlaneImage']);
+  }
 
   // create the config file
   const kindClusterConfig = getKindClusterConfig(clusterName, httpHostPort, httpsHostPort, controlPlaneImage);
@@ -155,30 +185,39 @@ export async function createCluster(
   await fs.promises.writeFile(tmpFilePath, kindClusterConfig, 'utf8');
 
   // update PATH to include kind
-  env.PATH = getKindPath();
+  env.PATH = getKindPath() ?? '';
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const telemetryOptions: Record<string, any> = {
+  const telemetryOptions: Record<string, unknown> = {
+    configFile,
     provider,
     httpHostPort,
     httpsHostPort,
     ingressController,
   };
 
+  const kubeConfigPath = extensionApi.kubernetes.getKubeconfig().path;
   // now execute the command to create the cluster
   const startTime = performance.now();
   try {
-    await extensionApi.process.exec(kindCli, ['create', 'cluster', '--config', tmpFilePath], { env, logger, token });
+    await extensionApi.process.exec(
+      kindCli,
+      ['create', 'cluster', '--config', configFile ?? tmpFilePath, '--kubeconfig', kubeConfigPath],
+      {
+        env,
+        logger,
+        token,
+      },
+    );
     if (ingressController) {
-      logger.log('Creating ingress controller resources');
+      logger?.log('Creating ingress controller resources');
       await setupIngressController(clusterName);
     }
   } catch (error) {
     telemetryOptions.error = error;
-    let errorMessage: string;
+    let errorMessage: string = '';
 
-    if (typeof error === 'object' && 'message' in error) {
-      errorMessage = error.message.toString();
+    if (error && typeof error === 'object' && 'message' in error) {
+      errorMessage = String(error.message);
     } else if (typeof error === 'string') {
       errorMessage = error;
     }

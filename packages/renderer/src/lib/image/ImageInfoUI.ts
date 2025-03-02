@@ -1,5 +1,5 @@
 /**********************************************************************
- * Copyright (C) 2022 Red Hat, Inc.
+ * Copyright (C) 2022-2024 Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,8 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
+import type { ViewContributionBadgeValue } from '/@api/view-info';
+
 export interface ImageInfoUI {
   id: string;
   shortId: string;
@@ -31,5 +33,11 @@ export interface ImageInfoUI {
   // no tag, we encode <none>
   base64RepoTag: string;
   selected: boolean;
-  inUse: boolean;
+  status: 'USED' | 'UNUSED' | 'DELETING';
+  icon: unknown;
+  labels?: { [label: string]: string };
+  badges: ViewContributionBadgeValue[];
+  children?: ImageInfoUI[];
+  isManifest?: boolean;
+  digest?: string;
 }

@@ -16,12 +16,16 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
-import { shellPath } from 'shell-path';
-import { resolve } from 'path';
-import * as http from 'node:http';
-import type { OS } from './os';
-import * as extensionApi from '@podman-desktop/api';
 import * as fs from 'node:fs';
+import * as http from 'node:http';
+import { resolve } from 'node:path';
+import * as path from 'node:path';
+
+import * as extensionApi from '@podman-desktop/api';
+import { shellPath } from 'shell-path';
+
+import { getSystemBinaryPath } from './cli-run';
+import type { OS } from './os';
 
 export class Detect {
   static readonly WINDOWS_SOCKET_PATH = '//./pipe/docker_engine';
@@ -38,6 +42,7 @@ export class Detect {
       await extensionApi.process.exec('docker-compose', ['--version']);
       return true;
     } catch (e) {
+      console.debug('Error trying to run the version on docker-compose. Binary might not be there', e);
       return false;
     }
   }
@@ -48,16 +53,81 @@ export class Detect {
     // so let's set the env PATH to the system path before running the command
     // to avoid the storage/bin folder to be appended to the PATH
     try {
-      await extensionApi.process.exec('docker-compose', ['--version'], { env: { PATH: process.env.PATH } });
+      await extensionApi.process.exec('docker-compose', ['--version', '--format=json'], {
+        env: { PATH: process.env.PATH ?? '' },
+      });
       return true;
     } catch (e) {
+      console.debug('Error trying to run the version on docker-compose. Binary might not be there', e);
       return false;
     }
   }
+
+  async getDockerComposeBinaryInfo(
+    composeCliName: string,
+    dir: string = '',
+  ): Promise<{ version: string; path: string; updatable: boolean }> {
+    const executable = path.join(dir, composeCliName);
+
+    const { stdout } = await extensionApi.process.exec(executable, ['--version', '--format=json'], {
+      env: { PATH: process.env.PATH ?? '' },
+    });
+    const version = this.parseVersion(stdout);
+
+    let binaryPath: string;
+    if (dir.length === 0) {
+      binaryPath = await this.getDockerComposePath(composeCliName);
+    } else {
+      binaryPath = executable;
+    }
+
+    const systemWidePath = getSystemBinaryPath(composeCliName);
+    const extensionStoragePath = this.getStoragePath();
+
+    return {
+      version: version,
+      path: binaryPath,
+      updatable: [systemWidePath, extensionStoragePath].includes(binaryPath),
+    };
+  }
+
+  async getDockerComposePath(executable: string): Promise<string> {
+    // grab full path for Linux and mac
+    if (extensionApi.env.isLinux || extensionApi.env.isMac) {
+      try {
+        const { stdout: fullPath } = await extensionApi.process.exec('which', [executable]);
+        return fullPath;
+      } catch (err) {
+        console.warn('Error getting kubectl full path', err);
+      }
+    } else if (extensionApi.env.isWindows) {
+      // grab full path for Windows
+      try {
+        const { stdout: fullPath } = await extensionApi.process.exec('where.exe', [executable]);
+        // remove all line break/carriage return characters from full path
+        return fullPath.replace(/(\r\n|\n|\r)/gm, '');
+      } catch (err) {
+        console.warn('Error getting kubectl full path', err);
+      }
+    }
+
+    return executable;
+  }
+
+  private parseVersion(raw: string): string {
+    const parsed = JSON.parse(raw);
+    if (!('version' in parsed) || typeof parsed.version !== 'string') throw new Error('malformed version output');
+    return parsed.version;
+  }
+
+  getExtensionStorageBin(): string {
+    return resolve(this.storagePath, 'bin');
+  }
+
   // search if the podman-compose is available in the storage/bin path
   async checkStoragePath(): Promise<boolean> {
     // check that extension/bin folder is in the PATH
-    const extensionBinPath = resolve(this.storagePath, 'bin');
+    const extensionBinPath = this.getExtensionStorageBin();
 
     // grab current path
     const currentPath = await shellPath();
@@ -66,7 +136,7 @@ export class Detect {
 
   // Check to see that docker-compose exists in the storage directory and return the path if it does
   async getStoragePath(): Promise<string> {
-    const extensionBinPath = resolve(this.storagePath, 'bin');
+    const extensionBinPath = this.getExtensionStorageBin();
 
     // append file extension
     let fileExtension = '';

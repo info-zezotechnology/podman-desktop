@@ -1,139 +1,120 @@
+<svelte:options runes={true} />
+
 <script lang="ts">
-import { contributions } from './stores/contribs';
+import { Tooltip } from '@podman-desktop/ui-svelte';
 import { onDestroy, onMount } from 'svelte';
-import { CommandRegistry } from './lib/CommandRegistry';
-import { podsInfos } from './stores/pods';
-import { containersInfos } from './stores/containers';
-import { imagesInfos } from './stores/images';
-import { volumeListInfos } from './stores/volumes';
-import { ImageUtils } from './lib/image/image-utils';
-import type { ImageInfo } from '../../main/src/plugin/api/image-info';
-import ContainerIcon from './lib/images/ContainerIcon.svelte';
-import PodIcon from './lib/images/PodIcon.svelte';
-import ImageIcon from './lib/images/ImageIcon.svelte';
-import VolumeIcon from './lib/images/VolumeIcon.svelte';
-import NavItem from './lib/ui/NavItem.svelte';
 import type { TinroRouteMeta } from 'tinro';
-import type { Unsubscriber } from 'svelte/store';
+
+import { NavigationPage } from '/@api/navigation-page';
+
+import { AppearanceSettings } from '../../main/src/plugin/appearance-settings';
+import AuthActions from './lib/authentication/AuthActions.svelte';
+import { CommandRegistry } from './lib/CommandRegistry';
 import NewContentOnDashboardBadge from './lib/dashboard/NewContentOnDashboardBadge.svelte';
-import SettingsIcon from './lib/images/SettingsIcon.svelte';
+import AccountIcon from './lib/images/AccountIcon.svelte';
 import DashboardIcon from './lib/images/DashboardIcon.svelte';
+import SettingsIcon from './lib/images/SettingsIcon.svelte';
+import NavItem from './lib/ui/NavItem.svelte';
+import NavRegistryEntry from './lib/ui/NavRegistryEntry.svelte';
+import { handleNavigation } from './navigation';
+import { onDidChangeConfiguration } from './stores/configurationProperties';
+import { navigationRegistry } from './stores/navigation/navigation-registry';
 
-let podInfoSubscribe: Unsubscriber;
-let containerInfoSubscribe: Unsubscriber;
-let imageInfoSubscribe: Unsubscriber;
-let volumeInfoSubscribe: Unsubscriber;
+let { exitSettingsCallback, meta = $bindable() }: { exitSettingsCallback: () => void; meta: TinroRouteMeta } = $props();
 
-let podCount = '';
-let containerCount = '';
-let imageCount = '';
-let volumeCount = '';
+let authActions = $state<AuthActions>();
+let outsideWindow = $state<HTMLDivElement>();
+let iconWithTitle = $state(false);
 
-const imageUtils = new ImageUtils();
-export let exitSettingsCallback: () => void;
+const iconSize = '22';
+const NAV_BAR_LAYOUT = `${AppearanceSettings.SectionName}.${AppearanceSettings.NavigationAppearance}`;
+
+onDidChangeConfiguration.addEventListener(NAV_BAR_LAYOUT, onDidChangeConfigurationCallback);
+
+let minNavbarWidth = $derived(iconWithTitle ? 'min-w-fit' : 'min-w-leftnavbar');
 
 onMount(async () => {
   const commandRegistry = new CommandRegistry();
   commandRegistry.init();
-  podInfoSubscribe = podsInfos.subscribe(value => {
-    if (value.length > 0) {
-      podCount = ' (' + value.length + ')';
-    } else {
-      podCount = '';
-    }
-  });
-  containerInfoSubscribe = containersInfos.subscribe(value => {
-    if (value.length > 0) {
-      containerCount = ' (' + value.length + ')';
-    } else {
-      containerCount = '';
-    }
-  });
-  imageInfoSubscribe = imagesInfos.subscribe(value => {
-    let images = value.map((imageInfo: ImageInfo) => imageUtils.getImagesInfoUI(imageInfo, [])).flat();
-    if (images.length > 0) {
-      imageCount = ' (' + images.length + ')';
-    } else {
-      imageCount = '';
-    }
-  });
-  volumeInfoSubscribe = volumeListInfos.subscribe(value => {
-    let flattenedVolumes = value.map(volumeInfo => volumeInfo.Volumes).flat();
-    if (flattenedVolumes.length > 0) {
-      volumeCount = ' (' + flattenedVolumes.length + ')';
-    } else {
-      volumeCount = '';
-    }
-  });
+  iconWithTitle = (await window.getConfigurationValue(NAV_BAR_LAYOUT)) === AppearanceSettings.IconAndTitle;
 });
 
 onDestroy(() => {
-  if (podInfoSubscribe) {
-    podInfoSubscribe();
-  }
-  if (containerInfoSubscribe) {
-    containerInfoSubscribe();
-  }
-  if (imageInfoSubscribe) {
-    imageInfoSubscribe();
-  }
-  if (volumeInfoSubscribe) {
-    volumeInfoSubscribe();
-  }
+  onDidChangeConfiguration.removeEventListener(NAV_BAR_LAYOUT, onDidChangeConfigurationCallback);
 });
 
-function clickSettings(b: boolean) {
-  if (b) {
+function handleClick(): void {
+  if (meta.url.startsWith('/preferences')) {
     exitSettingsCallback();
   } else {
-    window.location.href = '#/preferences/resources';
+    handleNavigation({ page: NavigationPage.RESOURCES });
   }
 }
 
-export let meta: TinroRouteMeta;
+function onDidChangeConfigurationCallback(e: Event): void {
+  if ('detail' in e) {
+    const detail = e.detail as { key: string; value: string };
+    if (NAV_BAR_LAYOUT === detail?.key) {
+      iconWithTitle = detail.value === AppearanceSettings.IconAndTitle;
+    }
+  }
+}
 </script>
 
 <svelte:window />
 <nav
-  class="group w-leftnavbar min-w-leftnavbar flex flex-col justify-between hover:overflow-y-none"
+  class="group w-leftnavbar {minNavbarWidth} flex flex-col hover:overflow-y-none bg-[var(--pd-global-nav-bg)] border-[var(--pd-global-nav-bg-border)] border-r-[1px]"
   aria-label="AppNavigation">
-  <NavItem href="/" tooltip="Dashboard" bind:meta="{meta}">
+  <NavItem href="/" tooltip="Dashboard" bind:meta={meta}>
     <div class="relative w-full">
-      <div class="flex items-center w-full h-full">
-        <DashboardIcon size="24" />
+      <div class="flex flex-col items-center w-full h-full">
+        <div class="flex items-center w-fit h-full relative">
+          <DashboardIcon size={iconSize} />
+          <NewContentOnDashboardBadge />
+        </div>
+        {#if iconWithTitle}
+          <div class="text-xs text-center ml-[2px]" aria-label="Dashboard title">
+            Dashboard
+          </div>
+        {/if}
       </div>
-      <NewContentOnDashboardBadge />
     </div>
   </NavItem>
-  <NavItem href="/containers" tooltip="Containers{containerCount}" ariaLabel="Containers" bind:meta="{meta}">
-    <ContainerIcon size="24" />
-  </NavItem>
-  <NavItem href="/pods" tooltip="Pods{podCount}" ariaLabel="Pods" bind:meta="{meta}">
-    <PodIcon size="24" />
-  </NavItem>
-  <NavItem href="/images" tooltip="Images{imageCount}" ariaLabel="Images" bind:meta="{meta}">
-    <ImageIcon size="24" />
-  </NavItem>
-  <NavItem href="/volumes" tooltip="Volumes{volumeCount}" ariaLabel="Volumes" bind:meta="{meta}">
-    <VolumeIcon size="24" />
-  </NavItem>
-
-  {#if $contributions.length > 0}
-    <div class="mx-3 my-2 h-[1px] bg-zinc-600"></div>
-  {/if}
-  {#each $contributions as contribution}
-    <NavItem href="/contribs/{contribution.name}" tooltip="{contribution.name}" bind:meta="{meta}">
-      <img src="{contribution.icon}" width="24" height="24" alt="{contribution.name}" />
-    </NavItem>
+  {#each $navigationRegistry as navigationRegistryItem}
+    {#if navigationRegistryItem.items && navigationRegistryItem.type === 'group'}
+      <!-- This is a group, list all items from the entry -->
+      {#each navigationRegistryItem.items as item}
+        <NavRegistryEntry entry={item} bind:meta={meta} iconWithTitle={iconWithTitle} />
+      {/each}
+    {:else if navigationRegistryItem.type === 'entry' || navigationRegistryItem.type === 'submenu'}
+      <NavRegistryEntry entry={navigationRegistryItem} bind:meta={meta} iconWithTitle={iconWithTitle} />
+    {/if}
   {/each}
 
   <div class="grow"></div>
 
-  <NavItem
-    href="/preferences"
-    tooltip="Settings"
-    bind:meta="{meta}"
-    onClick="{() => clickSettings(meta.url.startsWith('/preferences'))}">
-    <SettingsIcon size="24" />
+  <div bind:this={outsideWindow}>
+    <NavItem href="/accounts" tooltip="" bind:meta={meta} onClick={(event): void => authActions?.onButtonClick(event)}>
+      <Tooltip bottomRight tip="Accounts">
+        <div class="flex flex-col items-center w-full h-full">
+          <AccountIcon size={iconSize} />
+          {#if iconWithTitle}
+            <div class="text-xs text-center ml-[2px]" aria-label="Accounts title">
+              Accounts
+            </div>
+          {/if}
+        </div>
+      </Tooltip>
+      <AuthActions bind:this={authActions} outsideWindow={outsideWindow} />
+    </NavItem>
+  </div>
+
+  <NavItem href="/preferences" tooltip="Settings" bind:meta={meta} onClick={handleClick}>
+    <SettingsIcon size={iconSize} />
+    {#if iconWithTitle}
+      <div class="text-xs text-center ml-[2px]" aria-label="Settings title">
+        Settings
+      </div>
+    {/if}
   </NavItem>
 </nav>

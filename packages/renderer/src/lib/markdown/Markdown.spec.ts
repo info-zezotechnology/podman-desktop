@@ -17,20 +17,20 @@
  ***********************************************************************/
 
 import '@testing-library/jest-dom/vitest';
-import { test, expect, describe, beforeAll, vi } from 'vitest';
+
 import { fireEvent, render, screen } from '@testing-library/svelte';
+import { tick } from 'svelte';
+import { beforeAll, describe, expect, test, vi } from 'vitest';
+
 import Markdown from './Markdown.svelte';
 
 async function waitRender(customProperties: object): Promise<void> {
-  const result = render(Markdown, { ...customProperties });
-  // wait that result.component.$$.ctx[0] is set
-  while (result.component.$$.ctx[0] === undefined) {
-    await new Promise(resolve => setTimeout(resolve, 100));
-  }
+  render(Markdown, { ...customProperties });
+  await tick();
 }
 
 beforeAll(() => {
-  (window as any).executeCommand = vi.fn();
+  Object.defineProperty(window, 'executeCommand', { value: vi.fn() });
 });
 
 test('Expect to have bold', async () => {
@@ -53,7 +53,7 @@ describe('Custom button', () => {
     const markdownContent = screen.getByRole('region', { name: 'markdown-content' });
     expect(markdownContent).toBeInTheDocument();
     expect(markdownContent).toContainHTML(
-      '<a class="px-4 py-[6px] rounded-[4px] text-white text-[13px] whitespace-nowrap bg-purple-600 hover:bg-purple-500 no-underline">Name of the button</a>',
+      '<a class="px-4 py-[6px] rounded-[4px] text-white! text-[13px] whitespace-nowrap bg-purple-600 hover:bg-purple-500 no-underline!">Name of the button</a>',
     );
   });
 
@@ -171,7 +171,7 @@ describe('Custom warnings', () => {
   });
 
   test('Expect button to be in error mode if execution fails', async () => {
-    vi.spyOn(window, 'executeCommand').mockRejectedValue('error');
+    vi.mocked(window.executeCommand).mockRejectedValue('error');
     const warnings = [
       {
         state: 'failed',
@@ -200,5 +200,51 @@ describe('Custom warnings', () => {
 
     const buttonFailedStatus = await screen.findByText('command title failed');
     expect(buttonFailedStatus).toBeDefined();
+  });
+});
+
+describe('jump to TOC section', () => {
+  test('Expect TOC to be clickable', async () => {
+    await waitRender({
+      markdown:
+        '### Title\n#### Topics\n- [Technology](#technology)\n    - [Extension features](#extension-features)\n\n\n\n\n## Technology\nhello world',
+    });
+
+    const markdownContent = screen.getByRole('region', { name: 'markdown-content' });
+    expect(markdownContent).toBeInTheDocument();
+
+    // get all the <li> elements
+    const allLi = screen.getAllByRole('listitem');
+    // get the first <li> element
+    const li = allLi[0];
+    // get the first <a> element
+    const technologyLink = li.querySelector('a');
+    // check if the <a> element is defined
+
+    expect(technologyLink).toBeDefined();
+
+    // check the title
+    expect(technologyLink).toHaveTextContent('Technology');
+
+    // grab the h2 element
+    const h2 = screen.getByRole('heading', { name: 'Technology' });
+    // check if the h2 element is defined
+    expect(h2).toBeDefined();
+    // check the title
+    expect(h2).toHaveTextContent('Technology');
+
+    // add the scrollIntoView function to the window object
+    h2.scrollIntoView = vi.fn();
+
+    if (technologyLink) {
+      await fireEvent.click(technologyLink);
+    }
+
+    // check we scrolled to the right section
+    expect(h2.scrollIntoView).toHaveBeenCalledWith({
+      behavior: 'smooth',
+      block: 'start',
+      inline: 'nearest',
+    });
   });
 });

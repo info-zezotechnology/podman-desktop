@@ -16,11 +16,12 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
-import { afterEach, beforeEach, expect, test, vi } from 'vitest';
-import type { SpyInstance } from 'vitest';
-import { ModuleLoader } from './module-loader.js';
-import type { ExtensionModule } from './module-loader.js';
 import type * as PodmanDesktop from '@podman-desktop/api';
+import type { MockInstance } from 'vitest';
+import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+
+import type { ExtensionModule } from './module-loader.js';
+import { ModuleLoader } from './module-loader.js';
 
 const fakeModule = {
   _load: vi.fn(),
@@ -34,7 +35,7 @@ const fakeModule1 = {
 };
 const fakeApi = {} as typeof PodmanDesktop;
 
-let loadSpy: SpyInstance;
+let loadSpy: MockInstance;
 
 beforeEach(() => {
   loadSpy = vi.spyOn(fakeModule, '_load');
@@ -74,14 +75,14 @@ test('module loader overrides modules registered as factory', () => {
   expect(loadedModule2).equal(fakeApi);
 });
 
-test('module loader trow exception if request came not from extension', () => {
+test('module loader trow exception if override is a function and request came not from extension', () => {
   let error;
   try {
-    fakeModule._load('module1', { filename: '/path/to/none/ext/internal/module1.js', path: '/path/to/ext' });
+    fakeModule._load('module2', { filename: '/path/to/none/ext/internal/module1.js', path: '/path/to/ext' });
   } catch (err) {
     error = err;
   }
-  expect(error).is.not.undefined;
+  expect(error).not.toBeUndefined();
 });
 
 test('module loader calls calls original _load function for not registered module', () => {

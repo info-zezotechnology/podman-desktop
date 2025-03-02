@@ -17,12 +17,15 @@
  ***********************************************************************/
 
 import type { MenuItemConstructorOptions, Tray } from 'electron';
-import { nativeImage, Menu, ipcMain } from 'electron';
+import { ipcMain, Menu, nativeImage } from 'electron';
 import { beforeAll, beforeEach, expect, test, vi } from 'vitest';
-import type { ProviderInfo } from './plugin/api/provider-info.js';
+
+import type { ProviderInfo } from '/@api/provider-info.js';
+
+import statusStopped from './assets/status-stopped.png';
 import type { AnimatedTray } from './tray-animate-icon.js';
 import { TrayMenu } from './tray-menu.js';
-import statusStopped from './assets/status-stopped.png';
+import * as util from './util.js';
 
 let trayMenu: TrayMenu;
 let tray: Tray;
@@ -46,6 +49,7 @@ vi.mock('electron', async () => {
 beforeAll(() => {
   tray = {
     setContextMenu: vi.fn(),
+    on: vi.fn(),
   } as unknown as Tray;
   animatedTray = {
     setStatus: vi.fn(),
@@ -68,17 +72,17 @@ test('Tray delete provider item', () => {
     internalId: 'internalId',
   } as ProviderInfo);
 
-  onSpy.mock.calls[0][1](undefined as unknown as Electron.IpcMainEvent, {
+  onSpy.mock.calls[0]?.[1](undefined as unknown as Electron.IpcMainEvent, {
     providerId: 'testId',
     menuItem: { id: 'itemId', label: 'SomeLabel' },
   });
 
   trayMenu.deleteProviderItem('testId', 'itemId');
   expect(
-    (menuBuild.mock.lastCall?.[0][0].submenu as Array<MenuItemConstructorOptions>)?.filter(
+    (menuBuild.mock.lastCall?.[0]?.[0]?.submenu as Array<MenuItemConstructorOptions>)?.filter(
       it => it.label === 'SomeLabel',
     ),
-  ).to.be.empty;
+  ).toStrictEqual([]);
 });
 
 test('Tray update provider not delete provider items', () => {
@@ -93,7 +97,7 @@ test('Tray update provider not delete provider items', () => {
     internalId: 'internalId',
   } as ProviderInfo);
 
-  onSpy.mock.calls[0][1](undefined as unknown as Electron.IpcMainEvent, {
+  onSpy.mock.calls[0]?.[1](undefined as unknown as Electron.IpcMainEvent, {
     providerId: 'testId',
     menuItem: { id: 'itemId', label: 'SomeLabel' },
   });
@@ -105,10 +109,10 @@ test('Tray update provider not delete provider items', () => {
   } as ProviderInfo);
 
   expect(
-    (menuBuild.mock.lastCall?.[0][0].submenu as Array<MenuItemConstructorOptions>)?.filter(
+    (menuBuild.mock.lastCall?.[0]?.[0]?.submenu as Array<MenuItemConstructorOptions>)?.filter(
       it => it.label === 'SomeLabel',
     ),
-  ).to.be.not.empty;
+  ).toBeDefined();
 });
 
 test('Tray provider configured state same as stopped', () => {
@@ -140,9 +144,22 @@ test('Tray provider start enabled when configured state', () => {
     status: 'configured',
   } as ProviderInfo);
 
-  const startItem = (menuBuild.mock.lastCall?.[0][0].submenu as Array<MenuItemConstructorOptions>)?.find(
+  const startItem = (menuBuild.mock.lastCall?.[0]?.[0]?.submenu as Array<MenuItemConstructorOptions>)?.find(
     it => it.label === 'Start',
   );
-  expect(startItem).to.be.not.undefined;
-  expect(startItem?.enabled).to.be.true;
+  expect(startItem).toBeDefined();
+  expect(startItem?.enabled).toBeTruthy();
+});
+
+test('Tray click trigger is only added on Windows devices', () => {
+  const onSpy = vi.spyOn(tray, 'on');
+
+  vi.spyOn(util, 'isWindows').mockReturnValue(true);
+  trayMenu = new TrayMenu(tray, animatedTray);
+  expect(onSpy).toHaveBeenCalledWith('click', expect.any(Function));
+  onSpy.mockClear();
+
+  vi.spyOn(util, 'isWindows').mockReturnValue(false);
+  trayMenu = new TrayMenu(tray, animatedTray);
+  expect(onSpy).not.toHaveBeenCalledWith('click', expect.any(Function));
 });

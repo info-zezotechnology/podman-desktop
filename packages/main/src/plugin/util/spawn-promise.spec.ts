@@ -16,12 +16,13 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
-import { beforeEach, expect, test, vi } from 'vitest';
-import { spawnWithPromise } from './spawn-promise.js';
+import type { ChildProcess } from 'node:child_process';
 import { spawn } from 'node:child_process';
 import type { Readable } from 'node:stream';
+
+import { beforeEach, expect, test, vi } from 'vitest';
+
+import { spawnWithPromise } from './spawn-promise.js';
 
 // mock spawn
 vi.mock('node:child_process', () => {
@@ -39,7 +40,7 @@ test('expect correct parsing', async () => {
   const command = '/bin/foo';
   const commandArgs = ['bar', 'baz'];
 
-  const on: any = vi.fn().mockImplementationOnce((event: string, cb: (arg0: string) => string) => {
+  const on = vi.fn().mockImplementationOnce((event: string, cb: (arg0: string) => string) => {
     if (event === 'data') {
       cb(stdoutOutput);
     }
@@ -52,7 +53,7 @@ test('expect correct parsing', async () => {
         cb(0);
       }
     }),
-  } as any);
+  } as unknown as ChildProcess);
   const result = await spawnWithPromise(command, commandArgs);
   expect(vi.mocked(spawn)).toBeCalledWith(command, commandArgs);
   expect(result).toBeDefined();
@@ -64,7 +65,7 @@ test('expect correct parsing', async () => {
 test('expect do not fail if error', async () => {
   const stdoutOutput = 'foo';
 
-  const on: any = vi.fn().mockImplementationOnce((event: string, cb: (arg0: string) => string) => {
+  const on = vi.fn().mockImplementationOnce((event: string, cb: (arg0: string) => string) => {
     if (event === 'data') {
       cb(stdoutOutput);
     }
@@ -77,7 +78,7 @@ test('expect do not fail if error', async () => {
         cb(1);
       }
     }),
-  } as any);
+  } as unknown as ChildProcess);
   const result = await spawnWithPromise('invalidCommand');
   // should be empty output in case of error
   expect(result).toBeDefined();

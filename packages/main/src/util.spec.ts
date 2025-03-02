@@ -1,5 +1,5 @@
 /**********************************************************************
- * Copyright (C) 2023 Red Hat, Inc.
+ * Copyright (C) 2023-2024 Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,9 +15,11 @@
  *
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
-import { beforeEach, expect, test, vi } from 'vitest';
 import * as fs from 'node:fs';
-import { getBase64Image } from './util.js';
+
+import { beforeEach, describe, expect, test, vi } from 'vitest';
+
+import { getBase64Image, requireNonUndefined } from './util.js';
 
 beforeEach(() => {
   vi.resetAllMocks();
@@ -40,12 +42,26 @@ test('getBase64Image - return undefined if erroring durin execution', () => {
 });
 
 test('getBase64Image - return base64 image', () => {
-  const buffer: Buffer = {} as Buffer;
   vi.spyOn(fs, 'existsSync').mockReturnValue(true);
-  vi.spyOn(fs, 'readFileSync').mockReturnValue('file');
-  vi.spyOn(Buffer, 'from').mockReturnValue(buffer);
-  vi.spyOn(buffer, 'toString').mockReturnValue('image');
+  vi.spyOn(fs, 'readFileSync').mockReturnValue('image');
 
   const result = getBase64Image('path');
-  expect(result).toBe('data:image/png;base64,image');
+  expect(result).toBe('data:image/png;base64,aW1hZ2U=');
+});
+
+describe('requireNonUndefined', () => {
+  test('should return the value if it is defined', () => {
+    const value = 'test';
+    const result = requireNonUndefined(value);
+    expect(result).toBe(value);
+  });
+
+  test('should throw an error if the value is undefined', () => {
+    expect(() => requireNonUndefined(undefined)).toThrow('Found undefined value.');
+  });
+
+  test('should throw an error with a custom message if the value is undefined', () => {
+    const customMessage = 'Custom error message';
+    expect(() => requireNonUndefined(undefined, customMessage)).toThrow(customMessage);
+  });
 });

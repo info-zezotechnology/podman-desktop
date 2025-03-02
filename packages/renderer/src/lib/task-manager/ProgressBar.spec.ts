@@ -1,5 +1,5 @@
 /**********************************************************************
- * Copyright (C) 2023 Red Hat, Inc.
+ * Copyright (C) 2023-2024 Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,8 +17,10 @@
  ***********************************************************************/
 
 import '@testing-library/jest-dom/vitest';
-import { test, expect } from 'vitest';
+
 import { render, screen } from '@testing-library/svelte';
+import { expect, test } from 'vitest';
+
 import ProgressBar from '/@/lib/task-manager/ProgressBar.svelte';
 
 test('Expect that the progress bar is indeterminate', async () => {
@@ -27,12 +29,34 @@ test('Expect that the progress bar is indeterminate', async () => {
   // expect the progress bar to have the indeterminate class
   const progressBar = screen.getByRole('progressbar');
   expect(progressBar).toHaveClass('progress-bar-indeterminate');
+  expect(progressBar.classList.contains('progress-bar-incremental')).toBe(false);
 });
 
-test('Expect that the progress bar is not indeterminate', async () => {
+test('Expect that the progress bar is incremental', async () => {
   render(ProgressBar, { progress: 5 });
 
   // expect the progress bar to not have the indeterminate class
   const progressBar = screen.getByRole('progressbar');
+  expect(progressBar).toHaveClass('progress-bar-incremental');
   expect(progressBar.classList.contains('progress-bar-indeterminate')).toBe(false);
+});
+
+test('Expect class to be propagated', async () => {
+  const { container } = render(ProgressBar, { progress: 5, class: 'dummy-class' });
+
+  expect(container.children[0]).toHaveClass('dummy-class');
+});
+
+test('Expect aria-label to be propagated', async () => {
+  const { getByLabelText } = render(ProgressBar, { progress: 5, 'aria-label': 'hello-world' });
+
+  const container = getByLabelText('hello-world');
+  expect(container).toBeDefined();
+});
+
+test('Expect progress to be rounded-sm', async () => {
+  const { getByText } = render(ProgressBar, { progress: 5 / 3, 'aria-label': 'hello-world' });
+
+  const progress = getByText('2%');
+  expect(progress).toBeDefined();
 });

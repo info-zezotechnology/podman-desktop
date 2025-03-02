@@ -1,5 +1,5 @@
 /**********************************************************************
- * Copyright (C) 2022-2023 Red Hat, Inc.
+ * Copyright (C) 2022-2024 Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,16 +16,20 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
-import { writable, type Writable } from 'svelte/store';
-import type { ContainerInfo } from '../../../main/src/plugin/api/container-info';
+import { ContainerIcon } from '@podman-desktop/ui-svelte/icons';
+import { type Writable, writable } from 'svelte/store';
+
+import type { ContainerInfo } from '/@api/container-info';
+
 import { EventStore } from './event-store';
-import ContainerIcon from '../lib/images/ContainerIcon.svelte';
 
 const windowEvents = [
   'extension-started',
   'container-stopped-event',
   'container-die-event',
   'container-kill-event',
+  'container-init-event',
+  'container-created-event',
   'container-started-event',
   'container-removed-event',
   'provider-change',
@@ -52,7 +56,7 @@ const listContainers = (): Promise<ContainerInfo[]> => {
   return window.listContainers();
 };
 
-const containersEventStore = new EventStore<ContainerInfo[]>(
+export const containersEventStore = new EventStore<ContainerInfo[]>(
   'containers',
   containersInfos,
   checkForUpdate,

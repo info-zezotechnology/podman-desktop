@@ -15,11 +15,13 @@
  *
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
-import type { KindCluster } from './extension';
+import * as fs from 'node:fs';
+
 import * as extensionApi from '@podman-desktop/api';
 import { tmpName } from 'tmp-promise';
+
+import type { KindCluster } from './extension';
 import { getKindPath } from './util';
-import * as fs from 'node:fs';
 
 export type ImageInfo = { engineId: string; name?: string; tag?: string };
 
@@ -34,7 +36,7 @@ export class ImageHandler {
 
     // Retrieve all the Kind clusters available.
     const clusters = kindClusters.filter(cluster => cluster.status === 'started');
-    let selectedCluster: { label: string; engineType: string };
+    let selectedCluster: { label: string; engineType: string } | undefined;
 
     // Throw an error if there is no clusters,
     // but if there are multiple ones, prompt the user to select one
@@ -54,8 +56,8 @@ export class ImageHandler {
     // Only proceed if a cluster was selected
     if (selectedCluster) {
       let name = image.name;
-      let filename: string;
-      const env = Object.assign({}, process.env);
+      let filename: string | undefined;
+      const env: { [key: string]: string } = {};
 
       // Create a name:tag string for the image
       if (image.tag) {
@@ -69,7 +71,7 @@ export class ImageHandler {
         env['KIND_EXPERIMENTAL_PROVIDER'] = 'docker';
       }
 
-      env.PATH = getKindPath();
+      env.PATH = getKindPath() ?? '';
       try {
         // Create a temporary file to store the image
         filename = await tmpName();

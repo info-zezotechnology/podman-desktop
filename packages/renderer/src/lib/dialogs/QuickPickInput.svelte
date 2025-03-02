@@ -1,8 +1,10 @@
 <script lang="ts">
+import { Button, Checkbox, Modal } from '@podman-desktop/ui-svelte';
 import { onDestroy, onMount, tick } from 'svelte';
-import type { InputBoxOptions, QuickPickOptions } from './quickpick-input';
+
 import Markdown from '/@/lib/markdown/Markdown.svelte';
-import { tabWithinParent } from './dialog-utils';
+
+import type { InputBoxOptions, QuickPickOptions } from './quickpick-input';
 
 const ENTER = 'Enter';
 const ESCAPE = 'Escape';
@@ -17,14 +19,17 @@ let multiline = false;
 
 let validationEnabled = false;
 let validationError: string | undefined = '';
+let ignoreFocusOut = false;
 
 let onSelectCallbackEnabled = false;
 
 let display = false;
 let mode: 'InputBox' | 'QuickPick';
 
-let quickPickItems: { value: any; description: string; detail: string; checkbox: boolean }[] = [];
-let quickPickFilteredItems: { value: any; description: string; detail: string; checkbox: boolean }[] = quickPickItems;
+type QuickPickItem = { value: string; description: string; detail: string; checkbox: boolean };
+
+let quickPickItems: QuickPickItem[] = [];
+let quickPickFilteredItems: QuickPickItem[] = quickPickItems;
 let quickPickSelectedIndex = 0;
 let quickPickSelectedFilteredIndex = 0;
 let quickPickCanPickMany = false;
@@ -32,49 +37,57 @@ let quickPickCanPickMany = false;
 let inputElement: HTMLInputElement | HTMLTextAreaElement | undefined = undefined;
 let outerDiv: HTMLDivElement | undefined = undefined;
 
-const showInputCallback = async (options?: InputBoxOptions) => {
+const showInputCallback = (inputCallpackParameter: unknown): void => {
+  const options: InputBoxOptions | undefined = inputCallpackParameter as InputBoxOptions;
   mode = 'InputBox';
   inputValue = options?.value;
   placeHolder = options?.placeHolder;
   title = options?.title;
-  currentId = options?.id || 0;
+  currentId = options?.id ?? 0;
   if (options?.prompt) {
     prompt = `${options.prompt} (${DEFAULT_PROMPT})`;
   } else {
     prompt = DEFAULT_PROMPT;
   }
   markdownDescription = options?.markdownDescription;
-  multiline = options?.multiline || false;
+  multiline = options?.multiline ?? false;
 
-  validationEnabled = options?.validate || false;
+  validationEnabled = options?.validate ?? false;
+  ignoreFocusOut = options?.ignoreFocusOut ?? false;
   display = true;
-  await tick();
-
-  if (display && inputElement) {
-    inputElement.focus();
-    if (options?.valueSelection) {
-      inputElement.setSelectionRange(options.valueSelection[0], options.valueSelection[1]);
-    }
-  }
+  tick()
+    .then(() => {
+      if (display && inputElement) {
+        inputElement.focus();
+        if (options?.valueSelection) {
+          inputElement.setSelectionRange(options.valueSelection[0], options.valueSelection[1]);
+        }
+      }
+    })
+    .catch((error: unknown) => {
+      console.error('Unable to focus/select input box', error);
+    });
 };
 
-const showQuickPickCallback = async (options?: QuickPickOptions) => {
+const showQuickPickCallback = (quickpickParameter: unknown): void => {
+  const options: QuickPickOptions | undefined = quickpickParameter as QuickPickOptions;
   mode = 'QuickPick';
   placeHolder = options?.placeHolder;
   title = options?.title;
-  currentId = options?.id || 0;
+  currentId = options?.id ?? 0;
+  ignoreFocusOut = options?.ignoreFocusOut ?? false;
   if (options?.prompt) {
     prompt = options.prompt;
   }
-  quickPickItems = (options?.items || []).map(item => {
+  quickPickItems = (options?.items ?? []).map(item => {
     if (typeof item === 'string') {
       return { value: item, description: '', detail: '', checkbox: false };
     } else {
       // if type is QuickPickItem use label field for the display
       return {
-        value: item.label || '',
-        description: item.description || '',
-        detail: item.detail || '',
+        value: item.label ?? '',
+        description: item.description ?? '',
+        detail: item.detail ?? '',
         checkbox: false,
       };
     }
@@ -90,17 +103,23 @@ const showQuickPickCallback = async (options?: QuickPickOptions) => {
     onSelectCallbackEnabled = true;
     // if there is one item, notify that focus will be on it
     if (quickPickItems.length > 0) {
-      window.sendShowQuickPickOnSelect(currentId, 0);
+      window
+        .sendShowQuickPickOnSelect(currentId, 0)
+        .catch((err: unknown) => console.error(`Error sending show quickpick ${currentId}`, err));
     }
   }
 
   display = true;
 
-  await tick();
-
-  if (display && inputElement) {
-    inputElement.focus();
-  }
+  tick()
+    .then(() => {
+      if (display && inputElement) {
+        inputElement.focus();
+      }
+    })
+    .catch((error: unknown) => {
+      console.error('Unable to focus input box', error);
+    });
 };
 
 onMount(() => {
@@ -111,13 +130,35 @@ onMount(() => {
   window.events?.receive('showQuickPick:add', showQuickPickCallback);
 });
 
-async function onInputChange(event: any) {
+const onClose = async (): Promise<void> => {
+  if (validationError) {
+    return;
+  }
+  const responseId = currentId;
+  // perform cleanup before returning value to be able to show again the next showInputBox call
+  // else we will have display being turned to true and then cleanup will do display = false
+  cleanup();
+  if (mode === 'QuickPick') {
+    await window.sendShowQuickPickValues(responseId);
+  } else if (mode === 'InputBox') {
+    await window.sendShowInputBoxValue(responseId);
+  }
+};
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function onInputChange(event: any): Promise<void> {
   // in case of quick pick, filter the items
   if (mode === 'QuickPick') {
-    quickPickFilteredItems = quickPickItems.filter(item => item.value.includes(event.target.value));
+    let val = event.target.value.toLowerCase();
+    quickPickFilteredItems = quickPickItems.filter(item => item.value.toLowerCase().includes(val));
     quickPickSelectedFilteredIndex = 0;
     if (quickPickFilteredItems.length > 0) {
       quickPickSelectedIndex = quickPickItems.indexOf(quickPickFilteredItems[quickPickSelectedFilteredIndex]);
+    } else {
+      quickPickSelectedIndex = -1;
+    }
+    if (onSelectCallbackEnabled) {
+      await window.sendShowQuickPickOnSelect(currentId, quickPickSelectedIndex);
     }
     return;
   }
@@ -138,7 +179,7 @@ onDestroy(() => {
   cleanup();
 });
 
-function cleanup() {
+function cleanup(): void {
   display = false;
   inputValue = '';
   placeHolder = '';
@@ -148,30 +189,37 @@ function cleanup() {
   quickPickCanPickMany = false;
   quickPickSelectedFilteredIndex = 0;
   quickPickSelectedIndex = 0;
+  ignoreFocusOut = false;
 }
 
-function validateQuickPick() {
+async function validateQuickPick(): Promise<void> {
+  let idToSend = currentId;
+  let selectedIndexes: number[] | undefined;
   if (mode === 'InputBox') {
     // needs to convert the index from the filtered index to the original index
     const originalIndex = quickPickItems.indexOf(quickPickFilteredItems[quickPickSelectedIndex]);
-
-    window.sendShowQuickPickValues(currentId, [originalIndex]);
+    idToSend = currentId;
+    selectedIndexes = [originalIndex];
   } else {
     // grab all selected items
     if (quickPickCanPickMany) {
       const selectedItems = quickPickItems.filter(item => item.checkbox);
-      window.sendShowQuickPickValues(
-        currentId,
-        selectedItems.map(item => quickPickItems.indexOf(item)),
-      );
+      idToSend = currentId;
+      selectedIndexes = selectedItems.map(item => quickPickItems.indexOf(item));
+    } else if (quickPickSelectedIndex >= 0) {
+      selectedIndexes = [quickPickSelectedIndex];
     } else {
-      window.sendShowQuickPickValues(currentId, [quickPickSelectedIndex]);
+      selectedIndexes = [];
+      await window.sendShowQuickPickValues(currentId, []);
     }
   }
+
+  // perform cleanup before returning value to be able to show again the next show call
   cleanup();
+  await window.sendShowQuickPickValues(idToSend, selectedIndexes);
 }
 
-function clickQuickPickItem(item: any, index: number) {
+async function clickQuickPickItem(item: QuickPickItem, index: number): Promise<void> {
   if (quickPickCanPickMany) {
     // reset index as we clicked
     quickPickSelectedFilteredIndex = -1;
@@ -181,42 +229,33 @@ function clickQuickPickItem(item: any, index: number) {
   } else {
     // select the index from the cursor
     quickPickSelectedIndex = quickPickItems.indexOf(quickPickFilteredItems[index]);
-    validateQuickPick();
+    await validateQuickPick();
   }
 }
 
-function handleKeydown(e: KeyboardEvent) {
+async function handleKeydown(e: KeyboardEvent): Promise<void> {
   if (!display) {
     return;
   }
 
-  if (e.key === 'Escape') {
-    // In case of validating error, do not proceed
-    if (validationError) {
-      e.preventDefault();
-      return;
-    }
-    if (mode === 'QuickPick') {
-      window.sendShowQuickPickValues(currentId, []);
-    } else if (mode === 'InputBox') {
-      window.sendShowInputBoxValue(currentId, undefined, undefined);
-    }
-    cleanup();
-    e.preventDefault();
-    return;
-  } else if (e.key === 'Enter') {
+  if (e.key === 'Enter') {
     if (mode === 'InputBox') {
       // In case of validating error, do not proceed
       if (validationError) {
         e.preventDefault();
         return;
       }
-      window.sendShowInputBoxValue(currentId, inputValue, undefined);
-      cleanup();
       e.preventDefault();
+      // keep the values to return (to avoid clearance during cleanup step)
+      const returnId = currentId;
+      const returnValue = inputValue;
+      // perform cleanup before returning value to be able to show again the next showInputBox call
+      cleanup();
+      // return the value
+      await window.sendShowInputBoxValue(returnId, returnValue, undefined);
       return;
     } else if (mode === 'QuickPick') {
-      validateQuickPick();
+      await validateQuickPick();
       e.preventDefault();
       return;
     }
@@ -239,7 +278,7 @@ function handleKeydown(e: KeyboardEvent) {
       quickPickSelectedIndex = quickPickItems.indexOf(quickPickFilteredItems[quickPickSelectedFilteredIndex]);
       e.preventDefault();
       if (onSelectCallbackEnabled) {
-        window.sendShowQuickPickOnSelect(currentId, quickPickSelectedIndex);
+        await window.sendShowQuickPickOnSelect(currentId, quickPickSelectedIndex);
       }
       return;
     } else if (e.key === 'ArrowUp') {
@@ -250,110 +289,96 @@ function handleKeydown(e: KeyboardEvent) {
       }
       quickPickSelectedIndex = quickPickItems.indexOf(quickPickFilteredItems[quickPickSelectedFilteredIndex]);
       if (onSelectCallbackEnabled) {
-        window.sendShowQuickPickOnSelect(currentId, quickPickSelectedIndex);
+        await window.sendShowQuickPickOnSelect(currentId, quickPickSelectedIndex);
       }
       e.preventDefault();
       return;
     }
   }
-
-  if (e.key === 'Tab' && outerDiv) {
-    tabWithinParent(e, outerDiv);
-  }
-}
-
-function handleMousedown(e: MouseEvent) {
-  if (outerDiv && !e.defaultPrevented && e.target instanceof Node && !outerDiv.contains(e.target)) {
-    window.sendShowQuickPickValues(currentId, []);
-    cleanup();
-  }
 }
 </script>
 
-<svelte:window on:keydown="{handleKeydown}" on:mousedown="{handleMousedown}" />
+<svelte:window on:keydown={handleKeydown} />
 
 {#if display}
-  <!-- Create overlay-->
-  <div class="fixed top-0 left-0 right-0 bottom-0 bg-black bg-opacity-60 h-full z-40"></div>
-
-  <div class="absolute m-auto left-0 right-0 z-50">
+  <Modal on:close={onClose} name={title} top ignoreFocusOut={ignoreFocusOut}>
     <div class="flex justify-center items-center mt-1">
       <div
-        bind:this="{outerDiv}"
-        class="bg-charcoal-800 w-[700px] {mode === 'InputBox'
-          ? 'h-fit'
-          : ''} shadow-sm p-2 rounded shadow-zinc-700 text-sm">
+        bind:this={outerDiv}
+        class="w-[700px] {mode === 'InputBox' ? 'h-fit' : ''} shadow-xs p-2 rounded-sm shadow-[var(--pd-input-field-stroke)] text-sm overflow-hidden">
         {#if title}
           <div
             aria-label="title"
-            class="w-full bg-charcoal-600 rounded-sm text-center max-w-[700px] truncate cursor-default">
+            class="w-full bg-[var(--pd-input-field-focused-bg)] rounded-xs text-[var(--pd-input-select-hover-text)] text-center max-w-[700px] truncate cursor-default">
             {title}
           </div>
         {/if}
         <div class="w-full flex flex-row">
           {#if multiline}
             <textarea
-              bind:this="{inputElement}"
-              on:input="{event => onInputChange(event)}"
-              bind:value="{inputValue}"
-              class="px-1 w-full h-20 text-gray-400 bg-zinc-700 border {validationError
-                ? 'border-red-700'
-                : 'border-charcoal-600'} focus:outline-none"
-              placeholder="{placeHolder}"></textarea>
+              bind:this={inputElement}
+              on:input={onInputChange}
+              bind:value={inputValue}
+              class="px-1 w-full h-20 text-[var(--pd-input-select-hover-text)] border {validationError
+                ? 'border-[var(--pd-input-field-stroke-error)]'
+                : 'bg-[var(--pd-input-field-focused-bg)] border-[var(--pd-input-field-focused-bg)]'} focus:outline-hidden"
+              placeholder={placeHolder}></textarea>
           {:else}
             <input
-              bind:this="{inputElement}"
-              on:input="{event => onInputChange(event)}"
+              bind:this={inputElement}
+              on:input={onInputChange}
               type="text"
-              bind:value="{inputValue}"
-              class="px-1 w-full text-gray-400 bg-zinc-700 border {validationError
-                ? 'border-red-700'
-                : 'border-charcoal-600'} focus:outline-none"
-              placeholder="{placeHolder}" />
+              bind:value={inputValue}
+              class="px-1 w-full text-[var(--pd-input-select-hover-text)] border {validationError
+                ? 'border-[var(--pd-input-field-stroke-error)]'
+                : 'bg-[var(--pd-input-field-focused-bg)] border-[var(--pd-input-field-focused-bg)]'} focus:outline-hidden"
+              placeholder={placeHolder} />
           {/if}
           {#if quickPickCanPickMany}
-            <button
-              on:click="{() => validateQuickPick()}"
-              class="text-gray-400 bg-violet-600 border border-charcoal-600 focus:outline-none px-1">OK</button>
+            <Button on:click={validateQuickPick} class="px-1">OK</Button>
           {/if}
         </div>
 
         {#if mode === 'InputBox'}
           {#if validationError}
-            <div class="text-gray-400 border border-red-700 relative w-full bg-red-700 px-1">{validationError}</div>
+            <div class="text-[var(--pd-modal-dropdown-text)] border border-[var(--pd-input-field-stroke-error)] relative w-full bg-[var(--pd-input-field-stroke-error)] px-1">
+              {validationError}
+            </div>
           {:else}
-            <div class="relative text-gray-400 pt-2 px-1 h-7 overflow-y-auto">{prompt}</div>
+            <div class="relative text-[var(--pd-modal-dropdown-text)] pt-2 px-1 h-7 overflow-y-auto">
+              {prompt}
+            </div>
             {#if markdownDescription && markdownDescription.length > 0}
-              <div class="relative text-gray-400 pt-2 px-1 h-fit overflow-y-auto">
-                <Markdown>{markdownDescription}</Markdown>
+              <div class="relative text-[var(--pd-modal-dropdown-text)] pt-2 px-1 h-fit overflow-y-auto">
+                <Markdown markdown={markdownDescription} />
               </div>
             {/if}
           {/if}
         {:else if mode === 'QuickPick'}
           {#each quickPickFilteredItems as item, i}
-            <div
-              class="flex w-full flex-row {i === quickPickSelectedFilteredIndex
-                ? 'bg-violet-500'
-                : 'hover:bg-charcoal-600'} ">
+            <div class="flex w-full flex-row  {i === quickPickSelectedFilteredIndex
+                  ? 'bg-[var(--pd-modal-dropdown-highlight)] selected'
+                  : 'hover:bg-[var(--pd-dropdown-bg)]'}">
               {#if quickPickCanPickMany}
-                <input type="checkbox" class="mx-1 outline-none" bind:checked="{item.checkbox}" />
+                <Checkbox class="mx-1 my-auto" bind:checked={item.checkbox} />
               {/if}
               <button
-                on:click="{() => clickQuickPickItem(item, i)}"
-                class="text-gray-400 text-left relative my-1 w-full {i === quickPickSelectedFilteredIndex
-                  ? 'bg-violet-500'
-                  : ''} px-1">
+                title="Select {item.value}"
+                on:click={async (): Promise<void> => await clickQuickPickItem(item, i)}
+                class="text-[var(--pd-modal-dropdown-text)] text-left relative my-1 w-full px-1">
                 <div class="flex flex-col w-full">
                   <!-- first row is Value + optional description-->
                   <div class="flex flex-row w-full max-w-[700px] truncate">
-                    <div class="font-bold">{item.value}</div>
+                    <div class="font-bold overflow-hidden text-ellipsis">{item.value}</div>
                     {#if item.description}
-                      <div class="text-gray-400 text-xs ml-2">{item.description}</div>
+                      <div class="text-[var(--pd-modal-dropdown-text)] text-xs ml-2">{item.description}</div>
                     {/if}
                   </div>
                   <!-- second row is optional detail -->
                   {#if item.detail}
-                    <div class="w-full max-w-[700px] truncate text-gray-400 text-xs">{item.detail}</div>
+                    <div class="w-full max-w-[700px] truncate text-[var(--pd-modal-dropdown-text)] text-xs">
+                      {item.detail}
+                    </div>
                   {/if}
                 </div>
               </button>
@@ -362,5 +387,5 @@ function handleMousedown(e: MouseEvent) {
         {/if}
       </div>
     </div>
-  </div>
+  </Modal>
 {/if}

@@ -1,5 +1,5 @@
 /**********************************************************************
- * Copyright (C) 2022-2023 Red Hat, Inc.
+ * Copyright (C) 2022-2024 Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,27 +16,33 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
-import { Analytics, type UserTraits } from '@segment/analytics-node';
-import { app } from 'electron';
-import { Identity } from './identity.js';
 import * as os from 'node:os';
-import type { LinuxOs } from 'getos';
-import getos from 'getos';
-import * as osLocale from 'os-locale';
 import { promisify } from 'node:util';
-import type { ConfigurationRegistry, IConfigurationNode } from '../configuration-registry.js';
-import { TelemetrySettings } from './telemetry-settings.js';
-import type { Event } from '../events/emitter.js';
-import { Emitter } from '../events/emitter.js';
+
 import type {
   TelemetryLogger,
   TelemetryLoggerOptions,
   TelemetrySender,
   TelemetryTrustedValue,
 } from '@podman-desktop/api';
-import { TelemetryTrustedValue as TypeTelemetryTrustedValue } from '../types/telemetry.js';
+import type { EventProperties } from '@segment/analytics-core';
+import { Analytics, type UserTraits } from '@segment/analytics-node';
+import { app } from 'electron';
+import type { LinuxOs } from 'getos';
+import getos from 'getos';
+import * as osLocale from 'os-locale';
+
+import type { FeedbackProperties } from '/@api/feedback.js';
+
+import { default as telemetry } from '../../../../../telemetry.json';
 import { stoppedExtensions } from '../../util.js';
-import type { Proxy } from '../proxy.js';
+import type { ConfigurationRegistry, IConfigurationNode } from '../configuration-registry.js';
+import type { Event } from '../events/emitter.js';
+import { Emitter } from '../events/emitter.js';
+import { TelemetryTrustedValue as TypeTelemetryTrustedValue } from '../types/telemetry.js';
+import { Identity } from './identity.js';
+import type { TelemetryRule } from './telemetry-api.js';
+import { TelemetrySettings } from './telemetry-settings.js';
 
 export const TRACK_EVENT_TYPE = 'track';
 export const PAGE_EVENT_TYPE = 'page';
@@ -58,6 +64,9 @@ export type EventType =
 export class Telemetry {
   private static readonly SEGMENT_KEY = 'Mhl7GXADk5M1vG6r9FXztbCqWRQY8XPy';
 
+  private cachedTelemetrySettings: TelemetryRule[] | undefined;
+  private regexp: Map<string, RegExp> = new Map();
+
   private identity: Identity;
 
   private locale: string | undefined;
@@ -70,17 +79,14 @@ export class Telemetry {
 
   private telemetryConfigured = false;
 
-  private pendingItems: { eventName: string; properties: unknown }[] = [];
+  private pendingItems: { eventName: string; properties?: unknown }[] = [];
 
   protected lastTimeEvents: Map<string, number>;
 
   private readonly _onDidChangeTelemetryEnabled = new Emitter<boolean>();
   readonly onDidChangeTelemetryEnabled: Event<boolean> = this._onDidChangeTelemetryEnabled.event;
 
-  constructor(
-    private configurationRegistry: ConfigurationRegistry,
-    private proxy: Proxy,
-  ) {
+  constructor(private configurationRegistry: ConfigurationRegistry) {
     this.identity = new Identity();
     this.lastTimeEvents = new Map();
   }
@@ -164,18 +170,33 @@ export class Telemetry {
     return {
       // prefix with extension id the event
       sendEventData(eventName: string, data?: Record<string, unknown>): void {
-        thisArg.track.apply(thisArg, [`${extensionInfo.id}.${eventName}`, data]);
+        thisArg.track(`${extensionInfo.id}.${eventName}`, data);
       },
       // report using the id of the extension suffixed by error
       sendErrorData(error: Error, data?: Record<string, unknown>): void {
-        data = data || {};
-        data.sourceError = error.message;
-        thisArg.track.apply(thisArg, [`${extensionInfo.id}.error`, data]);
+        data = data ?? {};
+        data['sourceError'] = error.message;
+        thisArg.track(`${extensionInfo.id}.error`, data);
       },
       async flush(): Promise<void> {
         await instanceFlush?.();
       },
     };
+  }
+
+  // internal method, not exposed
+  protected getTelemetrySettings(): TelemetryRule[] {
+    // return the cached version if we have one
+    if (this.cachedTelemetrySettings) {
+      return this.cachedTelemetrySettings;
+    }
+
+    // load the telemetry json file
+    this.cachedTelemetrySettings = telemetry.rules.map(obj => obj) as TelemetryRule[];
+    this.regexp = new Map();
+    this.cachedTelemetrySettings.forEach(rule => this.regexp.set(rule.event, new RegExp(rule.event)));
+
+    return this.cachedTelemetrySettings;
   }
 
   createTelemetryLogger(
@@ -243,13 +264,15 @@ export class Telemetry {
     this.telemetryInitialized = true;
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  protected async internalTrack(event: EventType, eventProperties?: any): Promise<void> {
+  protected async internalTrack(event: EventType, eventProperties?: unknown): Promise<void> {
     const anonymousId = await this.identity.getUserId();
 
     const context = await this.getContext();
-    if (!eventProperties) {
-      eventProperties = {};
+    let properties: EventProperties;
+    if (!!eventProperties && typeof eventProperties === 'object') {
+      properties = eventProperties;
+    } else {
+      properties = {};
     }
 
     const integrations = {
@@ -257,45 +280,69 @@ export class Telemetry {
     };
 
     if (event === PAGE_EVENT_TYPE) {
-      const name = eventProperties?.name;
+      const name: string | undefined = typeof properties['name'] === 'string' ? properties['name'] : undefined;
 
       this.analytics?.page({ anonymousId, name, context, integrations });
     } else {
-      const properties = {
-        app_name: app.getName(),
-        app_version: app.getVersion(),
-        ...eventProperties,
-      };
-
-      this.analytics?.track({ anonymousId, event, context, properties, integrations });
+      this.analytics?.track({
+        anonymousId,
+        event,
+        context,
+        properties: {
+          app_name: app.getName(),
+          app_version: app.getVersion(),
+          ...properties,
+        },
+        integrations,
+      });
     }
   }
 
   // return true if the event needs to be dropped
   protected shouldDropEvent(eventName: string): boolean {
-    // if event is a list event (start with 'list'), do not send it more than one per day
-    if (eventName.startsWith('list')) {
-      // do we have an existing event with the same name?
-      const previousTime = this.lastTimeEvents.get(eventName);
-      // it was not there, so we can send it
-      if (!previousTime) {
-        this.lastTimeEvents.set(eventName, Date.now());
-        return false;
-      }
-      // it was there, so we check if it was more than 24h ago
-      const now = Date.now();
-      const diff = now - previousTime;
-      if (diff > 24 * 60 * 60 * 1000) {
-        this.lastTimeEvents.set(eventName, now);
-        return false;
-      }
+    const telem = this.getTelemetrySettings();
+    if (!telem || !eventName) {
       return true;
     }
-    return false;
+
+    let dropIt = false;
+    telem.forEach(entry => {
+      const regex = this.regexp.get(entry.event);
+      if (regex?.test(eventName)) {
+        if (entry.disabled) {
+          // telemetry is entirely disabled for this event
+          dropIt = true;
+        }
+        // eslint-disable-next-line sonarjs/pseudo-random
+        if (entry.ratio && entry.ratio < 1 && Math.random() > entry.ratio) {
+          // if a ratio is specified, we randomly drop
+          dropIt = true;
+        }
+        if (entry.frequency === 'dailyPerInstance') {
+          // only send this event once per day, per running instance (not saved to disk)
+          const previousTime = this.lastTimeEvents.get(eventName);
+          // it was not there, so we can send it
+          if (!previousTime) {
+            this.lastTimeEvents.set(eventName, Date.now());
+            return;
+          } else {
+            // it was there, so we check if it was more than 24h ago
+            const now = Date.now();
+            const diff = now - previousTime;
+            if (diff > 24 * 60 * 60 * 1000) {
+              this.lastTimeEvents.set(eventName, now);
+            } else {
+              dropIt = true;
+            }
+          }
+        }
+      }
+    });
+
+    return dropIt;
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  track(event: EventType, eventProperties?: any): void {
+  track(event: EventType, eventProperties?: unknown): void {
     // skip event ?
     if (this.shouldDropEvent(event)) {
       return;
@@ -312,7 +359,7 @@ export class Telemetry {
     });
   }
 
-  async sendFeedback(feedbackProperties: unknown): Promise<void> {
+  async sendFeedback(feedbackProperties: FeedbackProperties): Promise<void> {
     if (!this.telemetryConfigured) {
       await this.initTelemetry();
     }
@@ -345,7 +392,7 @@ export class Telemetry {
     };
   }
 
-  // eslint-disable-next-line @typescript-eslint/ban-types
+  // eslint-disable-next-line @typescript-eslint/no-wrapper-object-types
   protected async getContext(): Promise<Object> {
     const locale = await this.getLocale();
 
@@ -416,7 +463,7 @@ export class TelemetryLoggerImpl implements TelemetryLogger {
   }
 
   setupData(data?: RecordInfo): RecordInfo {
-    data = data || {};
+    data = data ?? {};
 
     if (this.options?.additionalCommonProperties) {
       data = { ...this.options.additionalCommonProperties, ...data };
@@ -447,7 +494,7 @@ export class TelemetryLoggerImpl implements TelemetryLogger {
   logError(eventName: string | Error, data?: RecordInfo): void {
     data = this.setupData(data);
 
-    let error = eventName;
+    let error;
     if (eventName instanceof Error) {
       error = eventName;
     } else {

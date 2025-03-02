@@ -1,18 +1,41 @@
 <script lang="ts">
-import { Terminal } from 'xterm';
-import { FitAddon } from 'xterm-addon-fit';
-import { onMount, onDestroy, createEventDispatcher } from 'svelte';
-import 'xterm/css/xterm.css';
+import '@xterm/xterm/css/xterm.css';
+
+import { FitAddon } from '@xterm/addon-fit';
+import { Terminal } from '@xterm/xterm';
+import { createEventDispatcher, onDestroy, onMount } from 'svelte';
+
+import TerminalSearchControls from '/@/lib/ui/TerminalSearchControls.svelte';
+
 import { TerminalSettings } from '../../../../main/src/plugin/terminal-settings';
+import { getTerminalTheme } from '../../../../main/src/plugin/terminal-theme';
 
-export let terminal: Terminal;
+interface Props {
+  terminal?: Terminal;
+  convertEol?: boolean;
+  disableStdIn?: boolean;
+  screenReaderMode?: boolean;
+  showCursor?: boolean;
+  search?: boolean;
+  class?: string;
+}
 
-let logsXtermDiv: HTMLDivElement;
+let {
+  terminal = $bindable(),
+  convertEol,
+  disableStdIn = true,
+  screenReaderMode,
+  showCursor = false,
+  search = false,
+  class: className,
+}: Props = $props();
+
+let logsXtermDiv: HTMLDivElement | undefined;
 let resizeHandler: () => void;
 
-const dispatch = createEventDispatcher<{ init: any }>();
+const dispatch = createEventDispatcher();
 
-async function refreshTerminal() {
+async function refreshTerminal(): Promise<void> {
   // missing element, return
   if (!logsXtermDiv) {
     return;
@@ -25,16 +48,25 @@ async function refreshTerminal() {
     TerminalSettings.SectionName + '.' + TerminalSettings.LineHeight,
   );
 
-  terminal = new Terminal({ fontSize, lineHeight, disableStdin: true });
+  terminal = new Terminal({
+    fontSize,
+    lineHeight,
+    disableStdin: disableStdIn,
+    theme: getTerminalTheme(),
+    convertEol: convertEol,
+    screenReaderMode: screenReaderMode,
+  });
   const fitAddon = new FitAddon();
   terminal.loadAddon(fitAddon);
 
   terminal.open(logsXtermDiv);
-  // disable cursor
-  terminal.write('\x1b[?25l');
+  if (!showCursor) {
+    // disable cursor
+    terminal.write('\x1b[?25l');
+  }
 
   // call fit addon each time we resize the window
-  resizeHandler = () => {
+  resizeHandler = (): void => {
     fitAddon.fit();
   };
   window.addEventListener('resize', resizeHandler);
@@ -49,7 +81,11 @@ onMount(async () => {
 
 onDestroy(() => {
   window.removeEventListener('resize', resizeHandler);
+  terminal?.dispose();
 });
 </script>
 
-<div class="{$$props.class}" bind:this="{logsXtermDiv}"></div>
+{#if search && terminal}
+  <TerminalSearchControls terminal={terminal} />
+{/if}
+<div class="{className} p-[5px] pr-0 bg-[var(--pd-terminal-background)]" role="term" bind:this={logsXtermDiv}></div>

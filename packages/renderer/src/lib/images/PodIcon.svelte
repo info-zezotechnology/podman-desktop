@@ -4,12 +4,13 @@ export let solid = false;
 </script>
 
 <svg
-  width="{size}"
-  height="{size}"
-  class="{$$props.class}"
-  style="{$$props.style}"
+  width={size}
+  height={size}
+  class={$$props.class}
+  style={$$props.style}
   viewBox="0.557 0.555 5.24 5.24"
   version="1.1"
+  aria-label="Pod"
   xml:space="preserve"
   xmlns="http://www.w3.org/2000/svg"
   xmlns:xlink="http://www.w3.org/1999/xlink">

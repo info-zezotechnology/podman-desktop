@@ -17,6 +17,7 @@
  ***********************************************************************/
 
 import { beforeEach, expect, test, vi } from 'vitest';
+
 import { findMatchInLeaves } from './search-util';
 
 beforeEach(() => {
@@ -26,13 +27,6 @@ beforeEach(() => {
 test('should expect valid match with string', async () => {
   const object = 'nginx';
   expect(findMatchInLeaves(object, 'nginx')).toBe(true);
-  expect(findMatchInLeaves(object, 'foo')).toBe(false);
-});
-
-test('should expect valid match with array of string', async () => {
-  const object = ['a', 'b', 'my super name'];
-  expect(findMatchInLeaves(object, 'name')).toBe(true);
-  expect(findMatchInLeaves(object, 'b')).toBe(true);
   expect(findMatchInLeaves(object, 'foo')).toBe(false);
 });
 

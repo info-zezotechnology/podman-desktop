@@ -18,7 +18,8 @@
 
 /* eslint-disable @typescript-eslint/ban-ts-comment */
 // @ts-nocheck
-import spinnerSourcecode from '/@/lib/ui/Spinner.svelte?raw';
+import spinnerSourcecode from '@podman-desktop/ui-svelte/Spinner?raw';
+import type { Directive } from 'micromark-extension-directive';
 
 let spinnerHtmlCode: string | undefined = undefined;
 
@@ -33,7 +34,7 @@ let spinnerHtmlCode: string | undefined = undefined;
  * @this {import('micromark-util-types').CompileContext}
  * @type {import('micromark-extension-directive').Handle}
  */
-export function button(d: any) {
+export function button(d: Directive): void {
   // Make sure it's not part of a text directive
   if (d.type !== 'textDirective') {
     return false;
@@ -59,7 +60,7 @@ export function button(d: any) {
   } else {
     // If href is passed in, make this an anchor tag but make it look like a button
     this.tag(
-      '<a class="px-4 py-[6px] rounded-[4px] text-white text-[13px] whitespace-nowrap bg-purple-600 hover:bg-purple-500 no-underline"',
+      '<a class="px-4 py-[6px] rounded-[4px] text-white! text-[13px] whitespace-nowrap bg-purple-600 hover:bg-purple-500 no-underline!"',
     );
 
     // Href & title

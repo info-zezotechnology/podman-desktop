@@ -1,9 +1,30 @@
+/**********************************************************************
+ * Copyright (C) 2023-2024 Red Hat, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ ***********************************************************************/
+
 import '@testing-library/jest-dom/vitest';
-import { beforeAll, beforeEach, expect, test, vi } from 'vitest';
-import ImageDetailsCheck from './ImageDetailsCheck.svelte';
-import { fireEvent, render, screen } from '@testing-library/svelte';
+
 import type { ImageChecks } from '@podman-desktop/api';
+import { fireEvent, render, screen } from '@testing-library/svelte';
+import { beforeAll, beforeEach, expect, test, vi } from 'vitest';
+
 import { imageCheckerProviders } from '/@/stores/image-checker-providers';
+
+import ImageDetailsCheck from './ImageDetailsCheck.svelte';
 
 const getCancellableTokenSourceMock = vi.fn();
 const imageCheckMock = vi.fn();
@@ -11,11 +32,11 @@ const cancelTokenSpy = vi.fn();
 
 const tokenID = 70735;
 beforeAll(() => {
-  (window as any).getCancellableTokenSource = getCancellableTokenSourceMock;
+  Object.defineProperty(window, 'getCancellableTokenSource', { value: getCancellableTokenSourceMock });
   getCancellableTokenSourceMock.mockImplementation(() => tokenID);
-  (window as any).imageCheck = imageCheckMock;
-  (window as any).cancelToken = cancelTokenSpy;
-  (window as any).telemetryTrack = vi.fn();
+  Object.defineProperty(window, 'imageCheck', { value: imageCheckMock });
+  Object.defineProperty(window, 'cancelToken', { value: cancelTokenSpy });
+  Object.defineProperty(window, 'telemetryTrack', { value: vi.fn().mockResolvedValue(undefined) });
 });
 
 beforeEach(() => {

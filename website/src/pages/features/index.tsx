@@ -1,16 +1,16 @@
-import useDocusaurusContext from '@docusaurus/useDocusaurusContext';
-import Layout from '@theme/Layout';
-import React from 'react';
-import TailWindThemeSelector from '@site/src/components/TailWindThemeSelector';
-import ThemedImage from '@theme/ThemedImage';
 import useBaseUrl from '@docusaurus/useBaseUrl';
+import useDocusaurusContext from '@docusaurus/useDocusaurusContext';
+import TailWindThemeSelector from '@site/src/components/TailWindThemeSelector';
+import Layout from '@theme/Layout';
+import ThemedImage from '@theme/ThemedImage';
+import React from 'react';
 
-function FeatureManageContainers() {
+function FeatureManageContainers(): JSX.Element {
   return (
     <div>
       <section className="text-gray-900 bg-zinc-200 dark:bg-charcoal-600 dark:text-gray-700 body-font">
         <div className="container mx-auto flex px-5 py-24 md:flex-row flex-col items-center">
-          <div className="lg:flex-grow md:w-1/2 lg:pr-24 md:pr-16 flex flex-col md:items-start md:text-left mb-16 md:mb-0 items-center text-center">
+          <div className="lg:grow md:w-1/2 lg:pr-24 md:pr-16 flex flex-col md:items-start md:text-left mb-16 md:mb-0 items-center text-center">
             <h1 className="title-font sm:text-4xl text-3xl mb-4 font-medium text-gray-900 dark:text-white">
               Manage containers
               <br className="hidden lg:inline-block" />
@@ -35,7 +35,7 @@ function FeatureManageContainers() {
   );
 }
 
-function FeatureManageImages() {
+function FeatureManageImages(): JSX.Element {
   return (
     <section className="text-gray-900 bg-zinc-100 dark:text-gray-700 dark:bg-charcoal-800 body-font">
       <div className="container mx-auto flex px-5 py-24 md:flex-row flex-col items-center">
@@ -49,7 +49,7 @@ function FeatureManageImages() {
             }}
           />
         </div>
-        <div className="lg:flex-grow md:w-1/2 lg:pl-24 md:pl-16 flex flex-col md:items-start md:text-left items-center text-center">
+        <div className="lg:grow md:w-1/2 lg:pl-24 md:pl-16 flex flex-col md:items-start md:text-left items-center text-center">
           <h1 className="title-font sm:text-4xl text-3xl mb-4 font-medium text-gray-900 dark:text-white">
             Build, Pull and Push images
           </h1>
@@ -65,12 +65,12 @@ function FeatureManageImages() {
   );
 }
 
-function FeatureManagementFromTrayIcon() {
+function FeatureManagementFromTrayIcon(): JSX.Element {
   return (
     <div>
       <section className="text-gray-900 bg-zinc-200 dark:bg-charcoal-600 dark:text-gray-700 body-font">
         <div className="container mx-auto flex px-5 py-24 md:flex-row flex-col items-center">
-          <div className="lg:flex-grow md:w-1/2 lg:pr-24 md:pr-16 flex flex-col md:items-start md:text-left mb-16 md:mb-0 items-center text-center">
+          <div className="lg:grow md:w-1/2 lg:pr-24 md:pr-16 flex flex-col md:items-start md:text-left mb-16 md:mb-0 items-center text-center">
             <h1 className="title-font sm:text-4xl text-3xl mb-4 font-medium text-gray-900 dark:text-white">
               Management from the tray icon
               <br className="hidden lg:inline-block" />
@@ -101,7 +101,7 @@ function FeatureManagementFromTrayIcon() {
   );
 }
 
-function FeatureManageResources() {
+function FeatureManageResources(): JSX.Element {
   return (
     <div>
       <section className="text-gray-900 bg-zinc-100 dark:bg-charcoal-800 dark:text-gray-700 body-font">
@@ -116,7 +116,7 @@ function FeatureManageResources() {
               }}
             />
           </div>
-          <div className="lg:flex-grow md:w-1/2 lg:pl-24 md:pl-16 flex flex-col md:items-start md:text-left items-center text-center">
+          <div className="lg:grow md:w-1/2 lg:pl-24 md:pl-16 flex flex-col md:items-start md:text-left items-center text-center">
             <h1 className="title-font sm:text-4xl text-3xl mb-4 font-medium text-gray-900 dark:text-white">
               Manage Podman resources
               <br className="hidden lg:inline-block" />
@@ -132,12 +132,12 @@ function FeatureManageResources() {
   );
 }
 
-function FeatureManagePods() {
+function FeatureManagePods(): JSX.Element {
   return (
     <div>
       <section className="text-gray-900 bg-zinc-200 dark:bg-charcoal-600 dark:text-gray-700 body-font">
         <div className="container mx-auto flex px-5 py-24 md:flex-row flex-col items-center">
-          <div className="lg:flex-grow md:w-1/2 lg:pr-24 md:pr-16 flex flex-col md:items-start md:text-left mb-16 md:mb-0 items-center text-center">
+          <div className="lg:grow md:w-1/2 lg:pr-24 md:pr-16 flex flex-col md:items-start md:text-left mb-16 md:mb-0 items-center text-center">
             <h1 className="title-font sm:text-4xl text-3xl mb-4 font-medium text-gray-900 dark:text-white">
               Create and start Pods with Podman
               <br className="hidden lg:inline-block" />
@@ -168,7 +168,7 @@ function FeatureManagePods() {
   );
 }
 
-function FeatureDDExtensions() {
+function FeatureDDExtensions(): JSX.Element {
   return (
     <section className="text-gray-900 bg-zinc-100 dark:bg-charcoal-800 dark:text-gray-700 body-font">
       <div className="container mx-auto flex px-5 py-24 md:flex-row flex-col items-center">
@@ -182,7 +182,7 @@ function FeatureDDExtensions() {
             }}
           />
         </div>
-        <div className="lg:flex-grow md:w-1/2 lg:pl-24 md:pl-16 flex flex-col md:items-start md:text-left items-center text-center">
+        <div className="lg:grow md:w-1/2 lg:pl-24 md:pl-16 flex flex-col md:items-start md:text-left items-center text-center">
           <h1 className="title-font sm:text-4xl text-3xl mb-4 font-medium text-gray-900 dark:text-white">
             Import Docker Desktop extensions
           </h1>

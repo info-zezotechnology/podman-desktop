@@ -1,5 +1,5 @@
 /**********************************************************************
- * Copyright (C) 2023 Red Hat, Inc.
+ * Copyright (C) 2023-2024 Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,18 +16,25 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
-import { beforeAll, beforeEach, expect, test, vi } from 'vitest';
-
-import { ExtensionInstaller } from './extension-installer.js';
-import type { ApiSenderType } from '../api.js';
-import type { AnalyzedExtension, ExtensionLoader } from '../extension-loader.js';
-import type { ImageRegistry } from '../image-registry.js';
+import { rmSync } from 'node:fs';
 import * as path from 'node:path';
+
 import type { IpcMain, IpcMainEvent } from 'electron';
 import { ipcMain } from 'electron';
-import type { ExtensionsCatalog } from '../extensions-catalog/extensions-catalog.js';
-import type { CatalogFetchableExtension } from '../extensions-catalog/extensions-catalog-api.js';
+import { beforeEach, expect, test, vi } from 'vitest';
+
+import type { ExtensionsCatalog } from '/@/plugin/extension/catalog/extensions-catalog.js';
+import type { CatalogFetchableExtension } from '/@/plugin/extension/catalog/extensions-catalog-api.js';
+import type { AnalyzedExtension } from '/@/plugin/extension/extension-analyzer.js';
+import type { ExtensionLoader } from '/@/plugin/extension/extension-loader.js';
+import type { ExtensionInfo } from '/@api/extension-info.js';
+
+import type { ApiSenderType } from '../api.js';
+import type { ContributionManager } from '../contribution-manager.js';
+import type { Directories } from '../directories.js';
+import type { ImageRegistry } from '../image-registry.js';
 import type { Telemetry } from '../telemetry/telemetry.js';
+import { ExtensionInstaller } from './extension-installer.js';
 
 let extensionInstaller: ExtensionInstaller;
 
@@ -43,12 +50,14 @@ const listExtensionsMock = vi.fn();
 const loadExtensionMock = vi.fn();
 const analyzeExtensionMock = vi.fn();
 const loadExtensionsMock = vi.fn();
+const ensureExtensionsMock = vi.fn();
 const extensionLoader: ExtensionLoader = {
   getPluginsDirectory: getPluginsDirectoryMock,
   listExtensions: listExtensionsMock,
   loadExtension: loadExtensionMock,
   loadExtensions: loadExtensionsMock,
   analyzeExtension: analyzeExtensionMock,
+  ensureExtensionIsEnabled: ensureExtensionsMock,
 } as unknown as ExtensionLoader;
 
 const getImageConfigLabelsMock = vi.fn();
@@ -74,18 +83,43 @@ const telemetryMock = {
   track: vi.fn(),
 } as unknown as Telemetry;
 
-beforeAll(async () => {
+const directories = {
+  getPluginsDirectory: vi.fn(),
+  getContributionStorageDir: vi.fn(),
+} as unknown as Directories;
+
+const contributionManager = {} as unknown as ContributionManager;
+
+vi.mock('node:fs');
+
+vi.mock('./../docker-extension/docker-desktop-installer', async () => {
+  const ddInstallerReal = await vi.importActual('../docker-extension/docker-desktop-installer');
+
+  return {
+    DockerDesktopInstaller: vi.fn().mockImplementation(() => {
+      return {
+        extractExtensionFiles: vi.fn(),
+        setupContribution: vi.fn(),
+      };
+    }),
+    DockerDesktopContribution: ddInstallerReal['DockerDesktopContribution'],
+  };
+});
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  vi.mocked(rmSync).mockReturnValue(undefined);
+  vi.mocked(directories.getPluginsDirectory).mockReturnValue('/fake/plugins/directory');
+  vi.mocked(directories.getContributionStorageDir).mockReturnValue('/fake/dd/directory');
   extensionInstaller = new ExtensionInstaller(
     apiSender,
     extensionLoader,
     imageRegistry,
     extensionsCatalog,
     telemetryMock,
+    directories,
+    contributionManager,
   );
-});
-
-beforeEach(() => {
-  vi.clearAllMocks();
 });
 
 test('should install an image if labels are correct', async () => {
@@ -113,6 +147,8 @@ test('should install an image if labels are correct', async () => {
 
   await extensionInstaller.installFromImage(sendLog, sendError, sendEnd, imageToPull);
 
+  expect(ensureExtensionsMock).toHaveBeenCalled();
+
   expect(sendLog).toHaveBeenCalledWith(`Analyzing image ${imageToPull}...`);
   // expect no error
   expect(sendError).not.toHaveBeenCalled();
@@ -121,6 +157,31 @@ test('should install an image if labels are correct', async () => {
 
   // extension started
   expect(apiSenderSendMock).toHaveBeenCalledWith('extension-started', {});
+});
+
+test('should install an image (dd extensions) if labels are correct', async () => {
+  const sendLog = vi.fn();
+  const sendError = vi.fn();
+  const sendEnd = vi.fn();
+
+  const imageToPull = 'fake.io/fake-image:fake-tag';
+
+  vi.mocked(imageRegistry.getImageConfigLabels).mockResolvedValueOnce({
+    'org.opencontainers.image.title': 'fake-title',
+    'org.opencontainers.image.description': 'fake-description',
+    'org.opencontainers.image.vendor': 'fake-vendor',
+    'com.docker.desktop.extension.api.version': '1.0.0',
+  });
+
+  const spyExtractExtensionFiles = vi.spyOn(extensionInstaller, 'extractExtensionFiles');
+
+  await extensionInstaller.installFromImage(sendLog, sendError, sendEnd, imageToPull);
+
+  expect(sendLog).toHaveBeenCalledWith(`Analyzing image ${imageToPull}...`);
+  // expect no error
+  expect(sendError).not.toHaveBeenCalled();
+
+  expect(spyExtractExtensionFiles).not.toHaveBeenCalled();
 });
 
 test('should fail if extension is already installed', async () => {
@@ -367,4 +428,90 @@ test('should install an image with transitive dependencies', async () => {
   // should have been called to load two extensions (current + extension pack)
   // expect to have 2 arguments in array
   expect(loadExtensionsMock).toHaveBeenCalledWith(expect.arrayContaining([extensionA, extensionB, extensionC]));
+});
+
+test('should install an image with extension pack with an existing dependency already installed', async () => {
+  const sendLog = vi.fn();
+  const sendError = vi.fn();
+  const sendEnd = vi.fn();
+
+  const imageToPull = 'fake.io/fake-image:fake-tag';
+  const analyzeFromImageSpy = vi.spyOn(extensionInstaller, 'analyzeFromImage');
+
+  const extensionWithPack = {
+    manifest: {
+      name: 'extension-with-pack',
+      extensionPack: ['my.another-extension', 'my.other-extension'],
+    },
+  } as AnalyzedExtension;
+
+  const extensionOther = {
+    manifest: {
+      name: 'other-extension',
+    },
+  } as AnalyzedExtension;
+
+  const extensionAnother = {
+    manifest: {
+      name: 'another-extension',
+    },
+  } as AnalyzedExtension;
+
+  analyzeFromImageSpy.mockImplementation(
+    (_sendLog: (message: string) => void, _sendError: (message: string) => void, imageName: string) => {
+      if (imageName === 'fake.io/fake-image:fake-tag') {
+        return Promise.resolve(extensionWithPack);
+      } else if (imageName === 'my-other-extension-link') {
+        return Promise.resolve(extensionOther);
+      } else {
+        return Promise.resolve(extensionAnother);
+      }
+    },
+  );
+
+  // my.another-extension is already installed
+  const extensionInfo = {
+    id: 'my.another-extension',
+  } as unknown as ExtensionInfo;
+  listExtensionsMock.mockResolvedValue([extensionInfo]);
+
+  const fetchableExtension1: CatalogFetchableExtension = {
+    extensionId: 'my.other-extension',
+    link: 'my-other-extension-link',
+    version: 'latest',
+  };
+  const fetchableExtension2: CatalogFetchableExtension = {
+    extensionId: 'my.another-extension',
+    link: 'my-another-extension-link',
+    version: 'latest',
+  };
+
+  getFetchableExtensionsMock.mockResolvedValue([fetchableExtension1, fetchableExtension2]);
+
+  await extensionInstaller.installFromImage(sendLog, sendError, sendEnd, imageToPull);
+
+  // expect no error
+  expect(sendError).not.toHaveBeenCalled();
+
+  expect(sendEnd).toHaveBeenCalledWith('Extension Successfully installed.');
+
+  // extension started
+  expect(apiSenderSendMock).toHaveBeenCalledWith('extension-started', {});
+
+  // should have been called to load two extensions (current + extension pack)
+  // expect to have 2 arguments in array
+  expect(loadExtensionsMock).toHaveBeenCalledWith(expect.arrayContaining([extensionWithPack, extensionOther]));
+
+  expect(analyzeFromImageSpy).toHaveBeenCalledWith(
+    expect.any(Function),
+    expect.any(Function),
+    'my-other-extension-link',
+  );
+
+  // this extension is already installed, so we should not analyze it
+  expect(analyzeFromImageSpy).not.toHaveBeenCalledWith(
+    expect.any(Function),
+    expect.any(Function),
+    'my-another-extension-link',
+  );
 });

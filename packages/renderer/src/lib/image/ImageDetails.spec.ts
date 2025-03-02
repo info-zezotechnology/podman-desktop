@@ -1,5 +1,5 @@
 /**********************************************************************
- * Copyright (C) 2023 Red Hat, Inc.
+ * Copyright (C) 2023-2024 Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,22 +17,33 @@
  ***********************************************************************/
 
 import '@testing-library/jest-dom/vitest';
-import { describe, test, expect, vi, beforeAll, afterEach } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/svelte';
 
-import ImageDetails from './ImageDetails.svelte';
+import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { get } from 'svelte/store';
-import { imagesInfos } from '/@/stores/images';
-import type { ImageInfo } from '../../../../main/src/plugin/api/image-info';
-
 import { router } from 'tinro';
+import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
+
 import { lastPage } from '/@/stores/breadcrumb';
-import type { ContainerInfo } from '../../../../main/src/plugin/api/container-info';
 import { containersInfos } from '/@/stores/containers';
 import { imageCheckerProviders } from '/@/stores/image-checker-providers';
+import { imagesInfos } from '/@/stores/images';
+import { viewsContributions } from '/@/stores/views';
+import type { ContainerInfo } from '/@api/container-info';
+import type { ImageInfo } from '/@api/image-info';
+
+import {
+  IMAGE_DETAILS_VIEW_BADGES,
+  IMAGE_DETAILS_VIEW_ICONS,
+  IMAGE_LIST_VIEW_BADGES,
+  IMAGE_LIST_VIEW_ICONS,
+  IMAGE_VIEW_BADGES,
+  IMAGE_VIEW_ICONS,
+} from '../view/views';
+import ImageDetails from './ImageDetails.svelte';
 
 const listImagesMock = vi.fn();
 const getContributedMenusMock = vi.fn();
+const showMessageBoxMock = vi.fn();
 
 const myImage: ImageInfo = {
   Id: 'myImage',
@@ -46,6 +57,7 @@ const myImage: ImageInfo = {
   VirtualSize: 0,
   SharedSize: 0,
   Containers: 0,
+  Digest: 'sha256:myImage',
 };
 
 const myNoneNameImage: ImageInfo = {
@@ -57,12 +69,21 @@ const deleteImageMock = vi.fn();
 const hasAuthMock = vi.fn();
 
 beforeAll(() => {
-  (window as any).listImages = listImagesMock;
-  (window as any).listContainers = vi.fn();
-  (window as any).deleteImage = deleteImageMock;
-  (window as any).hasAuthconfigForImage = hasAuthMock;
+  Object.defineProperty(window, 'showMessageBox', { value: showMessageBoxMock });
+  Object.defineProperty(window, 'listImages', { value: listImagesMock });
+  Object.defineProperty(window, 'listContainers', { value: vi.fn() });
+  Object.defineProperty(window, 'deleteImage', { value: deleteImageMock });
+  Object.defineProperty(window, 'hasAuthconfigForImage', { value: hasAuthMock });
+  Object.defineProperty(window, 'getImageCheckerProviders', { value: vi.fn().mockResolvedValue([]) });
+  Object.defineProperty(window, 'listViewsContributions', { value: vi.fn().mockResolvedValue([]) });
+  Object.defineProperty(window, 'getImageFilesProviders', { value: vi.fn().mockResolvedValue([]) });
+  Object.defineProperty(window, 'getConfigurationProperties', { value: vi.fn().mockResolvedValue({}) });
+  Object.defineProperty(window, 'getContributedMenus', { value: getContributedMenusMock });
+});
 
-  (window as any).getContributedMenus = getContributedMenusMock;
+beforeEach(() => {
+  imagesInfos.set([]);
+  viewsContributions.set([]);
   getContributedMenusMock.mockImplementation(() => Promise.resolve([]));
 });
 
@@ -71,6 +92,9 @@ afterEach(() => {
 });
 
 test('Expect redirect to previous page if image is deleted', async () => {
+  // Mock the showMessageBox to return 0 (yes)
+  showMessageBoxMock.mockResolvedValue({ response: 0 });
+
   const routerGotoSpy = vi.spyOn(router, 'goto');
   listImagesMock.mockResolvedValue([myImage]);
   window.dispatchEvent(new CustomEvent('extensions-already-started'));
@@ -100,6 +124,9 @@ test('Expect redirect to previous page if image is deleted', async () => {
   // click on delete image button
   const deleteButton = screen.getByRole('button', { name: 'Delete Image' });
   await fireEvent.click(deleteButton);
+
+  // Wait for modal to disappear after clicking on delete
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
 
   // check that delete method has been called
   expect(deleteImageMock).toHaveBeenCalled();
@@ -135,6 +162,9 @@ test('expect delete image called with image id when image name is <none>', async
   // click on delete image button
   const deleteButton = screen.getByRole('button', { name: 'Delete Image' });
   await fireEvent.click(deleteButton);
+
+  // Wait for confirmation modal to disappear after clicking on delete
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
 
   // check that delete method has been called
   expect(deleteImageMock).toHaveBeenCalledWith(myNoneNameImage.engineId, myNoneNameImage.Id);
@@ -259,4 +289,121 @@ test('expect Check tab is displayed when an image checker provider exists', () =
   expect(summaryTab).toBeInTheDocument();
   const checkTab = screen.getByRole('link', { name: 'Check' });
   expect(checkTab).toBeInTheDocument();
+});
+
+test.each([
+  { viewIdContrib: IMAGE_VIEW_ICONS },
+  { viewIdContrib: IMAGE_DETAILS_VIEW_ICONS },
+  { viewIdContrib: IMAGE_LIST_VIEW_ICONS },
+])('Expect image status being changed with %s contribution', async ({ viewIdContrib }) => {
+  const imageWithLabels: ImageInfo = {
+    ...myImage,
+    Labels: {
+      'io.podman-desktop': 'true',
+    },
+  };
+  listImagesMock.mockResolvedValue([imageWithLabels]);
+  window.dispatchEvent(new CustomEvent('extensions-already-started'));
+
+  while (get(imagesInfos).length !== 1) {
+    await new Promise(resolve => setTimeout(resolve, 500));
+  }
+
+  hasAuthMock.mockImplementation(() => {
+    return new Promise(() => false);
+  });
+
+  const contribs = [
+    {
+      extensionId: 'foo.bar',
+      viewId: viewIdContrib,
+      value: {
+        icon: '${my-custom-icon}',
+        when: 'io.podman-desktop in imageLabelKeys',
+      },
+    },
+  ];
+
+  // set viewsContributions
+  viewsContributions.set(contribs);
+
+  // render the component
+  render(ImageDetails, {
+    imageID: 'myImage',
+    engineId: 'engine0',
+    base64RepoTag: Buffer.from('myImageTag').toString('base64'),
+  });
+
+  // grab status icon of the image
+  const statusElement = screen.getByRole('status', { name: 'UNUSED' });
+  expect(statusElement).toBeInTheDocument();
+
+  // now assert status item contains the icon
+  const subElement = statusElement.getElementsByClassName('podman-desktop-icon-my-custom-icon');
+  // should not be overriden for list contribution
+  if (IMAGE_LIST_VIEW_ICONS === viewIdContrib) {
+    expect(subElement.length).toBe(0);
+  } else {
+    expect(subElement.length).toBe(1);
+  }
+});
+
+test.each([
+  { viewIdContrib: IMAGE_VIEW_BADGES },
+  { viewIdContrib: IMAGE_LIST_VIEW_BADGES },
+  { viewIdContrib: IMAGE_DETAILS_VIEW_BADGES },
+])('Expect badges added with %s contribution', async ({ viewIdContrib }) => {
+  const imageWithLabels: ImageInfo = {
+    ...myImage,
+    Labels: {
+      'io.podman-desktop': 'true',
+    },
+  };
+  listImagesMock.mockResolvedValue([imageWithLabels]);
+  window.dispatchEvent(new CustomEvent('extensions-already-started'));
+
+  while (get(imagesInfos).length !== 1) {
+    await new Promise(resolve => setTimeout(resolve, 500));
+  }
+
+  hasAuthMock.mockImplementation(() => {
+    return new Promise(() => false);
+  });
+
+  const contribs = [
+    {
+      extensionId: 'foo.bar',
+      viewId: viewIdContrib,
+      value: {
+        badge: { label: 'my-custom-badge', color: '#ff0000' },
+        when: 'io.podman-desktop in imageLabelKeys',
+      },
+    },
+  ];
+
+  // set viewsContributions
+  viewsContributions.set(contribs);
+
+  // render the component
+  render(ImageDetails, {
+    imageID: 'myImage',
+    engineId: 'engine0',
+    base64RepoTag: Buffer.from('myImageTag').toString('base64'),
+  });
+
+  // wait a litlle
+  await new Promise(resolve => setTimeout(resolve, 100));
+
+  // grab badge with label 'my-custom-badge'
+  const badge = screen.queryByText('my-custom-badge');
+
+  // should not be overriden for list contribution
+
+  if (IMAGE_LIST_VIEW_BADGES === viewIdContrib) {
+    expect(badge).not.toBeInTheDocument();
+  } else {
+    expect(badge).toBeInTheDocument();
+    // color should be #ff0000
+    expect(badge).toHaveStyle('background-color: #ff0000');
+  }
 });

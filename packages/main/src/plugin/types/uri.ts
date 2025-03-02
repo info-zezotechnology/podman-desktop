@@ -16,6 +16,12 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
+import path, { join } from 'node:path';
+
+import type { Uri as APIUri } from '@podman-desktop/api';
+
+import { isWindows } from '/@/util.js';
+
 /**
  * Represents a resource that can be manipulated. The resource is identified by a Uri.
  */
@@ -42,6 +48,64 @@ export class Uri {
   static file(path: string): Uri {
     return new Uri('file', '', path, '', '');
   }
+
+  /**
+   * Join a URI path with path fragments and normalizes the resulting path.
+   *
+   * @param uri The input URI.
+   * @param pathFragment The path fragment to add to the URI path.
+   * @returns The resulting URI.
+   */
+  static joinPath(uri: Uri, ...pathFragment: string[]): Uri {
+    if (!uri.path) {
+      throw new Error('cannot call joinPath on Uri without a path');
+    }
+    let newPath: string = join(uri.path, ...pathFragment);
+    if (isWindows()) {
+      // normalize windows path
+      newPath = newPath.split(path.sep).join(path.posix.sep);
+    }
+    return uri.with({ path: newPath });
+  }
+
+  with(change?: { scheme?: string; authority?: string; path?: string; query?: string; fragment?: string }): Uri {
+    if (!change) {
+      return this;
+    }
+
+    let { scheme, authority, path, query, fragment } = change;
+    if (scheme === undefined) {
+      scheme = this._scheme;
+    }
+
+    if (authority === undefined) {
+      authority = this._authority;
+    }
+
+    if (path === undefined) {
+      path = this._path;
+    }
+    if (query === undefined) {
+      query = this._query;
+    }
+
+    if (fragment === undefined) {
+      fragment = this._fragment;
+    }
+
+    if (
+      scheme === this.scheme &&
+      authority === this.authority &&
+      path === this.path &&
+      query === this.query &&
+      fragment === this.fragment
+    ) {
+      return this;
+    }
+
+    return new Uri(scheme, authority, path, query, fragment);
+  }
+
   get fsPath(): string {
     return this._path;
   }
@@ -74,5 +138,24 @@ export class Uri {
       link = `${link}#${this._fragment}`;
     }
     return link;
+  }
+
+  static revive(serialized: APIUri): Uri {
+    if (serialized instanceof Uri) {
+      return serialized;
+    }
+    const serializedProps: Map<string, string> = Object.entries(serialized)
+      .map(([key, value]) => [key.startsWith('_') ? key.substring(1) : key, value])
+      .reduce((map, [key, value]) => {
+        map.set(key, value);
+        return map;
+      }, new Map());
+    return new Uri(
+      serializedProps.get('scheme') ?? '',
+      serializedProps.get('authority') ?? '',
+      serializedProps.get('path') ?? '',
+      serializedProps.get('query') ?? '',
+      serializedProps.get('fragment') ?? '',
+    );
   }
 }

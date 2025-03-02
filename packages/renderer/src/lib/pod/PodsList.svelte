@@ -1,61 +1,65 @@
 <script lang="ts">
-import { onDestroy, onMount } from 'svelte';
-
-import { router } from 'tinro';
-import type { Unsubscriber } from 'svelte/store';
-import type { PodInfoUI } from './PodInfoUI';
-import { filtered, searchPattern, podsInfos } from '../../stores/pods';
-import { providerInfos } from '../../stores/providers';
-import NavPage from '../ui/NavPage.svelte';
-import { PodUtils } from './pod-utils';
-import type { PodInfo } from '../../../../main/src/plugin/api/pod-info';
-import NoContainerEngineEmptyScreen from '../image/NoContainerEngineEmptyScreen.svelte';
-import PodEmptyScreen from './PodEmptyScreen.svelte';
-import FilteredEmptyScreen from '../ui/FilteredEmptyScreen.svelte';
-import StatusIcon from '../images/StatusIcon.svelte';
-import PodIcon from '../images/PodIcon.svelte';
-import PodActions from './PodActions.svelte';
-import KubePlayButton from '../kube/KubePlayButton.svelte';
-import moment from 'moment';
-import Prune from '../engine/Prune.svelte';
-import type { EngineInfoUI } from '../engine/EngineInfoUI';
-import ErrorMessage from '../ui/ErrorMessage.svelte';
-import Checkbox from '../ui/Checkbox.svelte';
-import Button from '../ui/Button.svelte';
 import { faTrash } from '@fortawesome/free-solid-svg-icons';
-import StateChange from '../ui/StateChange.svelte';
-import ProviderInfo from '../ui/ProviderInfo.svelte';
-import Dots from '../ui/Dots.svelte';
+import {
+  Button,
+  FilteredEmptyScreen,
+  Link,
+  NavPage,
+  Table,
+  TableColumn,
+  TableDurationColumn,
+  TableRow,
+} from '@podman-desktop/ui-svelte';
+import { onMount } from 'svelte';
 
-export let searchTerm = '';
-$: searchPattern.set(searchTerm);
+import type { PodInfo } from '../../../../main/src/plugin/api/pod-info';
+import { filtered, podsInfos, searchPattern } from '../../stores/pods';
+import { providerInfos } from '../../stores/providers';
+import { withBulkConfirmation } from '../actions/BulkActions';
+import type { EngineInfoUI } from '../engine/EngineInfoUI';
+import Prune from '../engine/Prune.svelte';
+import NoContainerEngineEmptyScreen from '../image/NoContainerEngineEmptyScreen.svelte';
+import PodIcon from '../images/PodIcon.svelte';
+import KubePlayButton from '../kube/KubePlayButton.svelte';
+import { PodUtils } from './pod-utils';
+import PodColumnActions from './PodColumnActions.svelte';
+import PodColumnContainers from './PodColumnContainers.svelte';
+import PodColumnName from './PodColumnName.svelte';
+import PodColumnStatus from './PodColumnStatus.svelte';
+import PodEmptyScreen from './PodEmptyScreen.svelte';
+import type { PodInfoUI } from './PodInfoUI';
 
-let pods: PodInfoUI[] = [];
-let enginesList: EngineInfoUI[];
+interface Props {
+  searchTerm?: string;
+}
 
-$: providerConnections = $providerInfos
-  .map(provider => provider.containerConnections)
-  .flat()
-  .filter(providerContainerConnection => providerContainerConnection.status === 'started');
+let { searchTerm = $bindable('') }: Props = $props();
 
-$: providerPodmanConnections = $providerInfos
-  .map(provider => provider.containerConnections)
-  .flat()
-  // keep only podman providers as it is not supported by docker
-  .filter(providerContainerConnection => providerContainerConnection.type === 'podman')
-  .filter(providerContainerConnection => providerContainerConnection.status === 'started');
+$effect(() => {
+  searchPattern.set(searchTerm);
+});
 
-// number of selected items in the list
-$: selectedItemsNumber = pods.filter(pod => pod.selected).length;
+let pods: PodInfoUI[] = $state([]);
+let enginesList: EngineInfoUI[] = $state([]);
 
-// do we need to unselect all checkboxes if we don't have all items being selected ?
-$: selectedAllCheckboxes = pods.every(pod => pod.selected);
+const providerConnections = $derived(
+  $providerInfos
+    .flatMap(provider => provider.containerConnections)
+    .filter(providerContainerConnection => providerContainerConnection.status === 'started'),
+);
+
+const providerPodmanConnections = $derived(
+  $providerInfos
+    .flatMap(provider => provider.containerConnections)
+    // keep only podman providers as it is not supported by docker
+    .filter(providerContainerConnection => providerContainerConnection.type === 'podman')
+    .filter(providerContainerConnection => providerContainerConnection.status === 'started'),
+);
 
 const podUtils = new PodUtils();
 
-let podsUnsubscribe: Unsubscriber;
-onMount(async () => {
-  podsUnsubscribe = filtered.subscribe(value => {
+onMount(() => {
+  return filtered.subscribe(value => {
     const computedPods = value.map((podInfo: PodInfo) => podUtils.getPodInfoUI(podInfo)).flat();
 
     // Map engineName, engineId and engineType from currentContainers to EngineInfoUI[]
@@ -78,131 +82,88 @@ onMount(async () => {
       }
     });
     pods = computedPods;
-
-    // compute refresh interval
-    const interval = computeInterval();
-    refreshTimeouts.push(setTimeout(refreshAge, interval));
   });
 });
-
-onDestroy(() => {
-  // kill timers
-  refreshTimeouts.forEach(timeout => clearTimeout(timeout));
-  refreshTimeouts.length = 0;
-
-  // unsubscribe from the store
-  if (podsUnsubscribe) {
-    podsUnsubscribe();
-  }
-});
-
-function toggleAllPods(checked: boolean) {
-  const togglePods = pods;
-  togglePods.forEach(pod => (pod.selected = checked));
-  pods = togglePods;
-}
 
 // delete the items selected in the list
-let bulkDeleteInProgress = false;
-async function deleteSelectedPods() {
+let bulkDeleteInProgress = $state(false);
+async function deleteSelectedPods(): Promise<void> {
   const selectedPods = pods.filter(pod => pod.selected);
+  if (selectedPods.length === 0) {
+    return;
+  }
 
-  if (selectedPods.length > 0) {
-    bulkDeleteInProgress = true;
-    await Promise.all(
-      selectedPods.map(async pod => {
-        try {
-          if (pod.kind === 'podman') {
-            await window.removePod(pod.engineId, pod.id);
-          } else {
-            await window.kubernetesDeletePod(pod.name);
-          }
-        } catch (e) {
-          console.log('error while removing pod', e);
+  // mark pods for deletion
+  bulkDeleteInProgress = true;
+  selectedPods.forEach(pod => (pod.status = 'DELETING'));
+  pods = pods;
+
+  await Promise.all(
+    selectedPods.map(async pod => {
+      try {
+        if (pod.kind === 'podman') {
+          await window.removePod(pod.engineId, pod.id);
+        } else {
+          await window.kubernetesDeletePod(pod.name);
         }
-      }),
-    );
-    bulkDeleteInProgress = false;
-  }
+      } catch (e) {
+        console.error('error while removing pod', e);
+      }
+    }),
+  );
+  bulkDeleteInProgress = false;
 }
 
-function openDetailsPod(pod: PodInfoUI) {
-  router.goto(`/pods/${encodeURI(pod.kind)}/${encodeURI(pod.name)}/${encodeURIComponent(pod.engineId)}/logs`);
+async function openKubePods(): Promise<void> {
+  await window.navigateToRoute('kubernetes', { kind: 'Pod' });
 }
 
-function openContainersFromPod(pod: PodInfoUI) {
-  router.goto(`/containers/?filter=${pod.shortId}`);
-}
+let selectedItemsNumber: number = $state(0);
+let table: Table;
 
-let refreshTimeouts: NodeJS.Timeout[] = [];
-const SECOND = 1000;
-function refreshAge() {
-  pods = pods.map(podInfo => {
-    return { ...podInfo, age: podUtils.refreshAge(podInfo) };
-  });
+let statusColumn = new TableColumn<PodInfoUI>('Status', {
+  align: 'center',
+  width: '70px',
+  renderer: PodColumnStatus,
+  comparator: (a, b): number => b.status.localeCompare(a.status),
+});
 
-  // compute new interval
-  const newInterval = computeInterval();
-  refreshTimeouts.forEach(timeout => clearTimeout(timeout));
-  refreshTimeouts.length = 0;
-  refreshTimeouts.push(setTimeout(refreshAge, newInterval));
-}
+let nameColumn = new TableColumn<PodInfoUI>('Name', {
+  width: '2fr',
+  renderer: PodColumnName,
+  comparator: (a, b): number => a.name.localeCompare(b.name),
+});
 
-function computeInterval(): number {
-  // no pods, no refresh
-  if (pods.length === 0) {
-    return -1;
-  }
+let containersColumn = new TableColumn<PodInfoUI>('Containers', {
+  renderer: PodColumnContainers,
+  comparator: (a, b): number => a.containers.length - b.containers.length,
+  initialOrder: 'descending',
+  overflow: true,
+});
 
-  // do we have pods that have been created in less than 1 minute
-  // if so, need to update every second
-  const podsCreatedInLessThan1Mn = pods.filter(pod => moment().diff(pod.created, 'minutes') < 1);
-  if (podsCreatedInLessThan1Mn.length > 0) {
-    return 2 * SECOND;
-  }
+let ageColumn = new TableColumn<PodInfoUI, Date | undefined>('Age', {
+  renderer: TableDurationColumn,
+  comparator: (a, b): number => new Date(a.created).getTime() - new Date(b.created).getTime(),
+  renderMapping(object): Date | undefined {
+    return podUtils.getUpDate(object);
+  },
+});
 
-  // every minute for pods created less than 1 hour
-  const podsCreatedInLessThan1Hour = pods.filter(volume => moment().diff(volume.created, 'hours') < 1);
-  if (podsCreatedInLessThan1Hour.length > 0) {
-    // every minute
-    return 60 * SECOND;
-  }
+const columns = [
+  statusColumn,
+  nameColumn,
+  containersColumn,
+  ageColumn,
+  new TableColumn<PodInfoUI>('Actions', { align: 'right', width: '150px', renderer: PodColumnActions, overflow: true }),
+];
 
-  // every hour for pods created less than 1 day
-  const podsCreatedInLessThan1Day = pods.filter(volume => moment().diff(volume.created, 'days') < 1);
-  if (podsCreatedInLessThan1Day.length > 0) {
-    // every hour
-    return 60 * 60 * SECOND;
-  }
-
-  // every day
-  return 60 * 60 * 24 * SECOND;
-}
-
-function inProgressCallback(pod: PodInfoUI, inProgress: boolean, state?: string): void {
-  pod.actionInProgress = inProgress;
-  // reset error when starting task
-  if (inProgress) {
-    pod.actionError = '';
-  }
-  if (state) {
-    pod.status = state;
-  }
-
-  pods = [...pods];
-}
-
-function errorCallback(pod: PodInfoUI, errorMessage: string): void {
-  pod.actionError = errorMessage;
-  pod.status = 'ERROR';
-  pods = [...pods];
-}
+const row = new TableRow<PodInfoUI>({ selectable: (_pod): boolean => true });
 </script>
 
-<NavPage bind:searchTerm="{searchTerm}" title="pods">
+<NavPage bind:searchTerm={searchTerm} title="pods">
   <svelte:fragment slot="additional-actions">
     {#if $podsInfos.length > 0}
-      <Prune type="pods" engines="{enginesList}" />
+      <Prune type="pods" engines={enginesList} />
     {/if}
     {#if providerPodmanConnections.length > 0}
       <KubePlayButton />
@@ -212,153 +173,84 @@ function errorCallback(pod: PodInfoUI, errorMessage: string): void {
   <svelte:fragment slot="bottom-additional-actions">
     {#if selectedItemsNumber > 0}
       <Button
-        on:click="{() => deleteSelectedPods()}"
+        on:click={(): void =>
+          withBulkConfirmation(
+            deleteSelectedPods,
+            `delete ${selectedItemsNumber} pod${selectedItemsNumber > 1 ? 's' : ''}`,
+          )}
         title="Delete {selectedItemsNumber} selected items"
-        inProgress="{bulkDeleteInProgress}"
-        icon="{faTrash}" />
+        inProgress={bulkDeleteInProgress}
+        icon={faTrash} />
       <span>On {selectedItemsNumber} selected items.</span>
     {/if}
   </svelte:fragment>
 
   <svelte:fragment slot="tabs">
-    <Button
-      type="tab"
-      on:click="{() => {
-        searchTerm = searchTerm
-          .split(' ')
-          .filter(pattern => pattern !== 'is:running' && pattern !== 'is:stopped')
-          .join(' ');
-      }}"
-      selected="{!searchTerm.includes('is:stopped') && !searchTerm.includes('is:running')}">All</Button>
-    <Button
-      type="tab"
-      on:click="{() => {
-        let temp = searchTerm
-          .trim()
-          .split(' ')
-          .filter(term => term !== 'is:stopped')
-          .join(' ')
-          .trim();
-        searchTerm = temp ? `${temp} is:running` : 'is:running';
-      }}"
-      selected="{searchTerm.includes('is:running')}">Running</Button>
-    <Button
-      type="tab"
-      on:click="{() => {
-        let temp = searchTerm
-          .trim()
-          .split(' ')
-          .filter(term => term !== 'is:running')
-          .join(' ')
-          .trim();
-        searchTerm = temp ? `${temp} is:stopped` : 'is:stopped';
-      }}"
-      selected="{searchTerm.includes('is:stopped')}">Stopped</Button>
+    <div class="flex flex-col gap-3">
+      <div class="self-center text-[var(--pd-table-body-text)]">Looking for pods running on a Kubernetes cluster? We have moved them to the <Link on:click={openKubePods}>Kubernetes &gt; Pods</Link> page.</div>
+
+      <div class="flex flex-row">
+        <Button
+          type="tab"
+          on:click={(): void => {
+            searchTerm = searchTerm
+              .split(' ')
+              .filter(pattern => pattern !== 'is:running' && pattern !== 'is:stopped')
+              .join(' ');
+          }}
+          selected={!searchTerm.includes('is:stopped') && !searchTerm.includes('is:running')}>All</Button>
+        <Button
+          type="tab"
+          on:click={(): void => {
+            let temp = searchTerm
+              .trim()
+              .split(' ')
+              .filter(term => term !== 'is:stopped' && term !== 'is:running')
+              .join(' ')
+              .trim();
+            searchTerm = temp ? `${temp} is:running` : 'is:running';
+          }}
+          selected={searchTerm.includes('is:running')}>Running</Button>
+        <Button
+          type="tab"
+          on:click={(): void => {
+            let temp = searchTerm
+              .trim()
+              .split(' ')
+              .filter(term => term !== 'is:stopped' && term !== 'is:running')
+              .join(' ')
+              .trim();
+            searchTerm = temp ? `${temp} is:stopped` : 'is:stopped';
+          }}
+          selected={searchTerm.includes('is:stopped')}>Stopped</Button>
+      </div>
+    </div>
   </svelte:fragment>
 
   <div class="flex min-w-full h-full" slot="content">
-    <table class="mx-5 w-full h-fit" class:hidden="{pods.length === 0}">
-      <!-- title -->
-      <thead class="sticky top-0 bg-charcoal-700 z-[2]">
-        <tr class="h-7 uppercase text-xs text-gray-600">
-          <th class="whitespace-nowrap w-5"></th>
-          <th class="px-2 w-5">
-            <Checkbox
-              title="Toggle all"
-              bind:checked="{selectedAllCheckboxes}"
-              indeterminate="{selectedItemsNumber > 0 && !selectedAllCheckboxes}"
-              on:click="{checked => toggleAllPods(checked.detail)}" />
-          </th>
-          <th class="text-center font-extrabold w-10 px-2">Status</th>
-          <th>Name</th>
-          <th class="pl-3">Environment</th>
-          <th class="pl-3">Containers</th>
-          <th class="whitespace-nowrap px-6">Age</th>
-          <th class="text-right pr-2">Actions</th>
-        </tr>
-      </thead>
-      <tbody>
-        {#each pods as pod}
-          <tr class="group h-12 bg-charcoal-800 hover:bg-zinc-700">
-            <td class="rounded-tl-lg rounded-bl-lg w-5"> </td>
-            <td class="px-2">
-              <Checkbox title="Toggle pod" bind:checked="{pod.selected}" />
-            </td>
-            <td class="bg-charcoal-800 group-hover:bg-zinc-700 flex flex-row justify-center h-12">
-              <div class="grid place-content-center ml-3 mr-4">
-                <StatusIcon icon="{PodIcon}" status="{pod.status}" />
-              </div>
-            </td>
-            <td class="whitespace-nowrap w-10 hover:cursor-pointer" on:click="{() => openDetailsPod(pod)}">
-              <div class="flex items-center">
-                <div class="">
-                  <div class="flex flex-row items-center">
-                    <div class="text-sm text-gray-300">{pod.name}</div>
-                  </div>
-                  <div class="flex flex-row items-center">
-                    <div class="text-xs text-violet-400">{pod.shortId}</div>
-                  </div>
-                </div>
-              </div>
-            </td>
-            <td class="pl-3 whitespace-nowrap hover:cursor-pointer group">
-              <div class="flex items-center text-xs p-1 rounded-md text-gray-500">
-                <ProviderInfo provider="{pod.kind}" context="{pod.engineId}" />
-              </div>
-            </td>
-
-            <td class="pl-3 whitespace-nowrap">
-              <!-- If this is podman, make the dots clickable as it'll take us to the container menu 
-              this does not work if you click on a kubernetes type pod -->
-              {#if pod.kind === 'podman'}
-                <button
-                  class:cursor-pointer="{pod.containers.length > 0}"
-                  on:click="{() => openContainersFromPod(pod)}">
-                  <Dots containers="{pod.containers}" />
-                </button>
-              {:else}
-                <div class="flex items-center">
-                  <Dots containers="{pod.containers}" />
-                </div>
-              {/if}
-            </td>
-            <td class="px-6 py-2 whitespace-nowrap w-10">
-              <div class="flex items-center">
-                <div class="text-sm text-gray-700">
-                  <StateChange state="{pod.status}">{pod.age}</StateChange>
-                </div>
-              </div>
-            </td>
-
-            <td class="pl-6 text-right whitespace-nowrap rounded-tr-lg rounded-br-lg">
-              <div class="flex w-full">
-                <div class="flex items-center w-5">
-                  {#if pod.actionError}
-                    <ErrorMessage error="{pod.actionError}" icon />
-                  {:else}
-                    <div>&nbsp;</div>
-                  {/if}
-                </div>
-                <div class="text-right w-full">
-                  <PodActions
-                    pod="{pod}"
-                    errorCallback="{error => errorCallback(pod, error)}"
-                    inProgressCallback="{(flag, state) => inProgressCallback(pod, flag, state)}"
-                    dropdownMenu="{true}" />
-                </div>
-              </div>
-            </td>
-          </tr>
-          <tr><td class="leading-[8px]">&nbsp;</td></tr>
-        {/each}
-      </tbody>
-    </table>
+    <Table
+      kind="pod"
+      bind:this={table}
+      bind:selectedItemsNumber={selectedItemsNumber}
+      data={pods}
+      columns={columns}
+      row={row}
+      defaultSortColumn="Name"
+      on:update={(): PodInfoUI[] => (pods = pods)}>
+    </Table>
 
     {#if $filtered.length === 0 && providerConnections.length === 0}
       <NoContainerEngineEmptyScreen />
     {:else if $filtered.length === 0}
       {#if searchTerm}
-        <FilteredEmptyScreen icon="{PodIcon}" kind="pods" bind:searchTerm="{searchTerm}" />
+        <FilteredEmptyScreen
+          icon={PodIcon}
+          kind="pods"
+          bind:searchTerm={searchTerm}
+          on:resetFilter={(e): void => {
+            searchTerm = podUtils.filterResetSearchTerm(searchTerm);
+            e.preventDefault();
+          }} />
       {:else}
         <PodEmptyScreen />
       {/if}

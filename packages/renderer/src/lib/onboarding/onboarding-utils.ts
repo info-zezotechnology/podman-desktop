@@ -16,7 +16,8 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
-import type { OnboardingInfo, OnboardingStep, OnboardingStatus } from '../../../../main/src/plugin/api/onboarding';
+import type { OnboardingInfo, OnboardingStatus, OnboardingStep } from '/@api/onboarding';
+
 import type { ContextUI } from '../context/context';
 import { ContextKeyExpr } from '../context/contextKey';
 
@@ -45,13 +46,13 @@ export async function updateOnboardingStepStatus(
   onboarding: OnboardingInfo,
   step: OnboardingStep,
   status: OnboardingStatus,
-) {
+): Promise<void> {
   step.status = status;
   await window.updateStepState(status, onboarding.extension, step.id);
   // if the completed step is the last one, we mark the onboarding as completed
   // the last step should have a completed state by default
   const lastCompletedStep = onboarding.steps.findLast(s => s.state === 'completed');
-  if (lastCompletedStep?.id === step.id) {
+  if (lastCompletedStep?.id === step.id && status === STATUS_COMPLETED) {
     onboarding.status = STATUS_COMPLETED;
     await window.updateStepState(STATUS_COMPLETED, onboarding.extension);
   }
@@ -73,7 +74,7 @@ export function isStepCompleted(
       }
 
       // check if cmp string is an onContext event, check the value from context
-      const matchesOnboardingPrefix = cmp.match(ONBOARDING_CONTEXT_PREFIX_REGEX);
+      const matchesOnboardingPrefix = RegExp(ONBOARDING_CONTEXT_PREFIX_REGEX).exec(cmp);
       if (matchesOnboardingPrefix) {
         if (!globalContext) {
           return false;
@@ -84,7 +85,7 @@ export function isStepCompleted(
       }
 
       return false;
-    }) || false
+    }) ?? false
   );
 }
 
@@ -125,7 +126,7 @@ export function normalizeOnboardingWhenClause(when: string, extension: string): 
 /*
  *   it clean the context of all onboardings in the list
  */
-export async function cleanSetup(onboardings: OnboardingInfo[], globalContext: ContextUI) {
+export async function cleanSetup(onboardings: OnboardingInfo[], globalContext: ContextUI): Promise<void> {
   // reset onboarding on backend
   await window.resetOnboarding(onboardings.map(onboarding => onboarding.extension));
   // clean ui context
@@ -170,7 +171,7 @@ export function replaceContextKeyPlaceHoldersByRegex(
   context?: ContextUI,
   prefix?: string,
   replacement?: string,
-) {
+): string {
   const matches = [...value.matchAll(regex)];
   for (const match of matches) {
     value = getStringWithContextKeyReplaced(value, match, context, prefix, replacement);
@@ -189,7 +190,7 @@ function getStringWithContextKeyReplaced(
   context?: ContextUI,
   prefix?: string,
   replacement?: string,
-) {
+): string {
   if (matchArray.length > 1) {
     let replacementUnknown: unknown = replacement;
     if (replacement === undefined && context) {

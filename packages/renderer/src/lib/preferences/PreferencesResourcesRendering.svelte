@@ -1,47 +1,53 @@
 <script lang="ts">
-import { faArrowUpRightFromSquare, faGear } from '@fortawesome/free-solid-svg-icons';
+import { faArrowUpRightFromSquare, faGear, faTerminal } from '@fortawesome/free-solid-svg-icons';
+import type { ContainerProviderConnection } from '@podman-desktop/api';
+import { Button, DropdownMenu, EmptyScreen, Tooltip } from '@podman-desktop/ui-svelte';
+import { Buffer } from 'buffer';
+import { filesize } from 'filesize';
+import { onDestroy, onMount } from 'svelte';
+import type { Unsubscriber } from 'svelte/store';
 import Fa from 'svelte-fa';
-import { providerInfos } from '../../stores/providers';
+import { router } from 'tinro';
+
+import Donut from '/@/lib/donut/Donut.svelte';
+import ActionsMenu from '/@/lib/image/ActionsMenu.svelte';
+import { context } from '/@/stores/context';
+import { onboardingList } from '/@/stores/onboarding';
 import type {
   CheckStatus,
   ProviderContainerConnectionInfo,
   ProviderInfo,
   ProviderKubernetesConnectionInfo,
-} from '../../../../main/src/plugin/api/provider-info';
-import { onDestroy, onMount } from 'svelte';
+} from '/@api/provider-info';
+
 import type { IConfigurationPropertyRecordedSchema } from '../../../../main/src/plugin/configuration-registry';
+import { type Menu, MenuContext } from '../../../../main/src/plugin/menu-registry';
 import { configurationProperties } from '../../stores/configurationProperties';
-import type { ContainerProviderConnection } from '@podman-desktop/api';
-import type { Unsubscriber } from 'svelte/store';
-import Tooltip from '../ui/Tooltip.svelte';
-import { filesize } from 'filesize';
-import { router } from 'tinro';
-import SettingsPage from './SettingsPage.svelte';
-import ConnectionStatus from '../ui/ConnectionStatus.svelte';
-import { eventCollect } from './preferences-connection-rendering-task';
-import {
-  getProviderConnectionName,
-  isDefaultScope,
-  type IConnectionRestart,
-  type IConnectionStatus,
-  type IProviderConnectionConfigurationPropertyRecorded,
-  isPropertyValidInContext,
-} from './Util';
-import EngineIcon from '../ui/EngineIcon.svelte';
-import EmptyScreen from '../ui/EmptyScreen.svelte';
-import PreferencesConnectionActions from './PreferencesConnectionActions.svelte';
-import PreferencesConnectionsEmptyRendering from './PreferencesConnectionsEmptyRendering.svelte';
-import PreferencesProviderInstallationModal from './PreferencesProviderInstallationModal.svelte';
-import { Buffer } from 'buffer';
-import Button from '../ui/Button.svelte';
-import { onboardingList } from '/@/stores/onboarding';
-import { context } from '/@/stores/context';
+import { providerInfos } from '../../stores/providers';
+import ContributionActions from '../actions/ContributionActions.svelte';
 import type { ContextUI } from '../context/context';
 import { ContextKeyExpr } from '../context/contextKey';
 import { normalizeOnboardingWhenClause } from '../onboarding/onboarding-utils';
-import Donut from '/@/lib/donut/Donut.svelte';
-import { PeerProperties } from './PeerProperties';
 import ConnectionErrorInfoButton from '../ui/ConnectionErrorInfoButton.svelte';
+import ConnectionStatus from '../ui/ConnectionStatus.svelte';
+import EngineIcon from '../ui/EngineIcon.svelte';
+import { capitalize } from '../ui/Util';
+import { PeerProperties } from './PeerProperties';
+import { eventCollect } from './preferences-connection-rendering-task';
+import PreferencesConnectionActions from './PreferencesConnectionActions.svelte';
+import PreferencesConnectionsEmptyRendering from './PreferencesConnectionsEmptyRendering.svelte';
+import PreferencesProviderInstallationModal from './PreferencesProviderInstallationModal.svelte';
+import PreferencesResourcesRenderingCopyButton from './PreferencesResourcesRenderingCopyButton.svelte';
+import SettingsPage from './SettingsPage.svelte';
+import {
+  getProviderConnectionName,
+  type IConnectionRestart,
+  type IConnectionStatus,
+  type IProviderConnectionConfigurationPropertyRecorded,
+  isDefaultScope,
+  isPropertyValidInContext,
+} from './Util';
+
 export let properties: IConfigurationPropertyRecordedSchema[] = [];
 let providers: ProviderInfo[] = [];
 $: containerConnectionStatus = new Map<string, IConnectionStatus>();
@@ -65,7 +71,9 @@ let configurationPropertiesUnsubscribe: Unsubscriber;
 let onboardingsUnsubscribe: Unsubscriber;
 let contextsUnsubscribe: Unsubscriber;
 
-onMount(() => {
+let contributionsContainerConnection: Menu[] = [];
+
+onMount(async () => {
   configurationPropertiesUnsubscribe = configurationProperties.subscribe(value => {
     properties = value;
   });
@@ -100,7 +108,9 @@ onMount(() => {
               action: 'restart',
               status: container.status,
             });
-            startConnectionProvider(provider, container, containerToRestart.loggerHandlerKey);
+            startConnectionProvider(provider, container, containerToRestart.loggerHandlerKey).catch((err: unknown) =>
+              console.error(`Error starting connection provider ${container.name}`, err),
+            );
           } else {
             containerConnectionStatus.set(containerConnectionName, {
               inProgress: false,
@@ -126,7 +136,9 @@ onMount(() => {
               action: 'restart',
               status: connection.status,
             });
-            startConnectionProvider(provider, connection, containerToRestart.loggerHandlerKey);
+            startConnectionProvider(provider, connection, containerToRestart.loggerHandlerKey).catch((err: unknown) =>
+              console.error(`Error starting connection provider ${connection.name}`, err),
+            );
           } else {
             containerConnectionStatus.set(containerConnectionName, {
               inProgress: false,
@@ -162,6 +174,8 @@ onMount(() => {
   contextsUnsubscribe = context.subscribe(value => {
     globalContext = value;
   });
+
+  contributionsContainerConnection = await window.getContributedMenus(MenuContext.DASHBOARD_CONTAINER_CONNECTION);
 });
 
 function getContainerRestarting(provider: string, container: string): IConnectionRestart {
@@ -189,7 +203,7 @@ onDestroy(() => {
 
 $: configurationKeys = properties
   .filter(property => property.scope === 'ContainerConnection')
-  .sort((a, b) => (a?.id || '').localeCompare(b?.id || ''));
+  .sort((a, b) => (a?.id ?? '').localeCompare(b?.id ?? ''));
 
 let tmpProviderContainerConfiguration: IProviderConnectionConfigurationPropertyRecorded[] = [];
 $: Promise.all(
@@ -215,12 +229,14 @@ $: Promise.all(
     );
     return providerContainer.flat();
   }),
-).then(value => (tmpProviderContainerConfiguration = value.flat()));
+)
+  .then(value => (tmpProviderContainerConfiguration = value.flat()))
+  .catch((err: unknown) => console.error('Error collecting providers', err));
 
 $: providerContainerConfiguration = tmpProviderContainerConfiguration
   .filter(configurationKey => configurationKey.value !== undefined)
   .reduce((map, value) => {
-    const innerProviderContainerConfigurations = map.get(value.providerId) || [];
+    const innerProviderContainerConfigurations = map.get(value.providerId) ?? [];
     innerProviderContainerConfigurations.push(value);
     map.set(value.providerId, innerProviderContainerConfigurations);
     return map;
@@ -245,7 +261,7 @@ function updateContainerStatus(
     }
   } else if (action) {
     containerConnectionStatus.set(containerConnectionName, {
-      inProgress: inProgress === undefined ? true : inProgress,
+      inProgress: inProgress ?? true,
       action: action,
       status: containerConnectionInfo.status,
     });
@@ -253,7 +269,7 @@ function updateContainerStatus(
   containerConnectionStatus = containerConnectionStatus;
 }
 
-function addConnectionToRestartingQueue(connection: IConnectionRestart) {
+function addConnectionToRestartingQueue(connection: IConnectionRestart): void {
   restartingQueue.push(connection);
 }
 
@@ -261,7 +277,7 @@ async function startConnectionProvider(
   provider: ProviderInfo,
   containerConnectionInfo: ProviderContainerConnectionInfo | ProviderKubernetesConnectionInfo,
   loggerHandlerKey: symbol,
-) {
+): Promise<void> {
   await window.startProviderConnectionLifecycle(
     provider.internalId,
     containerConnectionInfo,
@@ -270,16 +286,16 @@ async function startConnectionProvider(
   );
 }
 
-async function doCreateNew(provider: ProviderInfo, displayName: string) {
+async function doCreateNew(provider: ProviderInfo, displayName: string): Promise<void> {
   displayInstallModal = false;
   if (provider.status === 'not-installed') {
     providerInstallationInProgress.set(provider.name, true);
     providerInstallationInProgress = providerInstallationInProgress;
     providerToBeInstalled = { provider, displayName };
-    doExecuteAfterInstallation = () => router.goto(`/preferences/provider/${provider.internalId}`);
-    performInstallation(provider);
+    doExecuteAfterInstallation = (): void => router.goto(`/preferences/provider/${provider.internalId}`);
+    await performInstallation(provider);
   } else {
-    window.telemetryTrack('createNewProviderConnectionPageRequested', {
+    await window.telemetryTrack('createNewProviderConnectionPageRequested', {
       providerId: provider.id,
       name: provider.name,
     });
@@ -287,7 +303,7 @@ async function doCreateNew(provider: ProviderInfo, displayName: string) {
   }
 }
 
-async function performInstallation(provider: ProviderInfo) {
+async function performInstallation(provider: ProviderInfo): Promise<void> {
   const checksStatus: CheckStatus[] = [];
   let checkSuccess = false;
   let currentCheck: CheckStatus;
@@ -325,7 +341,7 @@ async function performInstallation(provider: ProviderInfo) {
   providerInstallationInProgress = providerInstallationInProgress;
 }
 
-function hideInstallModal() {
+function hideInstallModal(): void {
   displayInstallModal = false;
 }
 
@@ -337,10 +353,10 @@ function isOnboardingEnabled(provider: ProviderInfo, globalContext: ContextUI): 
   whenEnablement = normalizeOnboardingWhenClause(whenEnablement, provider.extensionId);
   const whenDeserialized = ContextKeyExpr.deserialize(whenEnablement);
   const isEnabled = whenDeserialized?.evaluate(globalContext);
-  return isEnabled || false;
+  return !!isEnabled;
 }
 
-function hasAnyConfiguration(provider: ProviderInfo) {
+function hasAnyConfiguration(provider: ProviderInfo): boolean {
   return (
     properties
       .filter(
@@ -352,40 +368,45 @@ function hasAnyConfiguration(provider: ProviderInfo) {
       .filter(property => isPropertyValidInContext(property.when, globalContext)).length > 0
   );
 }
+
+function handleError(errorMessage: string): void {
+  console.error(errorMessage);
+}
 </script>
 
 <SettingsPage title="Resources">
-  <span slot="subtitle" class:hidden="{providers.length === 0}">
+  <span slot="subtitle" class:hidden={providers.length === 0}>
     Additional provider information is available under <a
-      href="/preferences/extensions"
-      class="text-gray-700 underline underline-offset-2">Extensions</a>
+      href="/extensions"
+      class="text-[var(--pd-content-text)] underline underline-offset-2">Extensions</a>
   </span>
   <div class="h-full" role="region" aria-label="Featured Provider Resources">
     <EmptyScreen
       aria-label="no-resource-panel"
-      icon="{EngineIcon}"
+      icon={EngineIcon}
       title="No resources found"
       message="Start an extension that manages containers or Kubernetes engines"
-      hidden="{providers.length > 0}" />
+      hidden={providers.length > 0} />
 
     {#each providers as provider}
       <div
-        class="bg-charcoal-600 mb-5 rounded-md p-3 divide-x divide-gray-900 flex"
+        class="bg-[var(--pd-invert-content-card-bg)] mb-5 rounded-md p-3 divide-x divide-[var(--pd-content-divider)] flex"
         role="region"
-        aria-label="{provider.id}">
-        <div>
+        aria-label={provider.id}>
+        <div role="region" aria-label="Provider Setup">
           <!-- left col - provider icon/name + "create new" button -->
           <div class="min-w-[170px] max-w-[200px]">
             <div class="flex">
               {#if provider.images.icon}
                 {#if typeof provider.images.icon === 'string'}
-                  <img src="{provider.images.icon}" alt="{provider.name}" class="max-w-[40px] h-full" />
+                  <img src={provider.images.icon} alt={provider.name} class="max-w-[40px] h-full" />
                   <!-- TODO check theme used for image, now use dark by default -->
                 {:else}
-                  <img src="{provider.images.icon.dark}" alt="{provider.name}" class="max-w-[40px]" />
+                  <img src={provider.images.icon.dark} alt={provider.name} class="max-w-[40px]" />
                 {/if}
               {/if}
-              <span class="my-auto text-gray-400 ml-3 break-words">{provider.name}</span>
+              <span class="my-auto font-semibold text-[var(--pd-invert-content-card-header-text)] ml-3 break-words"
+                >{provider.name}</span>
             </div>
             <div class="text-center mt-10">
               <!-- Some providers have a status of 'unknown' so that they do not appear in the dashboard, this allows onboarding to still show. -->
@@ -393,7 +414,7 @@ function hasAnyConfiguration(provider: ProviderInfo) {
                 <Button
                   aria-label="Setup {provider.name}"
                   title="Setup {provider.name}"
-                  on:click="{() => router.goto(`/preferences/onboarding/${provider.extensionId}`)}">
+                  on:click={(): void => router.goto(`/preferences/onboarding/${provider.extensionId}`)}>
                   Setup ...
                 </Button>
               {:else}
@@ -401,22 +422,22 @@ function hasAnyConfiguration(provider: ProviderInfo) {
                   {#if provider.containerProviderConnectionCreation || provider.kubernetesProviderConnectionCreation}
                     {@const providerDisplayName =
                       (provider.containerProviderConnectionCreation
-                        ? provider.containerProviderConnectionCreationDisplayName || undefined
+                        ? (provider.containerProviderConnectionCreationDisplayName ?? undefined)
                         : provider.kubernetesProviderConnectionCreation
                           ? provider.kubernetesProviderConnectionCreationDisplayName
-                          : undefined) || provider.name}
+                          : undefined) ?? provider.name}
                     {@const buttonTitle =
                       (provider.containerProviderConnectionCreation
-                        ? provider.containerProviderConnectionCreationButtonTitle || undefined
+                        ? (provider.containerProviderConnectionCreationButtonTitle ?? undefined)
                         : provider.kubernetesProviderConnectionCreation
                           ? provider.kubernetesProviderConnectionCreationButtonTitle
-                          : undefined) || 'Create new'}
+                          : undefined) ?? 'Create new'}
                     <!-- create new provider button -->
-                    <Tooltip tip="Create new {providerDisplayName}" bottom>
+                    <Tooltip bottom tip="Create new {providerDisplayName}">
                       <Button
                         aria-label="Create new {providerDisplayName}"
-                        inProgress="{providerInstallationInProgress.get(provider.name)}"
-                        on:click="{() => doCreateNew(provider, providerDisplayName)}">
+                        inProgress={providerInstallationInProgress.get(provider.name)}
+                        on:click={(): Promise<void> => doCreateNew(provider, providerDisplayName)}>
                         {buttonTitle} ...
                       </Button>
                     </Tooltip>
@@ -425,14 +446,14 @@ function hasAnyConfiguration(provider: ProviderInfo) {
                     <Button
                       aria-label="Setup {provider.name}"
                       title="Setup {provider.name}"
-                      on:click="{() => {
+                      on:click={(): void => {
                         if (isOnboardingEnabled(provider, globalContext)) {
                           router.goto(`/preferences/onboarding/${provider.extensionId}`);
                         } else {
                           router.goto(`/preferences/default/preferences.${provider.extensionId}`);
                         }
-                      }}">
-                      <Fa size="14" icon="{faGear}" />
+                      }}>
+                      <Fa size="0.9x" icon={faGear} />
                     </Button>
                   {/if}
                 </div>
@@ -441,43 +462,51 @@ function hasAnyConfiguration(provider: ProviderInfo) {
           </div>
         </div>
         <!-- providers columns -->
-        <div class="grow flex flex-wrap divide-gray-900 ml-2">
+        <div
+          class="grow flex flex-wrap divide-[var(--pd-content-divider)] ml-2 text-[var(--pd-invert-content-card-text)]"
+          role="region"
+          aria-label="Provider Connections">
           <PreferencesConnectionsEmptyRendering
-            message="{provider.emptyConnectionMarkdownDescription}"
-            hidden="{provider.containerConnections.length > 0 || provider.kubernetesConnections.length > 0}" />
+            message={provider.emptyConnectionMarkdownDescription}
+            hidden={provider.containerConnections.length > 0 || provider.kubernetesConnections.length > 0} />
           {#each provider.containerConnections as container}
             {@const peerProperties = new PeerProperties()}
-            <div class="px-5 py-2 w-[240px]">
+            <div class="px-5 py-2 w-[240px]" role="region" aria-label={container.name}>
               <div class="float-right">
-                <Tooltip tip="{provider.name} details" bottom>
+                <Tooltip bottom tip="{provider.name} details">
                   <button
                     aria-label="{provider.name} details"
                     type="button"
-                    on:click="{() =>
+                    on:click={(): void =>
                       router.goto(
-                        `/preferences/container-connection/${provider.internalId}/${Buffer.from(
+                        `/preferences/container-connection/view/${provider.internalId}/${Buffer.from(
                           container.name,
                         ).toString('base64')}/${Buffer.from(container.endpoint.socketPath).toString('base64')}/summary`,
-                      )}">
-                    <Fa icon="{faArrowUpRightFromSquare}" />
+                      )}>
+                    <Fa icon={faArrowUpRightFromSquare} />
                   </button>
                 </Tooltip>
               </div>
-              <div class="{container.status !== 'started' ? 'text-gray-900' : ''} text-sm">
-                {container.name}
+              <div class="{container.status !== 'started' ? 'text-[var(--pd-content-sub-header)]' : ''} font-semibold">
+                {container.displayName}
               </div>
-              <div class="flex">
-                <ConnectionStatus status="{container.status}" />
+              <div class="flex" aria-label="Connection Status">
+                <ConnectionStatus status={container.status} />
                 {#if containerConnectionStatus.has(getProviderConnectionName(provider, container))}
                   {@const status = containerConnectionStatus.get(getProviderConnectionName(provider, container))}
-                  <ConnectionErrorInfoButton status="{status}" />
+                  <ConnectionErrorInfoButton status={status} />
                 {/if}
               </div>
-
+              <div class="mt-2 text-[var(--pd-content-text)] text-xs" aria-label="{container.name} type">
+                {#if container.type === 'docker'}Docker{:else if container.type === 'podman'}Podman{/if} endpoint
+              </div>
+              <PreferencesResourcesRenderingCopyButton
+                class={container.status !== 'started' ? 'text-[var(--pd-content-sub-header)]' : ''}
+                path={container.endpoint.socketPath} />
               {#if providerContainerConfiguration.has(provider.internalId)}
-                {@const providerConfiguration = providerContainerConfiguration.get(provider.internalId) || []}
+                {@const providerConfiguration = providerContainerConfiguration.get(provider.internalId) ?? []}
                 <div
-                  class="flex mt-3 {container.status !== 'started' ? 'text-gray-900' : ''}"
+                  class="flex mt-3 {container.status !== 'started' ? 'text-[var(--pd-content-sub-header)]' : ''}"
                   role="group"
                   aria-label="Provider Configuration">
                   {#each providerConfiguration.filter(conf => conf.connection === container.name) as connectionSetting}
@@ -489,9 +518,9 @@ function hasAnyConfiguration(provider: ProviderInfo) {
                         )}
                         <div class="mr-4">
                           <Donut
-                            title="{connectionSetting.description}"
-                            value="{connectionSetting.value}"
-                            percent="{peerValue}" />
+                            title={connectionSetting.description}
+                            value={connectionSetting.value}
+                            percent={peerValue} />
                         </div>
                       {/if}
                     {:else if connectionSetting.format === 'memory' || connectionSetting.format === 'memoryUsage' || connectionSetting.format === 'diskSize' || connectionSetting.format === 'diskSizeUsage'}
@@ -502,9 +531,9 @@ function hasAnyConfiguration(provider: ProviderInfo) {
                         )}
                         <div class="mr-4">
                           <Donut
-                            title="{connectionSetting.description}"
-                            value="{filesize(connectionSetting.value)}"
-                            percent="{peerValue}" />
+                            title={connectionSetting.description}
+                            value={filesize(connectionSetting.value)}
+                            percent={peerValue} />
                         </div>
                       {/if}
                     {:else}
@@ -514,52 +543,79 @@ function hasAnyConfiguration(provider: ProviderInfo) {
                 </div>
               {/if}
               <PreferencesConnectionActions
-                provider="{provider}"
-                connection="{container}"
-                connectionStatus="{containerConnectionStatus.get(getProviderConnectionName(provider, container))}"
-                updateConnectionStatus="{updateContainerStatus}"
-                addConnectionToRestartingQueue="{addConnectionToRestartingQueue}" />
-              <div class="mt-1.5 text-gray-900 text-[9px]">
-                <div>{provider.name} {provider.version ? `v${provider.version}` : ''}</div>
+                provider={provider}
+                connection={container}
+                connectionStatus={containerConnectionStatus.get(getProviderConnectionName(provider, container))}
+                updateConnectionStatus={updateContainerStatus}
+                addConnectionToRestartingQueue={addConnectionToRestartingQueue}>
+                <span slot="advanced-actions" class:hidden={providers.length === 0}>
+                  <Tooltip bottom tip="More Options">
+                    <ActionsMenu
+                      dropdownMenu={true}
+                      onBeforeToggle={(): void => {
+                        globalContext?.setValue('selectedProviderConnectionType', container.type);
+                        globalContext?.setValue('selectedProviderConnectionStatus', container.status);
+                    }}>
+                      <DropdownMenu.Item title="Open Terminal" icon={faTerminal} onClick={(): void => {router.goto(
+                        `/preferences/container-connection/view/${provider.internalId}/${Buffer.from(
+                          container.name,
+                        ).toString('base64')}/${Buffer.from(container.endpoint.socketPath).toString('base64')}/terminal`);}}/>
+                      <ContributionActions
+                        args={[container]}
+                        contextPrefix="providerConnectionItem"
+                        dropdownMenu={true}
+                        contributions={contributionsContainerConnection}
+                        detailed={false}
+                        onError={handleError} />
+                    </ActionsMenu>
+                  </Tooltip>
+                </span>
+              </PreferencesConnectionActions>
+              <div class="mt-1.5 text-[var(--pd-content-sub-header)] text-[9px] flex justify-between">
+                <div aria-label="Connection Version">
+                  {provider.name}
+                  {provider.version ? `v${provider.version}` : ''}
+                </div>
+                <div aria-label="Connection Type">{container.vmType ? capitalize(container.vmType.name) : ''}</div>
               </div>
             </div>
           {/each}
           {#each provider.kubernetesConnections as kubeConnection}
-            <div class="px-5 py-2 w-[240px]">
+            <div class="px-5 py-2 w-[240px]" role="region" aria-label={kubeConnection.name}>
               <div class="float-right">
-                <Tooltip tip="{provider.name} details" bottom>
+                <Tooltip bottom tip="{provider.name} details">
                   <button
                     aria-label="{provider.name} details"
                     type="button"
-                    on:click="{() =>
+                    on:click={(): void =>
                       router.goto(
                         `/preferences/kubernetes-connection/${provider.internalId}/${Buffer.from(
                           kubeConnection.endpoint.apiURL,
                         ).toString('base64')}/summary`,
-                      )}">
-                    <Fa icon="{faArrowUpRightFromSquare}" />
+                      )}>
+                    <Fa icon={faArrowUpRightFromSquare} />
                   </button>
                 </Tooltip>
               </div>
-              <div class="text-sm">
+              <div class="font-semibold">
                 {kubeConnection.name}
               </div>
               <div class="flex mt-1">
-                <ConnectionStatus status="{kubeConnection.status}" />
+                <ConnectionStatus status={kubeConnection.status} />
               </div>
               <div class="mt-2">
-                <div class="text-gray-700 text-xs">Kubernetes endpoint</div>
+                <div class="text-[var(--pd-content-text)] text-xs">Kubernetes endpoint</div>
                 <div class="mt-1">
-                  <span class="my-auto text-xs" class:text-gray-900="{kubeConnection.status !== 'started'}"
+                  <span class="my-auto text-xs" class:text-[var(--pd-content-sub-header)]={kubeConnection.status !== 'started'}
                     >{kubeConnection.endpoint.apiURL}</span>
                 </div>
               </div>
               <PreferencesConnectionActions
-                provider="{provider}"
-                connection="{kubeConnection}"
-                connectionStatus="{containerConnectionStatus.get(getProviderConnectionName(provider, kubeConnection))}"
-                updateConnectionStatus="{updateContainerStatus}"
-                addConnectionToRestartingQueue="{addConnectionToRestartingQueue}" />
+                provider={provider}
+                connection={kubeConnection}
+                connectionStatus={containerConnectionStatus.get(getProviderConnectionName(provider, kubeConnection))}
+                updateConnectionStatus={updateContainerStatus}
+                addConnectionToRestartingQueue={addConnectionToRestartingQueue} />
             </div>
           {/each}
         </div>
@@ -568,9 +624,9 @@ function hasAnyConfiguration(provider: ProviderInfo) {
   </div>
   {#if displayInstallModal && providerToBeInstalled}
     <PreferencesProviderInstallationModal
-      providerToBeInstalled="{providerToBeInstalled}"
-      preflightChecks="{preflightChecks}"
-      closeCallback="{hideInstallModal}"
-      doCreateNew="{doCreateNew}" />
+      providerToBeInstalled={providerToBeInstalled}
+      preflightChecks={preflightChecks}
+      closeCallback={hideInstallModal}
+      doCreateNew={doCreateNew} />
   {/if}
 </SettingsPage>

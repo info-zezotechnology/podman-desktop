@@ -1,3 +1,21 @@
+/**********************************************************************
+ * Copyright (C) 2023-2024 Red Hat, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ ***********************************************************************/
+
 import type { PodInfoContainerUI } from '../pod/PodInfoUI';
 
 const allStatuses = ['running', 'created', 'paused', 'waiting', 'degraded', 'exited', 'stopped', 'terminated', 'dead'];
@@ -11,23 +29,23 @@ export function getStatusColor(status: string): string {
   // must be either "bg-" or "outline-" for either solid / outline colors
   const colors: Record<string, string> = {
     // Podman & Kubernetes
-    running: 'bg-status-running',
+    running: 'bg-[var(--pd-status-running)]',
 
     // Kubernetes-only
-    terminated: 'bg-status-terminated',
-    waiting: 'bg-status-waiting',
+    terminated: 'bg-[var(--pd-status-terminated)]',
+    waiting: 'bg-[var(--pd-status-waiting)]',
 
     // Podman-only
-    stopped: 'outline-status-stopped',
-    paused: 'bg-status-paused',
-    exited: 'outline-status-exited',
-    dead: 'bg-status-dead',
-    created: 'outline-status-created',
-    degraded: 'bg-status-degraded',
+    stopped: 'outline-[var(--pd-status-stopped)]',
+    paused: 'bg-[var(--pd-status-paused)]',
+    exited: 'outline-[var(--pd-status-exited)]',
+    dead: 'bg-[var(--pd-status-dead)]',
+    created: 'outline-[var(--pd-status-created)]',
+    degraded: 'bg-[var(--pd-status-degraded)]',
   };
 
   // Return the corresponding color class or a default if not found
-  return colors[status] || 'bg-status-unknown';
+  return colors[status] || 'bg-[var(--pd-status-unknown)]';
 }
 
 // Organize the containers by returning their status as the key + an array of containers by order of

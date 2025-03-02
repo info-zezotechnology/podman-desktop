@@ -1,5 +1,5 @@
 /**********************************************************************
- * Copyright (C) 2023 Red Hat, Inc.
+ * Copyright (C) 2023-2024 Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,14 +17,18 @@
  ***********************************************************************/
 
 import '@testing-library/jest-dom/vitest';
-import { test, expect, vi, beforeAll } from 'vitest';
-import { providerInfos } from '../../stores/providers';
-import { render, screen } from '@testing-library/svelte';
-import KubePlayYAML from './KubePlayYAML.svelte';
+
 import type { ProviderStatus } from '@podman-desktop/api';
-import type { ProviderContainerConnectionInfo, ProviderInfo } from '../../../../main/src/plugin/api/provider-info';
+import { render, screen } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
+import { router } from 'tinro';
+import { beforeAll, expect, test, vi } from 'vitest';
+
+import type { ProviderContainerConnectionInfo, ProviderInfo } from '/@api/provider-info';
+
 import type { PlayKubeInfo } from '../../../../main/src/plugin/dockerode/libpod-dockerode';
+import { providerInfos } from '../../stores/providers';
+import KubePlayYAML from './KubePlayYAML.svelte';
 
 const mockedErroredPlayKubeInfo: PlayKubeInfo = {
   Pods: [
@@ -65,29 +69,43 @@ const mockedErroredPlayKubeInfo: PlayKubeInfo = {
   ],
 };
 
+// mock the router
+vi.mock('tinro', () => {
+  return {
+    router: {
+      goto: vi.fn(),
+    },
+  };
+});
+
+const playKubeMock = vi.fn();
+
 // fake the window.events object
 beforeAll(() => {
   (window.events as unknown) = {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    receive: (_channel: string, func: any) => {
+    receive: (_channel: string, func: () => void): void => {
       func();
     },
   };
-  (window as any).getConfigurationValue = vi.fn().mockResolvedValue(undefined);
-  (window as any).matchMedia = vi.fn().mockReturnValue({
-    addListener: vi.fn(),
+  Object.defineProperty(window, 'getConfigurationValue', { value: vi.fn().mockResolvedValue(undefined) });
+  Object.defineProperty(window, 'matchMedia', {
+    value: vi.fn().mockReturnValue({
+      addListener: vi.fn(),
+    }),
   });
-  (window as any).openFileDialog = vi.fn().mockResolvedValue({ canceled: false, filePaths: ['Containerfile'] });
-  (window as any).telemetryPage = vi.fn().mockResolvedValue(undefined);
-  (window as any).kubernetesGetCurrentContextName = vi.fn().mockResolvedValue(undefined);
-  (window as any).kubernetesGetCurrentNamespace = vi.fn().mockResolvedValue(undefined);
-  (window as any).kubernetesListNamespaces = vi.fn().mockResolvedValue(undefined);
+  Object.defineProperty(window, 'openDialog', { value: vi.fn().mockResolvedValue(['Containerfile']) });
+  Object.defineProperty(window, 'telemetryPage', { value: vi.fn().mockResolvedValue(undefined) });
+  Object.defineProperty(window, 'kubernetesGetCurrentContextName', { value: vi.fn().mockResolvedValue(undefined) });
+  Object.defineProperty(window, 'kubernetesGetCurrentNamespace', { value: vi.fn().mockResolvedValue(undefined) });
+  Object.defineProperty(window, 'kubernetesListNamespaces', { value: vi.fn().mockResolvedValue(undefined) });
+  Object.defineProperty(window, 'playKube', { value: playKubeMock });
 });
 
-function setup() {
+function setup(): void {
   const pStatus: ProviderStatus = 'started';
   const pInfo: ProviderContainerConnectionInfo = {
     name: 'test',
+    displayName: 'test',
     status: 'started',
     endpoint: {
       socketPath: '',
@@ -115,7 +133,7 @@ function setup() {
 }
 
 test('error: When pressing the Play button, expect us to show the errors to the user', async () => {
-  (window as any).playKube = vi.fn().mockResolvedValue(mockedErroredPlayKubeInfo);
+  playKubeMock.mockResolvedValue(mockedErroredPlayKubeInfo);
 
   // Render the component
   setup();
@@ -124,10 +142,13 @@ test('error: When pressing the Play button, expect us to show the errors to the 
   // Simulate selecting a file
   const fileInput = screen.getByRole('textbox', { name: 'Kubernetes YAML file' });
   expect(fileInput).toBeInTheDocument();
-  await userEvent.click(fileInput);
+
+  const browseButton = screen.getByLabelText('browse');
+  expect(browseButton).toBeInTheDocument();
+  await userEvent.click(browseButton);
 
   // Simulate selecting a runtime
-  const runtimeOption = screen.getByText('Using a Podman container engine');
+  const runtimeOption = screen.getByText('Podman container engine');
   expect(runtimeOption).toBeInTheDocument();
 
   // Simulate clicking the "Play" button
@@ -141,8 +162,8 @@ test('error: When pressing the Play button, expect us to show the errors to the 
   expect(error).toBeInTheDocument();
 });
 
-test('expect done button is there at the end', async () => {
-  (window as any).playKube = vi.fn().mockResolvedValue({
+test('expect done button is there at the end and redirects to pods', async () => {
+  playKubeMock.mockResolvedValue({
     Pods: [],
   });
 
@@ -153,10 +174,13 @@ test('expect done button is there at the end', async () => {
   // Simulate selecting a file
   const fileInput = screen.getByRole('textbox', { name: 'Kubernetes YAML file' });
   expect(fileInput).toBeInTheDocument();
-  await userEvent.click(fileInput);
+
+  const browseButton = screen.getByLabelText('browse');
+  expect(browseButton).toBeInTheDocument();
+  await userEvent.click(browseButton);
 
   // Simulate selecting a runtime
-  const runtimeOption = screen.getByText('Using a Podman container engine');
+  const runtimeOption = screen.getByText('Podman container engine');
   expect(runtimeOption).toBeInTheDocument();
 
   // Simulate clicking the "Play" button
@@ -169,4 +193,40 @@ test('expect done button is there at the end', async () => {
   expect(doneButton).toBeInTheDocument();
   // check that text value is also 'Done'
   expect(doneButton).toHaveTextContent('Done');
+
+  // check that clicking redirects to the pods page
+  expect(router.goto).not.toHaveBeenCalled();
+  await userEvent.click(doneButton);
+
+  expect(router.goto).toHaveBeenCalledWith(`/pods`);
+});
+
+test('expect runtime boxes have the correct selection borders', async () => {
+  playKubeMock.mockResolvedValue({
+    Pods: [],
+  });
+
+  setup();
+  render(KubePlayYAML, {});
+
+  // check the current borders
+  const podmanOption = screen.getByText('Podman container engine');
+  expect(podmanOption).toBeInTheDocument();
+  expect(podmanOption.parentElement?.parentElement).toHaveClass('border-[var(--pd-content-card-border-selected)]');
+  expect(podmanOption.parentElement?.parentElement).not.toHaveClass('border-[var(--pd-content-card-border)]');
+
+  const kubeOption = screen.getByText('Kubernetes cluster');
+  expect(kubeOption).toBeInTheDocument();
+  expect(kubeOption.parentElement?.parentElement).not.toHaveClass('border-[var(--pd-content-card-border-selected)]');
+  expect(kubeOption.parentElement?.parentElement).toHaveClass('border-[var(--pd-content-card-border)]');
+
+  // now switch selection to Kubernetes
+  await userEvent.click(kubeOption);
+
+  // and expect opposite selection borders
+  expect(podmanOption.parentElement?.parentElement).not.toHaveClass('border-[var(--pd-content-card-border-selected)]');
+  expect(podmanOption.parentElement?.parentElement).toHaveClass('border-[var(--pd-content-card-border)]');
+
+  expect(kubeOption.parentElement?.parentElement).toHaveClass('border-[var(--pd-content-card-border-selected)]');
+  expect(kubeOption.parentElement?.parentElement).not.toHaveClass('border-[var(--pd-content-card-border)]');
 });

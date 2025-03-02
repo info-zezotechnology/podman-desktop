@@ -1,5 +1,5 @@
 /**********************************************************************
- * Copyright (C) 2023 Red Hat, Inc.
+ * Copyright (C) 2023-2024 Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,51 +23,19 @@ import type {
   AuthenticationSessionAccountInformation,
   Event,
 } from '@podman-desktop/api';
-import { beforeEach, afterEach, expect, test, vi, suite } from 'vitest';
-import type { Mock } from 'vitest';
+import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+
 import type { ApiSenderType } from './api.js';
 import { AuthenticationImpl } from './authentication.js';
-import type { CommandRegistry } from './command-registry.js';
-import type { ConfigurationRegistry } from './configuration-registry.js';
-import type { ContainerProviderRegistry } from './container-registry.js';
 import { Emitter as EventEmitter } from './events/emitter.js';
-import { ExtensionLoader } from './extension-loader.js';
-import type { FilesystemMonitoring } from './filesystem-monitoring.js';
-import type { ImageRegistry } from './image-registry.js';
-import type { InputQuickPickRegistry } from './input-quickpick/input-quickpick-registry.js';
-import type { KubernetesClient } from './kubernetes-client.js';
-import type { MenuRegistry } from './menu-registry.js';
 import type { MessageBox } from './message-box.js';
-import type { ProgressImpl } from './progress-impl.js';
-import type { ProviderRegistry } from './provider-registry.js';
-import type { StatusBarRegistry } from './statusbar/statusbar-registry.js';
-import type { Telemetry } from './telemetry/telemetry.js';
-import type { TrayMenuRegistry } from './tray-menu-registry.js';
-import type { Proxy } from './proxy.js';
-import type { IconRegistry } from './icon-registry.js';
-import type { Directories } from './directories.js';
-import type { CustomPickRegistry } from './custompick/custompick-registry.js';
-import type { ViewRegistry } from './view-registry.js';
-import type { Context } from './context/context.js';
-import type { OnboardingRegistry } from './onboarding-registry.js';
-import { getBase64Image } from '../util.js';
-import type { Exec } from './util/exec.js';
-import type { KubeGeneratorRegistry } from '/@/plugin/kube-generator-registry.js';
-import type { CliToolRegistry } from './cli-tool-registry.js';
-import type { NotificationRegistry } from './notification-registry.js';
-import type { ImageCheckerImpl } from './image-checker.js';
 
-vi.mock('../util.js', async () => {
-  return {
-    getBase64Image: vi.fn(),
-  };
-});
-
-function randomNumber(n = 5) {
+function randomNumber(n = 5): number {
+  // eslint-disable-next-line sonarjs/pseudo-random
   return Math.round(Math.random() * 10 * n);
 }
 
-class RandomAuthenticationSession implements AuthenticationSession {
+export class RandomAuthenticationSession implements AuthenticationSession {
   id: string;
   accessToken: string;
   account: AuthenticationSessionAccountInformation;
@@ -81,7 +49,7 @@ class RandomAuthenticationSession implements AuthenticationSession {
   }
 }
 
-class AuthenticationProviderSingleAccount implements AuthenticationProvider {
+export class AuthenticationProviderSingleAccount implements AuthenticationProvider {
   private _onDidChangeSession = new EventEmitter<AuthenticationProviderAuthenticationSessionsChangeEvent>();
   private session: AuthenticationSession | undefined;
   onDidChangeSessions: Event<AuthenticationProviderAuthenticationSessionsChangeEvent> = this._onDidChangeSession.event;
@@ -105,16 +73,18 @@ const apiSender: ApiSenderType = {
   receive: vi.fn(),
 };
 
+const messageBox: MessageBox = {
+  showMessageBox: () => Promise.resolve({ response: 1 }),
+} as unknown as MessageBox;
+
 let authModule: AuthenticationImpl;
 
-const directories = {
-  getPluginsDirectory: () => '/fake-plugins-directory',
-  getPluginsScanDirectory: () => '/fake-plugins-scanning-directory',
-  getExtensionsStorageDirectory: () => '/fake-extensions-storage-directory',
-} as unknown as Directories;
-
 beforeEach(function () {
-  authModule = new AuthenticationImpl(apiSender);
+  authModule = new AuthenticationImpl(apiSender, messageBox);
+});
+
+afterEach(() => {
+  vi.resetAllMocks();
 });
 
 test('Registered authentication provider stored in authentication module', async () => {
@@ -181,6 +151,23 @@ test('Authentication does not create new auth request when silent is true and se
   expect(authModule.getSessionRequests()).length(0);
 });
 
+test('Authentication does not create session if user has not allowed it', async () => {
+  const mb = {
+    showMessageBox: () => Promise.resolve({ response: 0 }),
+  } as unknown as MessageBox;
+  const authentication = new AuthenticationImpl(apiSender, mb);
+  const authProvidrer1 = new AuthenticationProviderSingleAccount();
+  authentication.registerAuthenticationProvider('company.auth-provider', 'Provider 1', authProvidrer1);
+  const session1 = await authentication.getSession(
+    { id: 'ext1', label: 'Ext 2' },
+    'company.auth-provider',
+    ['scope1', 'scope2'],
+    { createIfNone: true },
+  );
+
+  expect(session1).toBeUndefined();
+});
+
 test('Authentication creates one auth request per extension', async () => {
   const authProvidrer1 = new AuthenticationProviderSingleAccount();
   authModule.registerAuthenticationProvider('company.auth-provider', 'Provider 1', authProvidrer1);
@@ -239,124 +226,123 @@ test('Authentication provider creates session when session request is executed',
   expect(authModule.getSessionRequests()).length(1);
 
   const [signInRequest] = authModule.getSessionRequests();
+  if (!signInRequest) {
+    throw new Error('Sign in request is not defined');
+  }
   await authModule.executeSessionRequest(signInRequest.id);
   expect(createSessionSpy).toBeCalledTimes(1);
 });
 
-suite('Authentication', () => {
-  let extLoader: ExtensionLoader;
-  let authentication: AuthenticationImpl;
-  let providerMock: AuthenticationProvider;
-  beforeEach(() => {
-    authentication = new AuthenticationImpl(apiSender);
-    extLoader = new ExtensionLoader(
-      vi.fn() as unknown as CommandRegistry,
-      vi.fn() as unknown as MenuRegistry,
-      vi.fn() as unknown as ProviderRegistry,
-      vi.fn() as unknown as ConfigurationRegistry,
-      vi.fn() as unknown as ImageRegistry,
-      vi.fn() as unknown as ApiSenderType,
-      vi.fn() as unknown as TrayMenuRegistry,
-      vi.fn() as unknown as MessageBox,
-      vi.fn() as unknown as ProgressImpl,
-      vi.fn() as unknown as StatusBarRegistry,
-      vi.fn() as unknown as KubernetesClient,
-      vi.fn() as unknown as FilesystemMonitoring,
-      vi.fn() as unknown as Proxy,
-      vi.fn() as unknown as ContainerProviderRegistry,
-      vi.fn() as unknown as InputQuickPickRegistry,
-      vi.fn() as unknown as CustomPickRegistry,
-      authentication,
-      vi.fn() as unknown as IconRegistry,
-      vi.fn() as unknown as OnboardingRegistry,
-      vi.fn() as unknown as Telemetry,
-      vi.fn() as unknown as ViewRegistry,
-      vi.fn() as unknown as Context,
-      directories,
-      vi.fn() as unknown as Exec,
-      vi.fn() as unknown as KubeGeneratorRegistry,
-      vi.fn() as unknown as CliToolRegistry,
-      vi.fn() as unknown as NotificationRegistry,
-      vi.fn() as unknown as ImageCheckerImpl,
-    );
-    providerMock = {
-      onDidChangeSessions: vi.fn(),
-      getSessions: vi.fn().mockResolvedValue([]),
-      createSession: vi.fn(),
-      removeSession: vi.fn(),
-    };
+test('Authentication removes session request when session requested programmatically', async () => {
+  const authProvidrer1 = new AuthenticationProviderSingleAccount();
+  const createSessionSpy = vi.spyOn(authProvidrer1, 'createSession');
+
+  authModule.registerAuthenticationProvider('company.auth-provider', 'Provider 1', authProvidrer1);
+  await authModule.getSession({ id: 'ext1', label: 'Ext 1' }, 'company.auth-provider', ['scope1', 'scope2'], {
+    silent: false,
   });
 
-  afterEach(() => {
-    vi.resetAllMocks();
+  expect(authModule.getSessionRequests()).length(1);
+
+  await authModule.getSession({ id: 'ext1', label: 'Ext 1' }, 'company.auth-provider', ['scope1', 'scope2'], {
+    createIfNone: true,
+    silent: false,
   });
 
-  const BASE64ENCODEDIMAGE = 'BASE64ENCODEDIMAGE';
+  expect(createSessionSpy).toBeCalledTimes(1);
+  expect(authModule.getSessionRequests()).length(0);
+});
 
-  test('allows images option to be undefined or empty', async () => {
-    (getBase64Image as Mock).mockReturnValue(BASE64ENCODEDIMAGE);
-    const api = extLoader.createApi('/path', {});
-    expect(api).toBeDefined();
-    api.authentication.registerAuthenticationProvider('provider1.id', 'Provider1 Label', providerMock);
-    let providers = await authentication.getAuthenticationProvidersInfo();
-    const provider1 = providers.find(item => item.id === 'provider1.id');
-    expect(provider1).toBeDefined();
-    expect(provider1?.images).toBeUndefined();
+test('getAuthenticationProvidersInfo', async () => {
+  const authentication = new AuthenticationImpl(apiSender, messageBox);
 
-    api.authentication.registerAuthenticationProvider('provider2.id', 'Provider2 Label', providerMock, {
-      images: {},
-    });
-    providers = await authentication.getAuthenticationProvidersInfo();
-    const provider2 = providers.find(item => item.id === 'provider2.id');
-    expect(provider2).toBeDefined();
-    expect(provider2?.images).toBeDefined();
-    expect(provider2?.images?.logo).toBeUndefined();
-    expect(provider2?.images?.icon).toBeUndefined();
+  const providerMock = {
+    onDidChangeSessions: vi.fn(),
+    getSessions: vi.fn().mockResolvedValue([]),
+    createSession: vi.fn(),
+    removeSession: vi.fn(),
+  };
+  authentication.registerAuthenticationProvider('provider1.id', 'Provider1 Label', providerMock);
+  let providers = await authentication.getAuthenticationProvidersInfo();
+  const provider1 = providers.find(item => item.id === 'provider1.id');
+  expect(provider1).toBeDefined();
+  expect(provider1?.images).toBeUndefined();
+
+  authentication.registerAuthenticationProvider('provider2.id', 'Provider2 Label', providerMock, {
+    images: {},
+  });
+  providers = await authentication.getAuthenticationProvidersInfo();
+  const provider2 = providers.find(item => item.id === 'provider2.id');
+  expect(provider2).toBeDefined();
+  expect(provider2?.images).toBeDefined();
+  expect(provider2?.images?.logo).toBeUndefined();
+  expect(provider2?.images?.icon).toBeUndefined();
+});
+
+test('authentication provider send event to update settings page', async () => {
+  const authentication = new AuthenticationImpl(apiSender, messageBox);
+
+  const providerMock = {
+    onDidChangeSessions: vi.fn().mockImplementation(() => {
+      return {
+        dispose: vi.fn(),
+      };
+    }),
+    getSessions: vi.fn().mockResolvedValue([]),
+    createSession: vi.fn(),
+    removeSession: vi.fn(),
+  };
+  const disposable = authentication.registerAuthenticationProvider('provider1.id', 'Provider1 Label', providerMock);
+  const providers = await authentication.getAuthenticationProvidersInfo();
+  const provider1 = providers.find(item => item.id === 'provider1.id');
+  expect(provider1).toBeDefined();
+
+  disposable.dispose();
+
+  expect(apiSender.send).lastCalledWith('authentication-provider-update', { id: 'provider1.id' });
+});
+
+test('authentication shows confirmation request when signing out from a session', async () => {
+  const mb = {
+    showMessageBox: vi.fn(),
+  } as unknown as MessageBox;
+  const authentication = new AuthenticationImpl(apiSender, mb);
+  const authProvidrer1 = new AuthenticationProviderSingleAccount();
+  authentication.registerAuthenticationProvider('company.auth-provider', 'Provider 1', authProvidrer1);
+
+  vi.mocked(mb.showMessageBox).mockResolvedValue({ response: 1 });
+
+  const session1 = await authentication.getSession(
+    { id: 'ext1', label: 'Ext 1' },
+    'company.auth-provider',
+    ['scope1', 'scope2'],
+    { createIfNone: true },
+  );
+
+  vi.mocked(mb.showMessageBox).mockReset();
+  vi.mocked(mb.showMessageBox).mockResolvedValue({ response: 0 });
+
+  await authentication.signOut('company.auth-provider', session1!.id);
+
+  expect(mb.showMessageBox).toHaveBeenCalledWith(
+    expect.objectContaining({
+      message: `The account '${session1?.account.label}' has been used by:\n\n\tExt 1\n\nSign out from this extension?`,
+    }),
+  );
+
+  vi.mocked(mb.showMessageBox).mockReset();
+  vi.mocked(mb.showMessageBox).mockResolvedValue({ response: 1 });
+
+  await authentication.getSession({ id: 'ext2', label: 'Ext 2' }, 'company.auth-provider', ['scope1', 'scope2'], {
+    createIfNone: true,
   });
 
-  test('converts images.icon path to base 64 image when registering provider', async () => {
-    (getBase64Image as Mock).mockReturnValue(BASE64ENCODEDIMAGE);
-    const api = extLoader.createApi('/path', {});
-    expect(api).toBeDefined();
-    api.authentication.registerAuthenticationProvider('provider1.id', 'Provider1 Label', providerMock, {
-      images: {
-        icon: './image.png',
-        logo: './image.png',
-      },
-    });
-    const providers = await authentication.getAuthenticationProvidersInfo();
-    const provider = providers.find(item => item.id === 'provider1.id');
-    expect(provider).toBeDefined();
-    expect(provider?.images?.icon).equals(BASE64ENCODEDIMAGE);
-    expect(provider?.images?.icon).equals(BASE64ENCODEDIMAGE);
-  });
+  await authentication.signOut('company.auth-provider', session1!.id);
 
-  test('converts images.icon with themes path to base 64 image when registering provider', async () => {
-    (getBase64Image as Mock).mockReturnValue(BASE64ENCODEDIMAGE);
-    const api = extLoader.createApi('/path', {});
-    expect(api).toBeDefined();
-    api.authentication.registerAuthenticationProvider('provider2.id', 'Provider2 Label', providerMock, {
-      images: {
-        icon: {
-          light: './image.png',
-          dark: './image.png',
-        },
-        logo: {
-          light: './image.png',
-          dark: './image.png',
-        },
-      },
-    });
-    const providers = await authentication.getAuthenticationProvidersInfo();
-    const provider = providers.find(item => item.id === 'provider2.id');
-    expect(provider).toBeDefined();
-    const themeIcon = typeof provider?.images?.icon === 'string' ? undefined : provider?.images?.icon;
-    expect(themeIcon).toBeDefined();
-    expect(themeIcon?.light).equals(BASE64ENCODEDIMAGE);
-    expect(themeIcon?.dark).equals(BASE64ENCODEDIMAGE);
-    const themeLogo = typeof provider?.images?.logo === 'string' ? undefined : provider?.images?.logo;
-    expect(themeLogo).toBeDefined();
-    expect(themeLogo?.light).equals(BASE64ENCODEDIMAGE);
-    expect(themeLogo?.dark).equals(BASE64ENCODEDIMAGE);
-  });
+  expect(await authProvidrer1.getSessions()).toHaveLength(0);
+  expect(mb.showMessageBox).toHaveBeenCalledWith(
+    expect.objectContaining({
+      message: `The account '${session1?.account.label}' has been used by:\n\n\tExt 1\n\tExt 2\n\nSign out from these extensions?`,
+    }),
+  );
 });

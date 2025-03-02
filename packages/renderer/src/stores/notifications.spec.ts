@@ -1,5 +1,5 @@
 /**********************************************************************
- * Copyright (C) 2023 Red Hat, Inc.
+ * Copyright (C) 2023-2024 Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,18 +21,20 @@
 import { get } from 'svelte/store';
 import type { Mock } from 'vitest';
 import { beforeAll, expect, test, vi } from 'vitest';
+
+import type { NotificationCard } from '/@api/notification';
+
 import { fetchNotifications, notificationEventStore, notificationQueue } from './notifications';
-import type { NotificationCard } from '../../../main/src/plugin/api/notification';
 
 // first, patch window object
 const callbacks = new Map<string, any>();
 const eventEmitter = {
-  receive: (message: string, callback: any) => {
+  receive: (message: string, callback: any): void => {
     callbacks.set(message, callback);
   },
 };
 
-const listNotificationsMock: Mock<any, Promise<NotificationCard[]>> = vi.fn();
+const listNotificationsMock: Mock<() => Promise<NotificationCard[]>> = vi.fn();
 
 Object.defineProperty(global, 'window', {
   value: {
@@ -82,6 +84,9 @@ test('notifications should be updated in case of an extension is stopped', async
   const extensionStoppedCallback = callbacks.get('notifications-updated');
   expect(extensionStoppedCallback).toBeDefined();
   await extensionStoppedCallback();
+
+  // wait a little
+  await new Promise(resolve => setTimeout(resolve, 100));
 
   // check if the notifications are updated
   const notificationQueue2 = get(notificationQueue);

@@ -17,15 +17,18 @@
  ***********************************************************************/
 
 import type { ConfigurationScope } from '@podman-desktop/api';
+import type { Terminal } from '@xterm/xterm';
+
+import { CONFIGURATION_DEFAULT_SCOPE } from '/@api/configuration/constants.js';
 import type {
   ProviderContainerConnectionInfo,
   ProviderInfo,
   ProviderKubernetesConnectionInfo,
-} from '../../../../main/src/plugin/api/provider-info';
+} from '/@api/provider-info';
+
 import type { IConfigurationPropertyRecordedSchema } from '../../../../main/src/plugin/configuration-registry';
-import { CONFIGURATION_DEFAULT_SCOPE } from '../../../../main/src/plugin/configuration-registry-constants';
-import { ContextKeyExpr } from '../context/contextKey';
 import type { ContextUI } from '../context/context';
+import { ContextKeyExpr } from '../context/contextKey';
 
 export interface IProviderConnectionConfigurationPropertyRecorded extends IConfigurationPropertyRecordedSchema {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -34,10 +37,13 @@ export interface IProviderConnectionConfigurationPropertyRecorded extends IConfi
   providerId: string;
 }
 
-export interface IConnectionStatus {
+export interface ILoadingStatus {
   status: string;
   action?: string;
   inProgress: boolean;
+}
+
+export interface IConnectionStatus extends ILoadingStatus {
   error?: string;
 }
 
@@ -47,8 +53,7 @@ export interface IConnectionRestart {
   loggerHandlerKey: symbol;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function writeToTerminal(xterm: any, data: any[], colorPrefix: string): void {
+export function writeToTerminal(xterm: Terminal, data: unknown, colorPrefix: string): void {
   if (Array.isArray(data)) {
     writeArrayToTerminal(xterm, data, colorPrefix);
   } else if (typeof data === 'string') {
@@ -56,7 +61,7 @@ export function writeToTerminal(xterm: any, data: any[], colorPrefix: string): v
   }
 }
 
-function writeArrayToTerminal(xterm: any, data: any[], colorPrefix: string) {
+function writeArrayToTerminal(xterm: Terminal, data: unknown[], colorPrefix: string): void {
   for (const content of data) {
     if (Array.isArray(content)) {
       writeArrayToTerminal(xterm, content, colorPrefix);
@@ -66,8 +71,7 @@ function writeArrayToTerminal(xterm: any, data: any[], colorPrefix: string) {
   }
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function writeMultilineString(xterm: any, data: string, colorPrefix: string): void {
+function writeMultilineString(xterm: Terminal, data: string, colorPrefix: string): void {
   if (data?.includes?.('\n')) {
     const toWrite = data.split('\n');
     for (const s of toWrite) {
@@ -100,7 +104,7 @@ export function isDefaultScope(scope?: ConfigurationScope | ConfigurationScope[]
   return isTargetScope(CONFIGURATION_DEFAULT_SCOPE, scope);
 }
 
-export async function getInitialValue(property: IConfigurationPropertyRecordedSchema): Promise<any> {
+export async function getInitialValue(property: IConfigurationPropertyRecordedSchema): Promise<unknown> {
   if (isDefaultScope(property.scope)) {
     if (property.id) {
       let value = await window.getConfigurationValue(property.id, CONFIGURATION_DEFAULT_SCOPE);
@@ -157,4 +161,20 @@ export function validateProxyAddress(value: string): string | undefined {
       return `Value ${value} should be an URL`;
     }
   }
+}
+
+export function isContainerConnection(
+  connection: ProviderContainerConnectionInfo | ProviderKubernetesConnectionInfo,
+): connection is ProviderContainerConnectionInfo {
+  return (connection as ProviderContainerConnectionInfo).endpoint.socketPath !== undefined;
+}
+
+export function calcHalfCpuCores(osCpu: string): number {
+  const cores = parseInt(osCpu, 10);
+  if (isNaN(cores) || cores <= 0) {
+    return 1;
+  }
+
+  const hCores = Math.floor(cores / 2);
+  return hCores === 0 ? 1 : hCores;
 }

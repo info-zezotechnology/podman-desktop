@@ -1,5 +1,5 @@
 /**********************************************************************
- * Copyright (C) 2023 Red Hat, Inc.
+ * Copyright (C) 2023-2025 Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,97 +17,112 @@
  ***********************************************************************/
 
 import '@testing-library/jest-dom/vitest';
-import { beforeAll, test, expect } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/svelte';
-import SendFeedback from './SendFeedback.svelte';
-import userEvent from '@testing-library/user-event';
 
-// fake the window.events object
+import { fireEvent, render, screen } from '@testing-library/svelte';
+import userEvent from '@testing-library/user-event';
+import { beforeAll, beforeEach, expect, test, vi } from 'vitest';
+
+import DevelopersFeedback from './feedbackForms/DevelopersFeedback.svelte';
+import GitHubIssueFeedback from './feedbackForms/GitHubIssueFeedback.svelte';
+import SendFeedback from './SendFeedback.svelte';
+
+vi.mock('./feedbackForms/GitHubIssueFeedback.svelte', () => ({
+  default: vi.fn(),
+}));
+
+vi.mock('./feedbackForms/DevelopersFeedback.svelte', () => ({
+  default: vi.fn(),
+}));
+
 beforeAll(() => {
   (window.events as unknown) = {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    receive: (_channel: string, func: any) => {
+    receive: (_channel: string, func: () => void): void => {
       func();
     },
   };
 });
 
-test('Expect that the button is disabled when loading the page', async () => {
-  render(SendFeedback, {});
-  const button = screen.getByRole('button', { name: 'Send feedback' });
-  expect(button).toBeInTheDocument();
-  expect(button).toBeDisabled();
+beforeEach(() => {
+  vi.resetAllMocks();
 });
 
-test('Expect that the button is enabled after clicking on a smiley', async () => {
+test('Expect developers feedback form to be rendered by default', () => {
+  render(SendFeedback);
+
+  expect(DevelopersFeedback).toHaveBeenCalledOnce();
+  expect(GitHubIssueFeedback).not.toHaveBeenCalled();
+});
+
+test('Expect confirmation dialog to be displayed if content changed', async () => {
   render(SendFeedback, {});
-  const button = screen.getByRole('button', { name: 'Send feedback' });
 
-  // expect to have indication why the button is disabled
-  expect(screen.getByText('Please select an experience smiley')).toBeInTheDocument();
+  expect(DevelopersFeedback).toHaveBeenCalledWith(expect.anything(), {
+    onCloseForm: expect.any(Function),
+    contentChange: expect.any(Function),
+  });
 
+  const { onCloseForm, contentChange } = vi.mocked(DevelopersFeedback).mock.calls[0][1];
+
+  // 1. simulate content change
+  contentChange(true);
+
+  // 2. close
+  onCloseForm(true);
+
+  // expect confirm dialog
+  expect(window.showMessageBox).toHaveBeenCalledWith({
+    title: 'Close Feedback form',
+    message: 'Do you want to close the Feedback form?\nClosing will erase your input.',
+    type: 'warning',
+    buttons: ['Yes', 'No'],
+  });
+});
+
+test('Expect no confirmation dialog to be displayed if content has not changed', async () => {
+  render(SendFeedback, {});
+
+  expect(DevelopersFeedback).toHaveBeenCalledWith(expect.anything(), {
+    onCloseForm: expect.any(Function),
+    contentChange: expect.any(Function),
+  });
+
+  const { onCloseForm } = vi.mocked(DevelopersFeedback).mock.calls[0][1];
+
+  // 2. close
+  onCloseForm(true);
+
+  // expect no confirm dialog
+  expect(window.showMessageBox).not.toHaveBeenCalled();
+});
+
+test('Expect GitHubIssue feedback form to be rendered if category is not developers', async () => {
+  render(SendFeedback, {});
+
+  const categorySelect = screen.getByRole('button', { name: /Direct your words to the developers/ });
+  expect(categorySelect).toBeInTheDocument();
+  categorySelect.focus();
+
+  // select the Feature request category
+  await userEvent.keyboard('[ArrowDown]');
+  const bugCategory = screen.getByRole('button', { name: /Bug/ });
+  expect(bugCategory).toBeInTheDocument();
+  await fireEvent.click(bugCategory);
   // click on a smiley
-  const smiley = screen.getByRole('button', { name: 'very-happy-smiley' });
-  await fireEvent.click(smiley);
+  expect(vi.mocked(GitHubIssueFeedback)).toHaveBeenNthCalledWith(1, expect.anything(), {
+    onCloseForm: expect.any(Function),
+    category: 'bug',
+    contentChange: expect.any(Function),
+  });
 
-  // now expect to have the button enabled
-  expect(button).toBeEnabled();
+  categorySelect.focus();
 
-  // and the indication is gone
-  expect(screen.queryByText('Please select an experience smiley')).not.toBeInTheDocument();
-});
-
-test('Expect very sad smiley errors without feedback', async () => {
-  render(SendFeedback, {});
-  const button = screen.getByRole('button', { name: 'Send feedback' });
-  expect(button).toBeDisabled();
-
-  // expect to have indication why the button is disabled
-  expect(screen.getByText('Please select an experience smiley')).toBeInTheDocument();
-
-  // click on very sad smiley
-  const smiley = screen.getByRole('button', { name: 'very-sad-smiley' });
-  await fireEvent.click(smiley);
-
-  // expect button is still disabled, but with different indication
-  expect(button).toBeDisabled();
-  const message = screen.getByText('Please share contact info or details on how we can improve');
-  expect(message).toBeInTheDocument();
-
-  // add some text
-  const feedback = screen.getByTestId('tellUsWhyFeedback');
-  expect(feedback).toBeInTheDocument();
-
-  await userEvent.type(feedback, 'PD is awesome');
-
-  // button is enabled and the indication is gone
-  expect(button).toBeEnabled();
-  expect(message).not.toBeInTheDocument();
-});
-
-test('Expect sad smiley warns without feedback', async () => {
-  render(SendFeedback, {});
-  const button = screen.getByRole('button', { name: 'Send feedback' });
-  expect(button).toBeDisabled();
-
-  // expect to have indication why the button is disabled
-  expect(screen.getByText('Please select an experience smiley')).toBeInTheDocument();
-
-  // click on very sad smiley
-  const smiley = screen.getByRole('button', { name: 'sad-smiley' });
-  await fireEvent.click(smiley);
-
-  // expect button is now enabled, but with different indication
-  expect(button).toBeEnabled();
-  const warn = screen.getByText('We would really appreciate knowing how we can improve');
-  expect(warn).toBeInTheDocument();
-
-  // add some text
-  const feedback = screen.getByTestId('tellUsWhyFeedback');
-  expect(feedback).toBeInTheDocument();
-
-  await userEvent.type(feedback, 'PD is awesome');
-
-  // and the indication is gone
-  expect(warn).not.toBeInTheDocument();
+  // select the Feature request category
+  await userEvent.keyboard('[ArrowDown]');
+  const featureCategory = screen.getByRole('button', { name: /Feature/ });
+  await fireEvent.click(featureCategory);
+  expect(vi.mocked(GitHubIssueFeedback)).toHaveBeenNthCalledWith(2, expect.anything(), {
+    onCloseForm: expect.any(Function),
+    category: 'feature',
+    contentChange: expect.any(Function),
+  });
 });

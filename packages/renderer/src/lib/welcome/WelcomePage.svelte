@@ -1,14 +1,16 @@
 <script lang="ts">
-import bgImage from './background.png';
-import DesktopIcon from '../images/DesktopIcon.svelte';
-import Fa from 'svelte-fa';
-import { faCheck } from '@fortawesome/free-solid-svg-icons';
+import { Button, Checkbox, Link, Tooltip } from '@podman-desktop/ui-svelte';
 import { onMount } from 'svelte';
-import { WelcomeUtils } from './welcome-utils';
 import { router } from 'tinro';
-import { featuredExtensionInfos } from '/@/stores/featuredExtensions';
-import Tooltip from '../ui/Tooltip.svelte';
-import Button from '../ui/Button.svelte';
+
+import { onboardingList } from '/@/stores/onboarding';
+import { providerInfos } from '/@/stores/providers';
+import type { OnboardingInfo } from '/@api/onboarding';
+
+import IconImage from '../appearance/IconImage.svelte';
+import DesktopIcon from '../images/DesktopIcon.svelte';
+import bgImage from './background.png';
+import { WelcomeUtils } from './welcome-utils';
 
 export let showWelcome = false;
 export let showTelemetry = false;
@@ -18,81 +20,133 @@ let telemetry = true;
 const welcomeUtils = new WelcomeUtils();
 let podmanDesktopVersion: string;
 
+// Extend ProviderInfo to have a selected property
+interface OnboardingInfoWithAdditionalInfo extends OnboardingInfo {
+  selected?: boolean;
+  containerEngine?: boolean;
+}
+
+let onboardingProviders: OnboardingInfoWithAdditionalInfo[] = [];
+
+// Get every provider that has a container connections
+$: providersWithContainerConnections = $providerInfos.filter(provider => provider.containerConnections.length > 0);
+
+// Using providerInfos as well as the information we have from onboarding,
+// we will by default auto-select as well as add containerEngine to the list as true/false
+// so we can make sure that extensions with container engines are listed first
+$: onboardingProviders = $onboardingList
+  .map(provider => {
+    // Check if it's in the list, if it is, then it has a container engine
+    const hasContainerConnection = providersWithContainerConnections.some(
+      connectionProvider => connectionProvider.extensionId === provider.extension,
+    );
+    return {
+      ...provider,
+      selected: true,
+      containerEngine: hasContainerConnection,
+    };
+  })
+  .sort((a, b) => Number(b.containerEngine) - Number(a.containerEngine)); // Sort by containerEngine (true first)
+
 onMount(async () => {
   const ver = await welcomeUtils.getVersion();
   if (!ver) {
-    welcomeUtils.updateVersion('initial');
+    await welcomeUtils.updateVersion('initial');
     showWelcome = true;
   }
+  router.goto('/');
+
   const telemetryPrompt = await welcomeUtils.havePromptedForTelemetry();
   if (!telemetryPrompt) {
     showTelemetry = true;
   }
   podmanDesktopVersion = await window.getPodmanDesktopVersion();
+
+  if (showWelcome) {
+    await window.updateConfigurationValue(`releaseNotesBanner.show`, podmanDesktopVersion);
+  }
 });
 
-function closeWelcome() {
+async function closeWelcome(): Promise<void> {
   showWelcome = false;
   if (showTelemetry) {
-    welcomeUtils.setTelemetry(telemetry);
+    await welcomeUtils.setTelemetry(telemetry);
   }
+}
+
+// Function to toggle provider selection
+function toggleOnboardingSelection(providerName: string): void {
+  // Go through providers, find the provider name and toggle the selected value
+  // then update providers
+  onboardingProviders = onboardingProviders.map(provider => {
+    if (provider.name === providerName) {
+      provider.selected = !provider.selected;
+    }
+    return provider;
+  });
+}
+
+function startOnboardingQueue(): void {
+  const selectedProviders = onboardingProviders.filter(provider => provider.selected);
+  const extensionIds = selectedProviders.map(provider => provider.extension);
+  const queryParams = new URLSearchParams({ ids: extensionIds.join(',') }).toString();
+  router.goto(`/global-onboarding?${queryParams}`);
 }
 </script>
 
 {#if showWelcome}
   <div
-    class="flex flex-col flex-auto fixed top-0 left-0 right-0 bottom-0 bg-zinc-700 bg-no-repeat z-50"
+    class="flex flex-col flex-auto fixed top-0 left-0 right-0 bottom-0 bg-[var(--pd-content-card-bg)] bg-no-repeat z-50"
     style="background-image: url({bgImage}); background-position: 50% -175%; background-size: 100% 75%">
     <!-- Header -->
-    <div class="flex flex-row flex-none backdrop-blur p-6 mt-10">
+    <div class="flex flex-row flex-none backdrop-blur-sm p-6 mt-10">
       <div class="flex flex-auto text-lg font-bold">Get started with Podman Desktop</div>
     </div>
 
     <!-- Body -->
-    <div class="flex flex-col justify-center content-center flex-auto backdrop-blur p-2 overflow-y-auto">
+    <div class="flex flex-col justify-center content-center flex-auto backdrop-blur-sm p-2 overflow-y-auto">
       <div class="flex justify-center p-2"><DesktopIcon /></div>
       <div class="flex justify-center text-lg font-bold p-2">
         <span class="mr-2">🎉</span>Welcome to Podman Desktop v{podmanDesktopVersion} !
       </div>
       <div class="flex flex-row justify-center">
-        <div class="bg-charcoal-500 px-4 pb-4 pt-2 rounded">
-          <div class="flex justify-center text-sm text-gray-700 pb-2">
-            <div>Podman desktop supports many container engines and orchestrators, such as:</div>
-          </div>
-          <div class="grid grid-cols-3 gap-3">
-            {#each $featuredExtensionInfos as featuredExtension}
-              <div
-                class="rounded-md
-           bg-charcoal-700 flex flex-row justify-center border-charcoal-700 p-2">
-                <div class="place-items-top flex flex-col flex-1">
-                  <div class="flex flex-row place-items-center flex-1">
-                    <div>
-                      <img
-                        alt="{featuredExtension.displayName} logo"
-                        class="max-h-6 max-w-[24px] h-auto w-auto"
-                        src="{featuredExtension.icon}" />
-                    </div>
-                    <div
-                      class="flex flex-1 mx-2 underline decoration-2 decoration-dotted underline-offset-2 cursor-default justify-center">
-                      <Tooltip tip="{featuredExtension.description}" top>
-                        {featuredExtension.displayName}
-                      </Tooltip>
+        <div class="bg-[var(--pd-content-card-inset-bg)] px-4 pb-4 pt-2 rounded-sm">
+          {#if onboardingProviders && onboardingProviders.length > 0}
+            <div class="flex justify-center text-sm text-[var(--pd-content-card-text)] pb-2">
+              <div>Choose the extensions to include:</div>
+            </div>
+            <div aria-label="providerList" class="grid grid-cols-3 gap-3">
+              {#each onboardingProviders as onboarding}
+                <div
+                  class="rounded-md bg-[var(--pd-content-card-bg)] flex flex-row justify-between border-2 p-4 {onboarding.selected
+                    ? 'border-[var(--pd-content-card-border-selected)]'
+                    : 'border-[var(--pd-content-card-border)]'}">
+                  <div class="place-items-top flex flex-col flex-1">
+                    <div class="flex flex-row place-items-left flex-1">
+                      <IconImage image={onboarding.icon} class="max-h-12 h-auto w-auto" alt="{onboarding.name} logo" />
+                      <div
+                        class="flex flex-1 mx-2 underline decoration-2 decoration-dotted underline-offset-2 cursor-default justify-left text-capitalize">
+                        <Tooltip top tip={onboarding.description}>
+                          {onboarding.displayName}
+                        </Tooltip>
+                      </div>
                     </div>
                   </div>
+
+                  <Checkbox
+                    title="{onboarding.displayName} checkbox"
+                    name="{onboarding.displayName} checkbox"
+                    bind:checked={onboarding.selected}
+                    on:click={(): void => toggleOnboardingSelection(onboarding.name)}
+                    class="text-xl" />
                 </div>
-              </div>
-            {/each}
-          </div>
+              {/each}
+            </div>
+          {/if}
         </div>
       </div>
-      <div class="flex justify-center p-2 text-sm">
-        Configure these and more under <button
-          class="text-violet-400 pl-1"
-          on:click="{() => {
-            closeWelcome();
-            router.goto('/preferences');
-          }}">Settings</button
-        >.
+      <div class="flex justify-center p-2 text-sm items-center">
+        Configure these and more under Settings.
       </div>
     </div>
 
@@ -100,49 +154,49 @@ function closeWelcome() {
     {#if showTelemetry}
       <div class="flex flex-col justify-end flex-none p-4">
         <div class="flex flex-row justify-center items-start p-1 text-sm">
-          <label class="relative inline-flex items-center cursor-pointer">
-            <input
-              id="toggle-telemetry"
-              class="sr-only peer"
-              bind:checked="{telemetry}"
-              name="Enable telemetry"
-              type="checkbox"
-              aria-label="Enable telemetry" />
-            <div
-              class="w-4 h-4 rounded border-2 border-gray-700 peer peer-checked:bg-violet-500 peer-checked:border-violet-500">
-            </div>
-            <Fa class="w-4 h-4 absolute text-zinc-700" size="10" icon="{faCheck}" />
-            <span class="font-medium font-bold px-2">Telemetry:</span>
-          </label>
-          <div class="w-2/5 text-gray-400">
+          <Checkbox
+            id="toggle-telemetry"
+            bind:checked={telemetry}
+            name="Enable telemetry"
+            class="text-lg px-2"
+            title="Enable telemetry"><div class="text-base font-medium">Telemetry:</div></Checkbox>
+          <div class="w-2/5 text-[var(--pd-content-card-text)]">
             Help Red Hat improve Podman Desktop by allowing anonymous usage data to be collected.
-            <button
-              class="text-violet-400 pl-1"
-              on:click="{() => {
-                window.openExternal('https://developers.redhat.com/article/tool-data-collection');
-              }}">Read our privacy statement</button>
+            <Link
+              on:click={async (): Promise<void> => {
+                await window.openExternal('https://developers.redhat.com/article/tool-data-collection');
+              }}>Read our privacy statement</Link>
           </div>
         </div>
-        <div class="flex justify-center p-1 text-sm text-gray-700">
+        <div class="flex justify-center p-1 text-sm text-[var(--pd-content-card-text)]">
           <div>
-            You can always modify this preference later in <button
-              class="text-gray-700 pl-1"
-              on:click="{() => {
-                closeWelcome();
-                router.goto('/preferences/default/preferences.telemetry');
-              }}">Settings &gt; Preferences</button>
+            You can always modify this preference later in Settings &gt; Preferences
           </div>
         </div>
       </div>
     {/if}
 
     <!-- Footer - button bar -->
-    <div class="flex justify-end flex-none bg-charcoal-600 p-8">
+    <div class="flex justify-end flex-none bg-[var(--pd-content-bg)] p-8">
       <div class="flex flex-row">
-        <Button
-          on:click="{() => {
-            closeWelcome();
-          }}">Go to Podman Desktop</Button>
+        <!-- If Providers have any onboarding elements selected, create a button that says "Start onboarding" rather than Skip -->
+        {#if onboardingProviders && onboardingProviders.filter(o => o.selected).length > 0}
+          <!-- We will "always" show the "Skip" button
+          in-case anything were to happen with the Start onboarding button / sequence not working correctly.
+          we do not want the user to not be able to continue. -->
+          <Button
+            type="secondary"
+            on:click={closeWelcome}>Skip</Button>
+          <Button
+            class="ml-2"
+            on:click={async (): Promise<void> => {
+              await closeWelcome();
+              startOnboardingQueue();
+            }}>Start onboarding</Button>
+        {:else}
+          <Button
+            on:click={closeWelcome}>Skip</Button>
+        {/if}
       </div>
     </div>
   </div>

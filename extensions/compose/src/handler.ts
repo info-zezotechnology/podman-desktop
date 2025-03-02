@@ -16,9 +16,10 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 import * as extensionApi from '@podman-desktop/api';
+
+import { installBinaryToSystem } from './cli-run';
 import { Detect } from './detect';
 import { OS } from './os';
-import { installBinaryToSystem } from './cli-run';
 
 const os = new OS();
 
@@ -93,7 +94,9 @@ export async function installComposeBinary(
 }
 
 function getComposeBinarySetting(): boolean {
-  return extensionApi.configuration.getConfiguration('compose.binary').get<boolean>('installComposeSystemWide');
+  return (
+    extensionApi.configuration.getConfiguration('compose.binary').get<boolean>('installComposeSystemWide') ?? false
+  );
 }
 
 // Update both the configuration as well as context values

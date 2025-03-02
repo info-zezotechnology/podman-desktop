@@ -16,18 +16,20 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
-import { beforeEach, expect, test, vi } from 'vitest';
-import { AnimatedTray } from './tray-animate-icon.js';
-import * as path from 'path';
+import * as path from 'node:path';
+
 import { app } from 'electron';
+import { beforeEach, expect, test, vi } from 'vitest';
+
+import { AnimatedTray } from './tray-animate-icon.js';
 
 // to call protected methods
 class TestAnimatedTray extends AnimatedTray {
-  getAssetsFolder(): string {
+  override getAssetsFolder(): string {
     return super.getAssetsFolder();
   }
 
-  isProd(): boolean {
+  override isProd(): boolean {
     return super.isProd();
   }
 }
@@ -36,7 +38,7 @@ let testAnimatedTray: TestAnimatedTray;
 vi.mock('electron', async () => {
   return {
     app: {
-      getAppPath: () => 'a-custom-appPath',
+      getAppPath: (): string => 'a-custom-appPath',
     },
     nativeTheme: {
       on: vi.fn(),
@@ -49,31 +51,13 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-test('valid path on Production', () => {
-  // ensure we are on production mode
-  const onSpy = vi.spyOn(testAnimatedTray, 'isProd').mockReturnValue(true);
-
-  const processResourcesPathValue = path.resolve(__dirname, 'process-resourcesPath-value');
-
-  // setup the process resourcesPath property using defineProperty
-  Object.defineProperty(process, 'resourcesPath', {
-    value: processResourcesPathValue,
-    writable: true,
-  });
-  const assetFolder = testAnimatedTray.getAssetsFolder();
-  expect(assetFolder).toBe(path.resolve(processResourcesPathValue, AnimatedTray.MAIN_ASSETS_FOLDER));
-  expect(onSpy).toHaveBeenCalled();
-});
-
-test('valid path on Development', () => {
+test('valid path for icons', () => {
   // ensure we are not in prod mode
-  const onSpy = vi.spyOn(testAnimatedTray, 'isProd').mockReturnValue(false);
   const appPathValue = path.resolve(__dirname, 'appPath-value');
 
   const spyElectronGetAppPath = vi.spyOn(app, 'getAppPath').mockReturnValue(appPathValue);
 
   const assetFolder = testAnimatedTray.getAssetsFolder();
   expect(assetFolder).toBe(path.resolve(appPathValue, AnimatedTray.MAIN_ASSETS_FOLDER));
-  expect(onSpy).toHaveBeenCalled();
   expect(spyElectronGetAppPath).toHaveBeenCalled();
 });

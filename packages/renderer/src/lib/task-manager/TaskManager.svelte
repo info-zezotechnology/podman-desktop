@@ -1,123 +1,77 @@
 <script lang="ts">
-import { faCheck, faChevronDown, faCircle } from '@fortawesome/free-solid-svg-icons';
-import { clearNotifications, isStatefulTask, tasksInfo } from '/@/stores/tasks';
+import { CloseButton, NavPage } from '@podman-desktop/ui-svelte';
 
-import Fa from 'svelte-fa';
-import TaskIcon from '../images/TaskIcon.svelte';
-import TaskManagerEmptyScreen from './TaskManagerEmptyScreen.svelte';
-import TaskManagerGroup from './TaskManagerGroup.svelte';
-import Button from '../ui/Button.svelte';
+import { filtered, searchPattern } from '/@/stores/tasks';
+
+import TaskManagerBulkDeleteButton from './button/TaskManagerBulkDeleteButton.svelte';
+import TaskManagerClearAllButton from './button/TaskManagerClearAllButton.svelte';
+import TaskManagerNoFilteredTasks from './screen/TaskManagerNoFilteredTasks.svelte';
+import TaskManagerTable from './table/TaskManagerTable.svelte';
+import TaskManagerBottomArrow from './TaskManagerBottomArrow.svelte';
+import TaskManagerTabs from './TaskManagerTabs.svelte';
+import TaskManagerWindowEvents from './TaskManagerWindowEvents.svelte';
+
+interface Props {
+  searchTerm?: string;
+}
+
+let { searchTerm = $bindable('') }: Props = $props();
 
 // display or not the tasks manager (defaut is false)
-export let showTaskManager = false;
+let showTaskManager = $state(false);
 
-$: runningTasks = $tasksInfo.filter(task => {
-  if (isStatefulTask(task)) {
-    return task.state === 'running';
-  }
-  return false;
-});
-$: notificationsTasks = $tasksInfo.filter(task => {
-  if (isStatefulTask(task)) {
-    return task.state === 'completed';
-  }
-  return true;
-});
+// to filter
+let outsideWindow: HTMLDivElement | undefined = $state();
+
+let selectedItemsNumber: number = $state(0);
 
 // hide the task manager
-function hide() {
+function hide(): void {
   showTaskManager = false;
 }
 
-// If we hit ESC while the menu is open, close it
-function handleEscape({ key }: any) {
-  // if the task manager is not open, do not check any keys
-  if (!showTaskManager) {
-    return;
-  }
-  if (key === 'Escape') {
-    showTaskManager = false;
-  }
-}
-
-// listen to the event "toggle-task-manager" to toggle the task manager
-window.events?.receive('toggle-task-manager', () => {
-  showTaskManager = !showTaskManager;
+// update the search pattern store when the variable is updated
+$effect(() => {
+  searchPattern.set(searchTerm);
 });
+
+// task or tasks depending on the number of selected items
+const taskWordPlural = $derived(selectedItemsNumber > 1 ? 'tasks' : 'task');
 </script>
 
-<!-- track keys like "ESC" -->
-<svelte:window on:keyup="{handleEscape}" />
-
+<!-- track keys like "ESC" or clicking outside the window, etc. -->
+<TaskManagerWindowEvents bind:showTaskManager={showTaskManager} bind:outsideWindow={outsideWindow} />
 {#if showTaskManager}
-  <div title="Tasks manager" class="fixed bottom-9 right-4 bg-charcoal-800 h-96 w-80 z-40">
-    <!-- Draw the arrow below the box-->
-    <div
-      class="absolute bottom-0 z-50 right-[17px] transform -translate-x-1/2 translate-y-1/2 rotate-45 w-4 h-4 {$tasksInfo.length >
-      0
-        ? 'bg-charcoal-800'
-        : 'bg-charcoal-600'} border-r border-b border-zinc-600">
-    </div>
+  <div
+    bind:this={outsideWindow}
+    class="fixed bottom-8 right-4 bg-[var(--pd-modal-bg)] min-h-96 h-3/4 w-[calc(100%-52px-(var(--spacing-leftnavbar)))] z-40 border border-[var(--pd-modal-border)] rounded-md  shadow-xl shadow-black">
+    <NavPage title="Tasks" bind:searchTerm={searchTerm}>
+      <svelte:fragment slot="additional-actions">
+        <TaskManagerClearAllButton />
+        <CloseButton title="Hide (Escape)" on:click={hide} />
+      </svelte:fragment>
 
-    <div title="" class="flex flex-col h-full w-full border border-zinc-600">
-      <!-- header of the task manager -->
-      <div class="flex flex-row w-full">
-        <!-- title of bars-->
-        <div class="p-2 flex flex-row items-center w-full text-gray-400">
-          <TaskIcon size="15" />
-          <div class="text-xs uppercase ml-2">tasks</div>
-          <div class="flex-1"></div>
-          <!--
-          <div title="Toggle Do Not Disturb Mode" class="cursor-pointer hover:bg-charcoal-600 p-1">
-            <BellSlashIcon size="15" />
-          </div>
-          -->
-          <button on:click="{() => hide()}" title="Hide (Escape)" class="cursor-pointer hover:bg-charcoal-600 p-1 ml-1">
-            <Fa icon="{faChevronDown}" size="15" />
-          </button>
-        </div>
+      <svelte:fragment slot="tabs">
+        <TaskManagerTabs bind:searchTerm={searchTerm} />
+      </svelte:fragment>
+
+      <svelte:fragment slot="bottom-additional-actions">
+        {#if selectedItemsNumber > 0}
+          <TaskManagerBulkDeleteButton
+            title="Delete {selectedItemsNumber} selected {taskWordPlural}"
+            bulkOperationTitle="delete {selectedItemsNumber} {taskWordPlural}" />
+          <span>On {selectedItemsNumber} selected {taskWordPlural}.</span>
+        {/if}
+      </svelte:fragment>
+
+      <div class="flex min-w-full h-full" slot="content">
+        <TaskManagerTable bind:selectedItemsNumber={selectedItemsNumber} tasks={$filtered} />
+        {#if $filtered.length === 0}
+          <TaskManagerNoFilteredTasks bind:searchTerm={searchTerm} />
+        {/if}
       </div>
-
-      {#if $tasksInfo.length > 0}
-        <div class="flex flex-col grow h-[100px] overflow-y-auto">
-          <!-- running tasks-->
-          {#if runningTasks.length > 0}
-            <div class="flex bg-zinc-700 px-4">
-              <TaskManagerGroup
-                lineColor="bg-charcoal-600"
-                icon="{faCircle}"
-                tasks="{runningTasks}"
-                title="running tasks" />
-            </div>
-          {/if}
-
-          <!-- completed tasks-->
-          {#if notificationsTasks.length > 0}
-            <div class="flex bg-charcoal-600 pt-1 px-4">
-              <TaskManagerGroup
-                lineColor="bg-zinc-400"
-                icon="{faCheck}"
-                tasks="{notificationsTasks}"
-                title="notifications" />
-            </div>
-          {/if}
-        </div>
-      {/if}
-
-      <!-- footer of the task manager -->
-      <!-- only if there are tasks-->
-      {#if notificationsTasks.length > 0}
-        <div class="flex flex-row w-full">
-          <div class="p-2 flex flex-row space-x-2 w-full">
-            <Button on:click="{() => clearNotifications()}">Clear</Button>
-            <!--<Button>View task history</Button>-->
-          </div>
-        </div>
-      {/if}
-      <!-- display the empty screen -->
-      {#if $tasksInfo.length === 0}
-        <TaskManagerEmptyScreen />
-      {/if}
-    </div>
+    </NavPage>
   </div>
+  <TaskManagerBottomArrow />
+
 {/if}

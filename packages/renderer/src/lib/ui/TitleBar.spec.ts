@@ -19,8 +19,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import '@testing-library/jest-dom/vitest';
-import { test, expect, vi, beforeAll, beforeEach, describe } from 'vitest';
+
 import { render, screen } from '@testing-library/svelte';
+import { tick } from 'svelte';
+import { beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
+
 import TitleBar from './TitleBar.svelte';
 
 const getOsPlatformMock = vi.fn();
@@ -34,11 +37,8 @@ beforeEach(() => {
 });
 
 async function waitRender(customProperties: object): Promise<void> {
-  const result = render(TitleBar, { ...customProperties });
-  // wait that result.component.$$.ctx[0] is set
-  while (result.component.$$.ctx[0] === undefined) {
-    await new Promise(resolve => setTimeout(resolve, 100));
-  }
+  render(TitleBar, { ...customProperties });
+  await tick();
 }
 
 describe('macOS', () => {

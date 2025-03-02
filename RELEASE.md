@@ -37,19 +37,44 @@ Below is what a typical release week may look like:
 
 ## Test release before it is rolling out.
 
-The release is a pre-release, it means it is not yet the latest version, so no clients will automatically update to this version.
+The release is a **pre-release**, it means it is not yet the latest version, so no clients will automatically update to this version.
 
-It allows QE (and everyone else) to test these binaries before they go live or are in the package managers.
+Inform QE the **pre-release** is out! It allows QE (and everyone else) to download and test these binaries before they go live or are in the package managers.
 
-At this step, generates as well Flathub pull request so people can test the package from the builders of the pull request.
+The release may be tested using the assets generated within the pre-release.
 
-## Next phase
+## QE and cherry picking fixes
 
-- ❌ All severe bugs and regressions are investigated and discussed. If we agree any should block the release, need to fix the bugs and do a respin of the release with a new .z release like 1.3.1 instead of 1.3.0.
+- ❌ All severe bugs and regressions brought up by QE are investigated and discussed. If we agree any should block the release, need to fix the bugs and do a respin of the release with a new .z release like 1.3.1 instead of 1.3.0.
 
-Create a branch if it does not exist. For example 1.3.x if 1.3.0 failed. Then, cherry-pick bugfixes in that branch.
+**Cherry picking:**
 
-- ✅ If committers agree we have a green light, proceed. **Do not forget to change the release from 'pre-release' to 'latest release' before proceeding**.
+If there are fixes that need to be made to the release as brought up by QE the following steps need to be completed:
+
+1. Create a branch **FROM THE RELEASE**. Example, 1.3.x of release 1.3.0. **IMPORTANT NOTE:** Literally `1.3.x` not `1.3.1`.
+2. Create PR(s) with the fixes that merge into the 1.3.x branch
+3. Make sure all PR's are merged
+
+**Re-spin a release:**
+
+You'll need to create another release from the 1.3.x branch. This can be done by doing the following:
+1. Go to `Run workflow` in the [release steps](/RELEASE.md#releasing-on-github) again.
+2. **MAKE SURE** you specify that you want to use the `1.3.x` branch, NOT `main` under `Branch to use for the release`.
+3. Version to release should be `1.3.1` **IMPORTANT NOTE:** Literally `1.3.1` NOT the branch name `1.3.x`.
+
+## Change from pre-release to release
+
+✅ If QE agrees with the release, we have a green light!
+
+**DO NOT FORGET to change from pre-release to release!**
+
+This is done on your release URL 
+
+ **Do not forget to change the release from 'pre-release' to 'latest release' before proceeding**.
+
+ 1. Go to your release: https://github.com/containers/podman-desktop/releases/tag/vX.X.X
+ 2. Press the edit button.
+ 3. Uncheck `Set as a pre-release`
 
 ## Updating package managers (Brew, Winget, Chocolatey, Flathub)
 
@@ -99,32 +124,15 @@ You can view the progress at: https://community.chocolatey.org/packages/podman-d
 
 ### Flathub
 
-1. Fork the repository https://github.com/flathub/io.podman_desktop.PodmanDesktop and clone your repository (example https://github.com/benoitf/io.podman_desktop.PodmanDesktop)
-1. Edit the file: `io.podman_desktop.PodmanDesktop.yml`
-1. Replace url: https://github.com/containers/podman-desktop/archive/refs/tags/vXXX.tar.gz by the correct version (`0.12.0`)
-1. Download the package: `wget https://github.com/containers/podman-desktop/archive/refs/tags/v0.12.0.tar.gz` or `curl -O -L https://github.com/containers/podman-desktop/archive/refs/tags/v0.12.0.tar.gz`
-1. Get the SHA256: `shasum -a 256 v0.12.0.tar.gz`
-1. Update `io.podman_desktop.PodmanDesktop.yml` with the new SHA256.
-1. Unpack the tar: `tar zxf v0.12.0.tar.gz`
-1. Run the command (updating the `0.12.0` volume mount path)
-   ```sh
-   podman run --rm -it -v $(pwd)/podman-desktop-0.12.0:/podman quay.io/podman-desktop/flatpak-node-generator yarn /podman/yarn.lock -o /podman/generated-sources.json
-   ```
-   or (for Windows users)
-   ```sh
-   podman run --rm -it -v %CD%\podman-desktop-0.12.0:/podman quay.io/podman-desktop/flatpak-node-generator yarn /podman/yarn.lock -o /podman/generated-sources.json
-   ```
-   or (for :penguin: Linux users)
-   ```sh
-   podman run --rm -it -v %CD%\podman-desktop-0.12.0:/podman:z quay.io/podman-desktop/flatpak-node-generator yarn /podman/yarn.lock -o /podman/generated-sources.json
-   ```
-1. Copy the file `$(pwd)/podman-desktop-0.12.0/generated-sources.json` to `generated-sources.json`
-1. Only commit the files:
+Publish to Flathub. The workflow will create an automated PR to the flathub repository https://github.com/flathub/io.podman_desktop.PodmanDesktop
 
-- `generated-sources.json`
-- `io.podman_desktop.PodmanDesktop.yml`
+1. Go to https://github.com/containers/podman-desktop/actions/workflows/publish-flathub.yaml
+1. Click on the top right drop-down `Run workflow`
+1. Enter the release version `0.12.0` for example. DO NOT add the `v`
+1. Click `Run workflow`
 
-1. Create a PR to the repository with a title like `feat: bump to v0.11.0`
+You can view the PR at: https://github.com/flathub/io.podman_desktop.PodmanDesktop/pulls/podman-desktop-bot
+
 1. If the PR passes all tests, merge the PR
 
 ## Documentation
@@ -135,6 +143,7 @@ You can generate "draft" release notes by using the [release notes workflow](htt
 
 1. Use an [example template](#release-notes-template) for the release notes.
 1. Create a PR to the blog folder of the website using the file format: `website/blog/2023-07-12-release-0.13.md`
+1. Example of request when using `gh` cli tool for 1.9.0 milestone: `gh pr list --limit 300 --repo "containers/podman-desktop" --search "state:closed milestone:1.9.0" --json title,number,url --template '{{range .}}- {{.title}} [#{{.number}}]({{.url}}){{"\n"}}{{end}}'`
 1. Add any images to the `website/img/podman-desktop-release-0.13` folder.
 1. Ping the respective docs maintainers for a review before merging.
 
@@ -184,7 +193,7 @@ An example of a previous post: https://www.reddit.com/r/podman/comments/10moat6/
 #### Email announcement
 
 1. Send email to devtools-team at redhat.com, Podman-Desktop at redhat.com
-1. Send email to product-announce at redhat.com (high level)
+1. Check in with the Product Manager (PM) about the product-announce announcement (high level)
 1. Send email to podman-desktop at lists.podman.io (no links to Red Hat internal slack, etc.)
 
 ## Release notes template
@@ -198,13 +207,13 @@ authors: [YOURUSERNAME]
 tags: [podman-desktop, release, kubernetes, openshift]
 hide_table_of_contents: false
 <!-- This image link is used for social media previews / thumbnails. Release images are available: https://github.com/containers/podman-desktop-internal/tree/main/release-images -->
-image: /blog/img/podman-desktop-release-1.X/X.png
+image: /img/blog/podman-desktop-release-1.X/X.png
 ---
 
 <!-- ADD IMPORT REACTPLAYER IF USING VIDEO -->
 <!-- import ReactPlayer from 'react-player' -->
 <!-- EXAMPLE -->
-<!-- <ReactPlayer playing controls url="https://user-images.githubusercontent.com/436777/241246481-305d215f-2a5c-46e8-9cc3-ecd90a6bd2bc.mp4" /> -->
+<!-- <ReactPlayer playing playsinline controls url="https://user-images.githubusercontent.com/436777/241246481-305d215f-2a5c-46e8-9cc3-ecd90a6bd2bc.mp4" /> -->
 
 Podman Desktop X.X Release! 🎉
 
@@ -225,7 +234,7 @@ Podman Desktop X.X is now available. [Click here to download it](/downloads)!
 
 ---
 
-## Release Details
+## Release details
 
 <!-- DESCRIBE MAJOR CHANGES, INCLUDE IMAGES / VIDEO IF APPLICABLE -->
 
@@ -239,7 +248,7 @@ Podman Desktop X.X is now available. [Click here to download it](/downloads)!
 
 ---
 
-## Other Notable Enhancements
+## Other notable enhancements
 
 <!-- CATCHALL SECTION FOR MINOR ENHANCEMENTS -- >
 <!-- USE BULLET POINTS -->
@@ -248,7 +257,7 @@ Podman Desktop X.X is now available. [Click here to download it](/downloads)!
 
 ---
 
-## Notable Bug Fixes
+## Notable bug fixes
 
 <!-- CATCHALL SECTION FOR BUG FIXES -- >
 <!-- USE BULLET POINTS -->
@@ -257,7 +266,7 @@ Podman Desktop X.X is now available. [Click here to download it](/downloads)!
 
 ---
 
-## Community Thank You
+## Community thank you
 
 🎉 We’d like to say a big thank you to everyone who helped to make Podman Desktop even better. In this
 release we received pull requests from the following people:

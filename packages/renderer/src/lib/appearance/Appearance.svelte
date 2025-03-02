@@ -1,32 +1,20 @@
 <script lang="ts">
-import { onMount, onDestroy } from 'svelte';
+import { onDestroy, onMount } from 'svelte';
+import type { Unsubscriber } from 'svelte/store';
 
 import { AppearanceSettings } from '../../../../main/src/plugin/appearance-settings';
+import { isDark } from '../../stores/appearance';
 import { onDidChangeConfiguration } from '../../stores/configurationProperties';
 
+let isDarkUnsubscribe: Unsubscriber;
+let isDarkTheme = false;
+
 const APPEARANCE_CONFIGURATION_KEY = AppearanceSettings.SectionName + '.' + AppearanceSettings.Appearance;
-async function updateAppearance(): Promise<void> {
-  // get the configuration of the appearance
-  const appearance = await window.getConfigurationValue<string>(APPEARANCE_CONFIGURATION_KEY);
-
-  let isDark = false;
-
-  if (appearance === AppearanceSettings.SystemEnumValue) {
-    // need to read the system default theme using the window.matchMedia
-    isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    //FIXME: for now we hardcode to the dark theme even if the Operatin System is using light theme
-    // as it renders correctly only in dark mode today
-    isDark = true;
-  } else if (appearance === AppearanceSettings.LightEnumValue) {
-    isDark = false;
-  } else if (appearance === AppearanceSettings.DarkEnumValue) {
-    isDark = true;
-  }
-
+function updateAppearance(): void {
   const html = document.documentElement;
 
   // toggle the dark class on the html element
-  if (isDark) {
+  if (isDarkTheme) {
     html.classList.add('dark');
     html.setAttribute('style', 'color-scheme: dark;');
   } else {
@@ -41,10 +29,17 @@ let onDidChangeConfigurationCallback: EventListenerOrEventListenerObject = () =>
 };
 
 onMount(async () => {
-  await updateAppearance();
+  updateAppearance();
 
   // add a listener for the appearance change in case user change setting on the Operating System
   window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+    updateAppearance();
+    // notify changes
+    window.dispatchEvent(new Event('appearance-changed'));
+  });
+
+  isDarkUnsubscribe = isDark.subscribe(value => {
+    isDarkTheme = value;
     updateAppearance();
   });
 });
@@ -55,5 +50,9 @@ onDidChangeConfiguration.addEventListener(APPEARANCE_CONFIGURATION_KEY, onDidCha
 // remove callback when the component is destroyed
 onDestroy(() => {
   onDidChangeConfiguration.removeEventListener(APPEARANCE_CONFIGURATION_KEY, onDidChangeConfigurationCallback);
+
+  if (isDarkUnsubscribe) {
+    isDarkUnsubscribe();
+  }
 });
 </script>

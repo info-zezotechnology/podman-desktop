@@ -1,8 +1,10 @@
 <script lang="ts">
 import { faRefresh } from '@fortawesome/free-solid-svg-icons';
-import Button from '../ui/Button.svelte';
-import TroubleshootingPageStoreDetails from './TroubleshootingPageStoreDetails.svelte';
+import { Button } from '@podman-desktop/ui-svelte';
+
 import type { EventStoreInfo } from '/@/stores/event-store';
+
+import TroubleshootingPageStoreDetails from './TroubleshootingPageStoreDetails.svelte';
 
 export let eventStoreInfo: EventStoreInfo;
 
@@ -19,26 +21,26 @@ async function fetch(): Promise<void> {
 let openDetails = false;
 </script>
 
-<div class="flex flex-col bg-charcoal-800 p-2 items-center rounded w-full">
-  <div><svelte:component this="{eventStoreInfo.iconComponent}" size="20" /></div>
+<div class="flex flex-col bg-[var(--pd-invert-content-card-bg)] p-2 items-center rounded-sm w-full">
+  <div><svelte:component this={eventStoreInfo.iconComponent} size="20" /></div>
   <div class="text-xl">
     <button
-      disabled="{fetchInProgress}"
-      class="underline outline-none"
+      disabled={fetchInProgress}
+      class="underline outline-hidden"
       title="Open Details"
       aria-label="Open Details"
-      on:click="{() => (openDetails = true)}">
+      on:click={(): boolean => (openDetails = true)}>
       {eventStoreInfo.name}
     </button>
   </div>
   <div class="text-sm">({eventStoreInfo.size} items)</div>
   <div class="">
     <Button
-      bind:inProgress="{fetchInProgress}"
+      bind:inProgress={fetchInProgress}
       class="my-1"
       aria-label="Refresh"
-      on:click="{() => fetch()}"
-      icon="{faRefresh}">
+      on:click={fetch}
+      icon={faRefresh}>
       Refresh
     </Button>
   </div>
@@ -51,9 +53,9 @@ let openDetails = false;
 
   {#if openDetails}
     <TroubleshootingPageStoreDetails
-      closeCallback="{() => {
+      closeCallback={(): void => {
         openDetails = false;
-      }}"
-      eventStoreInfo="{eventStoreInfo}" />
+      }}
+      eventStoreInfo={eventStoreInfo} />
   {/if}
 </div>

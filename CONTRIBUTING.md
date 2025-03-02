@@ -10,6 +10,7 @@ that we follow.
 ## Topics
 
 - [Reporting Issues](#reporting-issues)
+- [Providing Extensions](#providing-extensions)
 - [Working On Issues](#working-on-issues)
 - [Contributing](#contributing)
 - [Continuous Integration](#continuous-integration)
@@ -17,6 +18,7 @@ that we follow.
 - [Communication](#communication)
 - [Code Architecture](#code-architecture)
 - [Maintainer Tasks](#maintainer-tasks)
+- [Website Contributions](#website-contributions)
 
 ## Reporting Issues
 
@@ -35,6 +37,19 @@ to remove the extra stuff that doesn't really relate to the issue itself.
 The easier it is for us to reproduce it, the faster it'll be fixed!
 
 Please don't include any private/sensitive information in your issue!
+
+## Providing Extensions
+
+Some of the best features of Podman Desktop aren't even in this repository!
+Podman Desktop provides a set of API that expands its capabilities
+by installing [extensions](https://podman-desktop.io/extensions).
+
+Extensions add support for new container engines, command line tools,
+Kubernetes providers, or add elements to the UI like actions, badges, or views.
+You can create your own extension and contribute it to the catalog for
+others to use.
+
+See the [extension documentation](https://podman-desktop.io/docs/extensions) on our website for more information.
 
 ## Working On Issues
 
@@ -56,15 +71,15 @@ You can develop on either: `Windows`, `macOS` or `Linux`.
 
 Requirements:
 
-- [Node.js 18+](https://nodejs.org/en/)
-- [yarn](https://yarnpkg.com/)
+- [Node.js 20+](https://nodejs.org/en/)
+- [pnpm v9.x](https://pnpm.io/installation) (`corepack enable pnpm`)
 
 Optional Linux requirements:
 
-- [Flatpak builder, runtime, and SDK, version 23.08](https://docs.flatpak.org/en/latest/first-build.html)
+- [Flatpak builder, runtime, and SDK, version 24.08](https://docs.flatpak.org/en/latest/first-build.html)
   ```sh
   flatpak remote-add --if-not-exists flathub --user https://flathub.org/repo/flathub.flatpakrepo
-  flatpak install --user flathub org.flatpak.Builder org.freedesktop.Platform//23.08 org.freedesktop.Sdk//23.08
+  flatpak install --user flathub org.flatpak.Builder org.freedesktop.Platform//24.08 org.freedesktop.Sdk//24.08
   ```
 - GNU C and C++ compiler
   Fedora/RHEL
@@ -75,6 +90,10 @@ Optional Linux requirements:
   ```sh
   apt-get install build-essential
   ```
+
+On Windows:
+
+- [Microsoft Visual C++ Redistributable](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist?view=msvc-170#visual-studio-2015-2017-2019-and-2022)
 
 ### Step 1. Fork and clone Podman Desktop
 
@@ -88,10 +107,10 @@ git clone https://github.com/<you>/podman-desktop && cd podman-desktop
 
 ### Step 2. Install dependencies
 
-Fetch all dependencies using the command `yarn`:
+Fetch all dependencies using the command `pnpm`:
 
 ```sh
-yarn install
+pnpm install
 ```
 
 ### Step 3. Start in watch mode
@@ -99,7 +118,7 @@ yarn install
 Run the application in watch mode:
 
 ```sh
-yarn watch
+pnpm watch
 ```
 
 The dev environment will track all files changes and reload the application respectively.
@@ -108,22 +127,22 @@ The dev environment will track all files changes and reload the application resp
 
 Write tests! Please try to write some unit tests when submitting your PR.
 
-Run the unit and component tests using `yarn`:
+Run the unit and component tests using `pnpm`:
 
 ```sh
-yarn test:unit
+pnpm test:unit
 ```
 
 Depending on to what part of project you contribute to, you can specify to run tests for the given module only, ie., if you are working on extensions, you can run the tests for extensions and have faster feedback:
 
 ```sh
-yarn test:extensions
+pnpm test:extensions
 ```
 
 or if you are contributing to a particular extension, you can call:
 
 ```sh
-yarn test:extensions:compose
+pnpm test:extensions:compose
 ```
 
 This will show a test results for restricted amount of tests:
@@ -145,15 +164,43 @@ Check the npm script tasks in our `package.json` for more options.
 
 ### Step 5. Run E2E tests
 
-In case of adding new feature, it is always suitable to make sure we do not bring any new regression. For this purpose we are using the E2E tests. They can be run using `yarn`:
+In case of adding new feature, it is always suitable to make sure we do not bring any new regression. For this purpose we are using the E2E tests. They can be built and run using `pnpm` with a variety of options:
+
+- For all the tests:
 
 ```sh
-yarn test:e2e:smoke
+pnpm test:e2e
 ```
 
-Although, there are requirements that need to be fulfilled before running the tests in order to make them pass:
+- For the smoke tests:
 
-- remove `settings.json` from `~/.local/share/containers/podman-desktop/configuration/` or if you do not want to lose your settings, remove the objects from the file with keys `"welcome.version"` and `"telemetry.*"`
+```sh
+pnpm test:e2e:smoke
+```
+
+- For the extension tests:
+
+```sh
+pnpm test:e2e:extension
+```
+
+You can find more specific options on the [package.json](https://github.com/containers/podman-desktop/blob/main/package.json) file, under 'scripts'.
+
+However, there are some things that you have to take into account:
+
+- In order to make the tests pass you have to either:
+  - Remove `settings.json` from `~/.local/share/containers/podman-desktop/configuration/` or,
+  - Remove the objects with keys `"welcome.version"` and `"telemetry.*"` from the file, if you do not want to lose your settings
+- Some of the tests can only be executed in certain operating systems. If your execution is skipping a test, this is very likely the reason why.
+- If you want to execute the tests outside of the repository, you can find a setup guide in this [README](https://github.com/containers/podman-desktop/tree/main/tests/playwright#podman-desktop-playwright-tests).
+
+Finally, after executing the E2E tests, you can check the results in your browser with:
+
+```sh
+pnpm exec playwright show-report tests/playwright/output/html-results
+```
+
+In case of an error, you can find more information that can help you debug in the `podman-desktop/tests/playwright/output` folder. You have the video repetitions on `videos`, captures of the application failing the test on `screenshots`, and the traces of the execution on `traces`. The latter ones can be opened with `npx playwright show-trace <path/to/trace/zip`.
 
 ### Step 6. Code coverage
 
@@ -183,20 +230,20 @@ When contributing the new code, you should consider not lowering overall code co
 
 ### Step 7. Code formatter / linter
 
-We use `prettier` as a formatter and `eslint` for linting.
+We use `@biomejs/biome` (and `prettier` for markdown) as formatter and `eslint` for linting.
 
 Check that your code is properly formatted with the linter and formatter:
 
 Checking:
 
 ```sh
-yarn lint:check && yarn format:check
+pnpm lint:check && pnpm format:check
 ```
 
 Fix:
 
 ```sh
-yarn lint:fix && yarn format:fix
+pnpm lint:fix && pnpm format:fix
 ```
 
 ### Step 8. Compile production binaries (optional)
@@ -204,12 +251,14 @@ yarn lint:fix && yarn format:fix
 You may want to test the binary against your local system before pushing a PR, you can do so by running the following command:
 
 ```sh
-yarn compile:current
+pnpm compile:current
 ```
 
 This will create a binary according to your local system and output it to the `dist/` folder.
 
 > **_NOTE:_** macOS and Windows create binaries while Linux will create a `.flatpak`. Make sure your flatpak dependencies are installed for successful compiling on Linux.
+
+> **_macOS NOTE:_** On macOS the `dist/` folder will contain folders for `arm64` and `universal` `.app` files. Ignore these and use the `.app` file in the `dist/mac/` folder for testing.
 
 ## Submitting Pull Requests
 
@@ -222,7 +271,6 @@ Make sure you include the issue in your PR! For example, say: `Closes #XXX`.
 PRs will be approved by an [approver][owners] listed in [`CODEOWNERS`](CODEOWNERS).
 
 We typically require one approval for code as well as documentation-related PR's. If it is a large code-related PR, proof of review / testing (a video / screenshot) is required.
-
 
 **Avoid enabling auto-merge** until the PR has undergone sufficient reviews and contributors have been given ample time for assessment. A maintainer will review the PR prior to the final merge. It's common for code PRs to require up to a week before merging due to reasons such as ongoing releases or dependencies on other PRs. Additionally, documentation PRs might take a few days for integration.
 
@@ -281,6 +329,29 @@ Legal name must be used (no pseudonyms or anonymous contributions)
 
 If you set your `user.name` and `user.email` git configs, you can sign your
 commit automatically with `git commit -s`.
+
+### Skipping Jobs for Draft Pull Requests on GitHub
+
+When creating a pull request in **draft mode** on GitHub, all CI/CD jobs are **skipped by default**. This behavior is intentional to avoid triggering unnecessary workflows while the pull request is still in progress.
+
+#### Triggering Jobs in Draft Mode
+
+If you want to run jobs for a pull request in **draft mode**, you need to manually apply the `area/ci` label to the pull request. Applying this label signals the CI system to execute the associated workflows, even though the pull request remains in draft.
+
+#### Steps to Trigger Jobs in Draft Mode
+
+1. Open your pull request in draft mode.
+2. Navigate to the **Labels** section in the right-hand sidebar.
+3. Apply the `area/ci` label.
+
+This action will trigger the configured CI/CD workflows for your draft pull request.
+
+#### Example Scenario
+
+- **Without the `area/ci` label**: No jobs will run for your draft pull request.
+- **With the `area/ci` label**: Jobs will be triggered, allowing you to validate your work in progress.
+
+This ensures that CI resources are used efficiently while still providing flexibility for testing during the draft stage.
 
 ### Review process
 
@@ -344,7 +415,7 @@ If you're unsure where to add code (renderer, UI, extensions, plugins) see the b
 - `packages/preload`: Electron code that runs before the page gets rendered. Typically has access to APIs and used to setup communication processes between the main and renderer code.
 - `packages/preload-docker-extension`: Electron preload code specific to the Docker Desktop extension.
 - `packages/renderer`: Electron code that runs in the renderer process. The renderer runs separate to the main process and is responsible for typically rendering the main pages of Podman Desktop. Typically, this is where you find the `.svelte` code that renders the main Podman Desktop UI.
-- `scripts`: Scripts Podman Desktop requires such as `yarn watch` functionality and updating Electron vendorered modules.
+- `scripts`: Scripts Podman Desktop requires such as `pnpm watch` functionality and updating Electron vendorered modules.
 - `tests`: Contains e2e tests for Podman Desktop.
 - `types`: Additional types required for TypeScript.
 - `website`: The documentation as well as [Podman Desktop website](https://podman-desktop.io) developed in [Docusaurus](https://docusaurus.io).
@@ -352,11 +423,30 @@ If you're unsure where to add code (renderer, UI, extensions, plugins) see the b
 
 > **_NOTE:_** Each `extension` folder is a separately packaged module. If there are any issues with loading, make sure your module is packaged correctly.
 
-### Extensions
+### UI colors
 
-Podman Desktop is modularized into extensions for each 'Provider'. You can also create and add your own extension.
+Colors in Podman Desktop are now managed by a [`color-registry.ts`](https://github.com/containers/podman-desktop/blob/main/packages/main/src/plugin/color-registry.ts) file in order to easily switch between light and dark mode.
 
-See our [EXTENSIONS.md](/EXTENSIONS.md) document for more details.
+When contributing a UI component to Podman Desktop that is colorized, you must go through some steps to figure out what color to use and how to reference it.
+
+Steps:
+
+1. Open the [`color-registry.ts`](https://github.com/containers/podman-desktop/blob/main/packages/main/src/plugin/color-registry.ts) file.
+2. Figure out which color category from the `initColors()` function.
+3. Use the referenced color with the format `[var(--pd-<color>)]`
+
+Example:
+
+1. Choose what UI component you want to add: Ex. I want to add a new primary button.
+2. Look under `initColors()` and pick `this.initButton()` and scroll down to `protected initButton()`.
+3. Pick a color. I want to use the the "primary" button. So I will pick: `${button}primary-bg`.
+4. Scroll up and note the `const` below `protected initButton()` which is `const button = 'button-';`
+5. The color can be referenced with `[var(--pd-button-primary-bg)]`. The `[var(--pd-` portion will always be consistent when refering to a color variable.
+6. For example:
+
+```ts
+<Button class="bg-[var(--pd-button-primary-bg)]"/>
+```
 
 ## Maintainer tasks
 
@@ -367,7 +457,12 @@ List of maintainer tasks to help the project run smoothly.
 Each sprint a new "Triage manager" will be assigned.
 
 Your responsibilities include:
-* Reviewing the [status/need-triage](https://github.com/containers/podman-desktop/issues?q=is%3Aopen+is%3Aissue+label%3Astatus%2Fneed-triage) label on new issues. As a maintainer, you will need to categorize these issues under the correct [area labels](https://github.com/containers/podman-desktop/labels?q=area%2F). Once categorized, remove the `status/need-triage` label and apply the appropriate area label.
-* Evaluating the severity of new issues. If an issue is classified as "critical" or "high priority" and requires immediate attention, tag a maintainer in the issue and notify them via the public community channel.
-* Identifying issues that are simple to resolve and marking them as "good first issue," thereby encouraging newcomers to contribute to the project.
-* Evaluating any stale / lingering pull requests and pinging the respective contributors. If the pull request has been opened for an extensive amount of time, ping someone to contact the contributor / push any changes required to get it merged in. If there is no communication / the pull request is stale, close them.
+
+- Reviewing the [status/need-triage](https://github.com/containers/podman-desktop/issues?q=is%3Aopen+is%3Aissue+label%3Astatus%2Fneed-triage) label on new issues. As a maintainer, you will need to categorize these issues under the correct [area labels](https://github.com/containers/podman-desktop/labels?q=area%2F). Once categorized, remove the `status/need-triage` label and apply the appropriate area label.
+- Evaluating the severity of new issues. If an issue is classified as "critical" or "high priority" and requires immediate attention, tag a maintainer in the issue and notify them via the public community channel.
+- Identifying issues that are simple to resolve and marking them as "good first issue," thereby encouraging newcomers to contribute to the project.
+- Evaluating any stale / lingering pull requests and pinging the respective contributors. If the pull request has been opened for an extensive amount of time, ping someone to contact the contributor / push any changes required to get it merged in. If there is no communication / the pull request is stale, close them.
+
+## Website Contributions
+
+See our [WEBSITE_CONTRIBUTING](/WEBSITE_CONTRIBUTING.md) documentation for more details on how to contribute to the website.

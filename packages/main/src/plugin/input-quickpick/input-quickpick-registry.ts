@@ -1,5 +1,5 @@
 /**********************************************************************
- * Copyright (C) 2023 Red Hat, Inc.
+ * Copyright (C) 2023-2024 Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@ import type {
   InputBoxValidationMessage,
   QuickPickOptions,
 } from '@podman-desktop/api';
+
 import type { ApiSenderType } from '../api.js';
 import { Deferred } from '../util/deferred.js';
 
@@ -70,6 +71,7 @@ export class InputQuickPickRegistry {
       markdownDescription: options?.markdownDescription,
       multiline: options?.multiline,
       validate,
+      ignoreFocusOut: options?.ignoreFocusOut,
     };
 
     // need to send the options to the frontend
@@ -88,7 +90,7 @@ export class InputQuickPickRegistry {
   }
 
   // this method is called by the frontend when the user has entered a value
-  onInputBoxValueEntered(id: number, value: string | undefined, error?: string) {
+  onInputBoxValueEntered(id: number, value: string | undefined, error?: string): void {
     // get the callback
     const callback = this.callbacksInputBox.get(id);
 
@@ -108,22 +110,28 @@ export class InputQuickPickRegistry {
   }
 
   // this method is called by the frontend when the user has selected a value in QuickPick
-  onQuickPickValuesSelected(id: number, indexes: number[]): void {
+  onQuickPickValuesSelected(id: number, indexes?: number[]): void {
     // get the callback
     const callback = this.callbacksQuickPicks.get(id);
 
     // if there is a callback
     if (callback) {
-      if (callback.options?.canPickMany) {
+      if (!indexes) {
+        // no selection
+        callback.deferred.resolve(undefined);
+      } else if (callback.options?.canPickMany) {
         const allItems = indexes.map(index => callback.items[index]);
         // resolve the promise
         callback.deferred.resolve(allItems);
-      } else {
+      } else if (indexes[0] !== undefined) {
         // grab item
         const item = callback.items[indexes[0]];
 
         // resolve the promise
         callback.deferred.resolve(item);
+      } else {
+        // error
+        callback.deferred.reject('no item');
       }
 
       // remove the callback
@@ -195,6 +203,7 @@ export class InputQuickPickRegistry {
       items: items,
       // need to callback to the frontend when selecting an item
       onSelectCallback,
+      ignoreFocusOut: options?.ignoreFocusOut,
     };
 
     // need to send the options to the frontend

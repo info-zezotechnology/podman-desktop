@@ -1,99 +1,123 @@
 <script lang="ts">
+import { faFlask } from '@fortawesome/free-solid-svg-icons';
+import { SettingsNavItem } from '@podman-desktop/ui-svelte';
 import { onMount } from 'svelte';
-import { extensionInfos } from './stores/extensions';
-import { configurationProperties } from './stores/configurationProperties';
-import { CONFIGURATION_DEFAULT_SCOPE } from '../../main/src/plugin/configuration-registry-constants';
-import SettingsNavItem from './lib/preferences/SettingsNavItem.svelte';
 import type { TinroRouteMeta } from 'tinro';
 
-export let meta: TinroRouteMeta;
+import { CONFIGURATION_DEFAULT_SCOPE } from '/@api/configuration/constants.js';
+import { ExperimentalSettings } from '/@api/docker-compatibility-info';
 
-let configProperties: Map<string, { id: string; title: string }>;
+import { configurationProperties } from './stores/configurationProperties';
 
-$: configProperties = new Map();
-let sectionExpanded: { [key: string]: boolean } = {};
-$: sectionExpanded = {};
-
-function sortItems(items: any): any[] {
-  return items.sort((a: { title: string }, b: { title: any }) => a.title.localeCompare(b.title));
+interface Props {
+  meta: TinroRouteMeta;
 }
 
-onMount(async () => {
-  configurationProperties.subscribe(value => {
-    configProperties = value
-      .filter(property => property.scope === CONFIGURATION_DEFAULT_SCOPE)
-      .filter(property => !property.hidden)
-      .reduce((map: any, property) => {
-        let [parentLeftId] = property.parentId.split('.');
+interface NavItem {
+  id: string;
+  title: string;
+}
 
-        if (map[parentLeftId] === undefined) {
-          map[parentLeftId] = [];
-        }
+let { meta }: Props = $props();
 
-        let children = map[parentLeftId].find((item: any) => item.id === property.parentId);
-        if (children === undefined) {
-          map[parentLeftId].push({ id: property.parentId, title: property.title });
-        }
-        return map;
-      }, new Map());
+let dockerCompatibilityEnabled = $state(false);
+let configProperties: Map<string, NavItem[]> = $state(new Map<string, NavItem[]>());
+let sectionExpanded: { [key: string]: boolean } = $state({});
+
+let experimentalSection: boolean = $state(false);
+
+function updateDockerCompatibility(): void {
+  window
+    .getConfigurationValue<boolean>(`${ExperimentalSettings.SectionName}.${ExperimentalSettings.Enabled}`)
+    .then(result => {
+      if (result !== undefined) {
+        dockerCompatibilityEnabled = result;
+      }
+    })
+    .catch((err: unknown) =>
+      console.error(
+        `Error getting configuration value ${ExperimentalSettings.SectionName}.${ExperimentalSettings.Enabled}`,
+        err,
+      ),
+    );
+}
+
+function sortItems(items: NavItem[]): NavItem[] {
+  return items.toSorted((a, b) => a.title.localeCompare(b.title));
+}
+
+onMount(() => {
+  return configurationProperties.subscribe(value => {
+    // update compatibility
+    updateDockerCompatibility();
+
+    // check for experimental configuration
+    experimentalSection = value.some(configuration => !!configuration.experimental);
+
+    // update config properties
+    configProperties = value.reduce((map, current) => {
+      // filter on default scope
+      if (current.scope !== CONFIGURATION_DEFAULT_SCOPE) return map;
+
+      // do not include hidden property
+      if (current.hidden) return map;
+
+      let [parentLeftId] = current.parentId.split('.');
+      const array: NavItem[] = map.get(parentLeftId) ?? [];
+
+      let children = array.find((item: NavItem) => item.id === current.parentId);
+      if (children === undefined) {
+        map.set(parentLeftId, [...array, { id: current.parentId, title: current.title }]);
+      }
+      return map;
+    }, new Map<string, NavItem[]>());
   });
 });
 </script>
 
 <nav
-  class="z-1 w-leftsidebar min-w-leftsidebar shadow flex-col justify-between flex transition-all duration-500 ease-in-out bg-charcoal-700"
+  class="z-1 w-leftsidebar min-w-leftsidebar flex-col justify-between flex transition-all duration-500 ease-in-out bg-[var(--pd-secondary-nav-bg)] border-[var(--pd-global-nav-bg-border)] border-r-[1px]"
   aria-label="PreferencesNavigation">
   <div class="flex items-center">
-    <div class="pt-4 px-5 mb-10">
-      <p class="text-xl first-letter:uppercase">Settings</p>
+    <div class="pt-4 px-3 mb-5">
+      <p
+        class="text-xl font-semibold text-[color:var(--pd-secondary-nav-header-text)] border-l-[4px] border-transparent">
+        Settings
+      </p>
     </div>
   </div>
-  <div class="h-full overflow-hidden hover:overflow-y-auto" style="margin-bottom:auto">
-    <SettingsNavItem title="Resources" href="/preferences/resources" bind:meta="{meta}" />
+  <div class="h-full overflow-y-auto" style="margin-bottom:auto">
+    {#each [{ title: 'Resources', href: '/preferences/resources', visible: true }, { title: 'Proxy', href: '/preferences/proxies', visible: true }, { title: 'Docker Compatibility', href: '/preferences/docker-compatibility', visible: dockerCompatibilityEnabled }, { title: 'Registries', href: '/preferences/registries', visible: true }, { title: 'Authentication', href: '/preferences/authentication-providers', visible: true }, { title: 'CLI Tools', href: '/preferences/cli-tools', visible: true }, { title: 'Kubernetes', href: '/preferences/kubernetes-contexts', visible: true }] as navItem}
+      {#if navItem.visible}
+        <SettingsNavItem title={navItem.title} href={navItem.href} selected={meta.url === navItem.href} />
+      {/if}
+    {/each}
 
-    <SettingsNavItem title="Proxy" href="/preferences/proxies" bind:meta="{meta}" />
-
-    <SettingsNavItem title="Registries" href="/preferences/registries" bind:meta="{meta}" />
-
-    <SettingsNavItem title="Authentication" href="/preferences/authentication-providers" bind:meta="{meta}" />
-
-    <SettingsNavItem title="CLI Tools" href="/preferences/cli-tools" bind:meta="{meta}" />
-
-    <SettingsNavItem title="Kubernetes" href="/preferences/kubernetes-contexts" bind:meta="{meta}" />
-
-    <SettingsNavItem
-      title="Extensions"
-      href="/preferences/extensions"
-      section="{true}"
-      bind:meta="{meta}"
-      bind:expanded="{sectionExpanded['extensionsCatalog']}" />
-    {#if sectionExpanded['extensionsCatalog']}
-      {#each $extensionInfos as extension}
-        <SettingsNavItem
-          title="{extension.displayName}"
-          href="/preferences/extension/{extension.id}"
-          child="{true}"
-          bind:meta="{meta}" />
-      {/each}
+    {#if experimentalSection}
+      <SettingsNavItem
+        icon={faFlask}
+        iconPosition="right"
+        title="Experimental"
+        href="/preferences/experimental"
+        selected={meta.url === '/preferences/experimental'}
+      />
     {/if}
 
-    <SettingsNavItem title="Desktop Extensions" href="/preferences/ddExtensions" bind:meta="{meta}" />
-
     <!-- Default configuration properties start -->
-    {#each Object.entries(configProperties) as [configSection, configItems]}
+    {#each configProperties as [configSection, configItems] (configSection)}
       <SettingsNavItem
-        title="{configSection}"
+        title={configSection}
         href="/preferences/default/{configSection}"
-        section="{configItems.length > 0}"
-        bind:meta="{meta}"
-        bind:expanded="{sectionExpanded[configSection]}" />
+        section={configItems.length > 0}
+        selected={meta.url === `/preferences/default/${configSection}`}
+        bind:expanded={sectionExpanded[configSection]} />
       {#if sectionExpanded[configSection]}
         {#each sortItems(configItems) as configItem}
           <SettingsNavItem
-            title="{configItem.title}"
+            title={configItem.title}
             href="/preferences/default/{configItem.id}"
-            child="{true}"
-            bind:meta="{meta}" />
+            child={true}
+            selected={meta.url === `/preferences/default/${configItem.id}`} />
         {/each}
       {/if}
     {/each}

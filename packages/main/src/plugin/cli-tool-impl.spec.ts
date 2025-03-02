@@ -16,13 +16,13 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
-import { test, expect, vi } from 'vitest';
-import type { Exec } from './util/exec.js';
-import type { ApiSenderType } from './api.js';
-import type { CliToolRegistry } from './cli-tool-registry.js';
 import type { CliToolOptions } from '@podman-desktop/api';
+import { expect, test, vi } from 'vitest';
+
+import type { CliToolExtensionInfo } from '/@api/cli-tool-info.js';
+
 import { CliToolImpl } from './cli-tool-impl.js';
-import type { CliToolExtensionInfo } from './api/cli-tool-info.js';
+import type { CliToolRegistry } from './cli-tool-registry.js';
 
 test('check updateVersion updates CliTool', () => {
   const options: CliToolOptions = {
@@ -34,8 +34,6 @@ test('check updateVersion updates CliTool', () => {
     path: 'path/to/tool-name',
   };
   const newCliTool = new CliToolImpl(
-    vi.fn() as unknown as ApiSenderType,
-    vi.fn() as unknown as Exec,
     vi.fn() as unknown as CliToolExtensionInfo,
     vi.fn() as unknown as CliToolRegistry,
     options,

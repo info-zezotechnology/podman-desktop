@@ -1,5 +1,5 @@
 /**********************************************************************
- * Copyright (C) 2023 Red Hat, Inc.
+ * Copyright (C) 2023-2024 Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,13 +24,18 @@
 /* eslint-disable sonarjs/no-identical-functions */
 /* eslint-disable sonarjs/no-nested-switch */
 /* eslint-disable @typescript-eslint/no-non-null-assertion */
+/* eslint-disable sonarjs/different-types-comparison */
+/* eslint-disable sonarjs/single-character-alternation */
+/* eslint-disable sonarjs/updated-loop-counter */
+/* eslint-disable sonarjs/function-return-type */
+import type { Event } from '@podman-desktop/api';
 
-import type { LexingError, Token } from './scanner.js';
-import { Scanner, TokenType } from './scanner.js';
+import type { IDisposable } from '/@api/disposable.js';
+
 import type { ContextKeyValue, IContext } from '../../../../main/src/plugin/api/context-info.js';
 import { CharCode } from '../../../../main/src/plugin/util/charCode.js';
-import type { IDisposable } from '../../../../main/src/plugin/types/disposable.js';
-import type { Event } from '@podman-desktop/api';
+import type { LexingError, Token } from './scanner.js';
+import { Scanner, TokenType } from './scanner.js';
 
 const CONSTANT_VALUES = new Map<string, boolean>();
 CONSTANT_VALUES.set('false', false);
@@ -44,7 +49,7 @@ export async function initContextKeysPlatform(): Promise<void> {
 }
 
 /** allow register constant context keys that are known only after startup; requires running `substituteConstants` on the context key - https://github.com/microsoft/vscode/issues/174218#issuecomment-1437972127 */
-export function setConstant(key: string, value: boolean) {
+export function setConstant(key: string, value: boolean): void {
   if (CONSTANT_VALUES.get(key) !== undefined) {
     throw new Error('contextkey.setConstant(k, v) invoked with already set constant `k`');
   }
@@ -254,7 +259,7 @@ export class Parser {
       }
       return expr;
     } catch (e) {
-      if (!(e === Parser._parseError)) {
+      if (e !== Parser._parseError) {
         throw e;
       }
       return undefined;
@@ -483,7 +488,7 @@ export class Parser {
           offset: number;
           lexeme: string;
         },
-  ) {
+  ): number {
     let parenBalance = 0;
     switch (followingToken.type) {
       case TokenType.LParen:
@@ -606,11 +611,11 @@ export class Parser {
   }
 
   // careful: this can throw if current token is the initial one (ie index = 0)
-  private _previous() {
+  private _previous(): Token {
     return this._tokens[this._current - 1];
   }
 
-  private _matchOne(token: TokenType) {
+  private _matchOne(token: TokenType): boolean {
     if (this._check(token)) {
       this._advance();
       return true;
@@ -619,14 +624,14 @@ export class Parser {
     return false;
   }
 
-  private _advance() {
+  private _advance(): Token {
     if (!this._isAtEnd()) {
       this._current++;
     }
     return this._previous();
   }
 
-  private _consume(type: TokenType, message: string) {
+  private _consume(type: TokenType, message: string): Token {
     if (this._check(type)) {
       return this._advance();
     }
@@ -634,7 +639,7 @@ export class Parser {
     throw this._errExpectedButGot(message, this._peek());
   }
 
-  private _errExpectedButGot(expected: string, got: Token, additionalInfo?: string) {
+  private _errExpectedButGot(expected: string, got: Token, additionalInfo?: string): Error {
     const message = `Expected: ${expected}\nReceived: '${Scanner.getLexeme(got)}'.`;
     const offset = got.offset;
     const lexeme = Scanner.getLexeme(got);
@@ -642,15 +647,15 @@ export class Parser {
     return Parser._parseError;
   }
 
-  private _check(type: TokenType) {
+  private _check(type: TokenType): boolean {
     return this._peek().type === type;
   }
 
-  private _peek() {
+  private _peek(): Token {
     return this._tokens[this._current];
   }
 
-  private _isAtEnd() {
+  private _isAtEnd(): boolean {
     return this._peek().type === TokenType.EOF;
   }
 }
@@ -757,7 +762,7 @@ function cmp(a: ContextKeyExpression, b: ContextKeyExpression): number {
 }
 
 export class ContextKeyFalseExpr implements IContextKeyExpression {
-  public static INSTANCE = new ContextKeyFalseExpr();
+  public static readonly INSTANCE = new ContextKeyFalseExpr();
 
   public readonly type = ContextKeyExprType.False;
 
@@ -797,7 +802,7 @@ export class ContextKeyFalseExpr implements IContextKeyExpression {
 }
 
 export class ContextKeyTrueExpr implements IContextKeyExpression {
-  public static INSTANCE = new ContextKeyTrueExpr();
+  public static readonly INSTANCE = new ContextKeyTrueExpr();
 
   public readonly type = ContextKeyExprType.True;
 
@@ -2143,7 +2148,7 @@ export interface IContextKeyService {
   readonly _serviceBrand: undefined;
 
   onDidChangeContext: Event<IContextKeyChangeEvent>;
-  /* eslint-disable-next-line @typescript-eslint/ban-types */
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
   bufferChangeEvents(callback: Function): void;
 
   createKey<T extends ContextKeyValue>(key: string, defaultValue: T | undefined): IContextKey<T>;
@@ -2249,7 +2254,7 @@ function allElementsIncluded(p: ContextKeyExpression[], q: ContextKeyExpression[
   return pIndex === p.length;
 }
 
-function getTerminals(node: ContextKeyExpression) {
+function getTerminals(node: ContextKeyExpression): ContextKeyExpression[] {
   if (node.type === ContextKeyExprType.Or) {
     return node.expr;
   }

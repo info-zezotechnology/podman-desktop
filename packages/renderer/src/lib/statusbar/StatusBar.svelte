@@ -1,11 +1,37 @@
 <script lang="ts">
+import { onDestroy, onMount } from 'svelte';
+
+import TaskIndicator from '/@/lib/statusbar/TaskIndicator.svelte';
+import { onDidChangeConfiguration } from '/@/stores/configurationProperties';
+import { providerInfos } from '/@/stores/providers';
+import { statusBarEntries } from '/@/stores/statusbar';
+import { ExperimentalTasksSettings } from '/@api/tasks-preferences';
+
 import type { StatusBarEntry } from '../../../../main/src/plugin/statusbar/statusbar-registry';
-import { onMount } from 'svelte';
-import { statusBarEntries } from '../../stores/statusbar';
+import ProviderWidget from './ProviderWidget.svelte';
 import StatusBarItem from './StatusBarItem.svelte';
 
-let leftEntries: StatusBarEntry[] = [];
-let rightEntries: StatusBarEntry[] = [];
+let leftEntries: StatusBarEntry[] = $state([]);
+let rightEntries: StatusBarEntry[] = $state([]);
+
+let containerProviders = $derived($providerInfos.filter(provider => provider.containerConnections.length > 0));
+
+let kubernetesProviders = $derived($providerInfos.filter(provider => provider.kubernetesConnections.length > 0));
+
+let experimentalTaskStatusBar: boolean = $state(false);
+let experimentalProvidersStatusBar: boolean = $state(false);
+
+function onDidChangeConfigurationCallback(e: Event): void {
+  if (!('detail' in e) || !e.detail || typeof e.detail !== 'object') {
+    return;
+  }
+  if ('key' in e.detail && 'value' in e.detail) {
+    const detail = e.detail as { key: string; value: boolean };
+    if ('statusbarProviders.showProviders' === detail.key) {
+      experimentalProvidersStatusBar = detail.value;
+    }
+  }
+}
 
 onMount(async () => {
   statusBarEntries.subscribe(value => {
@@ -43,26 +69,46 @@ onMount(async () => {
         return descriptor.entry;
       });
   });
+
+  experimentalTaskStatusBar =
+    (await window.getConfigurationValue<boolean>(
+      `${ExperimentalTasksSettings.SectionName}.${ExperimentalTasksSettings.StatusBar}`,
+    )) ?? false;
+
+  experimentalProvidersStatusBar =
+    (await window.getConfigurationValue<boolean>('statusbarProviders.showProviders')) ?? false;
+
+  onDidChangeConfiguration.addEventListener('statusbarProviders.showProviders', onDidChangeConfigurationCallback);
+});
+
+onDestroy(() => {
+  onDidChangeConfiguration.removeEventListener('statusbarProviders.showProviders', onDidChangeConfigurationCallback);
 });
 </script>
 
-<div class="flex items-center justify-between px-1 bg-[#302251] text-sm py-0.5 space-x-2">
-  <div>
-    <ul class="flex flex-wrap gap-x-2 list-none items-center">
-      {#each leftEntries as entry}
-        <li>
-          <StatusBarItem entry="{entry}" />
-        </li>
+<div
+  class="flex justify-between px-1 bg-[var(--pd-statusbar-bg)] text-[var(--pd-statusbar-text)] text-sm space-x-2 z-40"
+  role="contentinfo"
+  aria-label="Status Bar">
+  <div class="flex flex-nowrap gap-x-1.5 h-full text-ellipsis whitespace-nowrap">
+    {#each leftEntries as entry}
+      <StatusBarItem entry={entry} />
+    {/each}
+    {#if experimentalProvidersStatusBar}
+      {#each containerProviders as entry}
+        <ProviderWidget entry={entry}/>
       {/each}
-    </ul>
+      {#each kubernetesProviders as entry}
+        <ProviderWidget entry={entry}/>
+      {/each}
+    {/if}
   </div>
-  <div class="place-self-end">
-    <ul class="flex flex-wrap flex-row-reverse gap-x-2 list-none items-center">
-      {#each rightEntries as entry}
-        <li>
-          <StatusBarItem entry="{entry}" />
-        </li>
-      {/each}
-    </ul>
+  <div class="flex flex-wrap flex-row-reverse gap-x-1.5 h-full place-self-end">
+    {#each rightEntries as entry}
+      <StatusBarItem entry={entry} />
+    {/each}
+    {#if experimentalTaskStatusBar}
+      <TaskIndicator />
+    {/if}
   </div>
 </div>

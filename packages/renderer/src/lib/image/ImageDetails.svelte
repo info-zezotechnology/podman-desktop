@@ -1,126 +1,195 @@
 <script lang="ts">
-import type { ImageInfoUI } from './ImageInfoUI';
-import Route from '../../Route.svelte';
+import type { ImageInfo } from '@podman-desktop/api';
+import { StatusIcon, Tab } from '@podman-desktop/ui-svelte';
 import { onDestroy, onMount } from 'svelte';
+import type { Unsubscriber } from 'svelte/store';
+import { router } from 'tinro';
+
+import { containersInfos } from '/@/stores/containers';
+import { context } from '/@/stores/context';
+import { imageCheckerProviders } from '/@/stores/image-checker-providers';
+import { imageFilesProviders } from '/@/stores/image-files-providers';
+import { viewsContributions } from '/@/stores/views';
+import type { ViewInfoUI } from '/@api/view-info';
+
+import Route from '../../Route.svelte';
 import { imagesInfos } from '../../stores/images';
-import ImageIcon from '../images/ImageIcon.svelte';
-import StatusIcon from '../images/StatusIcon.svelte';
-import ImageActions from './ImageActions.svelte';
+import type { ContextUI } from '../context/context';
+import Badge from '../ui/Badge.svelte';
+import DetailsPage from '../ui/DetailsPage.svelte';
+import { getTabUrl, isTabSelected } from '../ui/Util';
+import {
+  IMAGE_DETAILS_VIEW_BADGES,
+  IMAGE_DETAILS_VIEW_ICONS,
+  IMAGE_VIEW_BADGES,
+  IMAGE_VIEW_ICONS,
+} from '../view/views';
 import { ImageUtils } from './image-utils';
-import ImageDetailsInspect from './ImageDetailsInspect.svelte';
+import ImageActions from './ImageActions.svelte';
+import ImageDetailsCheck from './ImageDetailsCheck.svelte';
+import ImageDetailsFiles from './ImageDetailsFiles.svelte';
 import ImageDetailsHistory from './ImageDetailsHistory.svelte';
+import ImageDetailsInspect from './ImageDetailsInspect.svelte';
 import ImageDetailsSummary from './ImageDetailsSummary.svelte';
+import type { ImageInfoUI } from './ImageInfoUI';
 import PushImageModal from './PushImageModal.svelte';
 import RenameImageModal from './RenameImageModal.svelte';
-import DetailsPage from '../ui/DetailsPage.svelte';
-import Tab from '../ui/Tab.svelte';
-import { containersInfos } from '/@/stores/containers';
-import ImageDetailsCheck from './ImageDetailsCheck.svelte';
-import { imageCheckerProviders } from '/@/stores/image-checker-providers';
-import type { Unsubscriber } from 'svelte/motion';
-import type { ImageInfo } from '@podman-desktop/api';
 
 export let imageID: string;
 export let engineId: string;
 export let base64RepoTag: string;
 
+let globalContext: ContextUI;
+let viewContributions: ViewInfoUI[] = [];
+let allImages: ImageInfo[];
+
+const imageUtils = new ImageUtils();
+
 let pushImageModal = false;
-function handlePushImageModal() {
+function handlePushImageModal(): void {
   pushImageModal = true;
 }
 
 let renameImageModal = false;
-function handleRenameImageModal() {
+function handleRenameImageModal(): void {
   renameImageModal = true;
 }
 
-function closeModals() {
+function closeModals(): void {
   pushImageModal = false;
   renameImageModal = false;
 }
 
 let imageInfo: ImageInfo | undefined;
-let image: ImageInfoUI;
-let detailsPage: DetailsPage;
+let image: ImageInfoUI | undefined;
+let detailsPage: DetailsPage | undefined;
 
 let showCheckTab: boolean = false;
-let providersUnsubscribe: Unsubscriber;
+let showFilesTab: boolean = false;
+let checkerProvidersUnsubscribe: Unsubscriber;
+let filesProvidersUnsubscribe: Unsubscriber;
+let viewsUnsubscribe: Unsubscriber;
+let contextsUnsubscribe: Unsubscriber;
+
+function updateImage(): void {
+  if (!allImages) {
+    return;
+  }
+  imageInfo = allImages.find(c => c.Id === imageID && c.engineId === engineId);
+  let tempImage;
+  if (imageInfo) {
+    tempImage = imageUtils.getImageInfoUI(imageInfo, base64RepoTag, $containersInfos, globalContext, viewContributions);
+  }
+  if (tempImage) {
+    image = tempImage;
+  } else {
+    // the image has been deleted
+    detailsPage?.close();
+  }
+}
 
 onMount(() => {
-  providersUnsubscribe = imageCheckerProviders.subscribe(providers => {
+  checkerProvidersUnsubscribe = imageCheckerProviders.subscribe(providers => {
     showCheckTab = providers.length > 0;
   });
 
-  const imageUtils = new ImageUtils();
+  filesProvidersUnsubscribe = imageFilesProviders.subscribe(providers => {
+    showFilesTab = providers.length > 0;
+  });
+
+  viewsUnsubscribe = viewsContributions.subscribe(value => {
+    viewContributions =
+      value.filter(
+        view =>
+          view.viewId === IMAGE_DETAILS_VIEW_ICONS ||
+          view.viewId === IMAGE_VIEW_ICONS ||
+          view.viewId === IMAGE_VIEW_BADGES ||
+          view.viewId === IMAGE_DETAILS_VIEW_BADGES,
+      ) || [];
+    updateImage();
+  });
+
+  contextsUnsubscribe = context.subscribe(value => {
+    globalContext = value;
+    updateImage();
+  });
+
   // loading image info
   return imagesInfos.subscribe(images => {
-    imageInfo = images.find(c => c.Id === imageID && c.engineId === engineId);
-    let tempImage;
-    if (imageInfo) {
-      tempImage = imageUtils.getImageInfoUI(imageInfo, base64RepoTag, $containersInfos);
-    }
-    if (tempImage) {
-      image = tempImage;
-    } else {
-      // the image has been deleted
-      detailsPage.close();
-    }
+    allImages = images;
+    updateImage();
   });
 });
 
 onDestroy(() => {
   // unsubscribe from the store
-  providersUnsubscribe?.();
+  checkerProvidersUnsubscribe?.();
+  filesProvidersUnsubscribe?.();
+  viewsUnsubscribe?.();
+  contextsUnsubscribe?.();
 });
 </script>
 
 {#if image}
-  <DetailsPage title="{image.name}" titleDetail="{image.shortId}" subtitle="{image.tag}" bind:this="{detailsPage}">
-    <StatusIcon slot="icon" icon="{ImageIcon}" size="{24}" status="{image.inUse ? 'USED' : 'UNUSED'}" />
+  <DetailsPage title={image.name} titleDetail={image.shortId} subtitle={image.tag} bind:this={detailsPage}>
+    <StatusIcon slot="icon" icon={image.icon} size={24} status={image.status} />
+    <svelte:fragment slot="subtitle">
+      {#if image.badges.length}
+        <div class="flex flex-row">
+          {#each image.badges as badge}
+            <Badge color={badge.color} label={badge.label} />
+          {/each}
+        </div>
+      {/if}
+    </svelte:fragment>
     <ImageActions
       slot="actions"
-      image="{image}"
-      onPushImage="{handlePushImageModal}"
-      onRenameImage="{handleRenameImageModal}"
-      detailed="{true}"
-      dropdownMenu="{false}" />
+      image={image}
+      onPushImage={handlePushImageModal}
+      onRenameImage={handleRenameImageModal}
+      detailed={true}
+      dropdownMenu={false}
+      groupContributions={true}
+      on:update={(): ImageInfoUI | undefined => (image = image)} />
     <svelte:fragment slot="tabs">
-      <Tab title="Summary" url="summary" />
-      <Tab title="History" url="history" />
-      <Tab title="Inspect" url="inspect" />
+      <Tab title="Summary" selected={isTabSelected($router.path, 'summary')} url={getTabUrl($router.path, 'summary')} />
+      <Tab title="History" selected={isTabSelected($router.path, 'history')} url={getTabUrl($router.path, 'history')} />
+      <Tab title="Inspect" selected={isTabSelected($router.path, 'inspect')} url={getTabUrl($router.path, 'inspect')} />
       {#if showCheckTab}
-        <Tab title="Check" url="check" />
+        <Tab title="Check" selected={isTabSelected($router.path, 'check')} url={getTabUrl($router.path, 'check')} />
+      {/if}
+      {#if showFilesTab}
+        <Tab title="Files" selected={isTabSelected($router.path, 'files')} url={getTabUrl($router.path, 'files')} />
       {/if}
     </svelte:fragment>
     <svelte:fragment slot="content">
       <Route path="/summary" breadcrumb="Summary" navigationHint="tab">
-        <ImageDetailsSummary image="{image}" />
+        <ImageDetailsSummary image={image} />
       </Route>
       <Route path="/history" breadcrumb="History" navigationHint="tab">
-        <ImageDetailsHistory image="{image}" />
+        <ImageDetailsHistory image={image} />
       </Route>
       <Route path="/inspect" breadcrumb="Inspect" navigationHint="tab">
-        <ImageDetailsInspect image="{image}" />
+        <ImageDetailsInspect image={image} />
       </Route>
       <Route path="/check" breadcrumb="Check" navigationHint="tab">
-        <ImageDetailsCheck imageInfo="{imageInfo}" />
+        <ImageDetailsCheck imageInfo={imageInfo} />
+      </Route>
+      <Route path="/files" breadcrumb="Files" navigationHint="tab">
+        <ImageDetailsFiles imageInfo={imageInfo} />
       </Route>
     </svelte:fragment>
   </DetailsPage>
-{/if}
 
-{#if pushImageModal}
-  <PushImageModal
-    imageInfoToPush="{image}"
-    closeCallback="{() => {
-      closeModals();
-    }}" />
-{/if}
-{#if renameImageModal}
-  <RenameImageModal
-    imageInfoToRename="{image}"
-    detailed="{true}"
-    closeCallback="{() => {
-      closeModals();
-    }}" />
+  {#if pushImageModal}
+    <PushImageModal
+      imageInfoToPush={image}
+      closeCallback={closeModals} />
+  {/if}
+  {#if renameImageModal}
+    <RenameImageModal
+      imageInfoToRename={image}
+      detailed={true}
+      closeCallback={closeModals} />
+  {/if}
 {/if}

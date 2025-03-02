@@ -1,20 +1,28 @@
 <script lang="ts">
-import { onMount, onDestroy } from 'svelte';
+import { onDestroy, onMount } from 'svelte';
 import type { Unsubscriber } from 'svelte/store';
-import type { ProviderContainerConnectionInfo, ProviderInfo } from '../../../../main/src/plugin/api/provider-info';
+
+import type { ProviderContainerConnectionInfo, ProviderInfo } from '/@api/provider-info';
+
 let providerUnsubscribe: Unsubscriber;
+
+import { faCircleCheck } from '@fortawesome/free-solid-svg-icons';
+import type { V1NamespaceList } from '@kubernetes/client-node/dist/api';
+import type { OpenDialogOptions } from '@podman-desktop/api';
+import { Button, Dropdown, ErrorMessage, Input } from '@podman-desktop/ui-svelte';
+import Fa from 'svelte-fa';
+
+import ContainerConnectionDropdown from '/@/lib/forms/ContainerConnectionDropdown.svelte';
+import { handleNavigation } from '/@/navigation';
+import { NavigationPage } from '/@api/navigation-page';
 
 import { providerInfos } from '../../stores/providers';
 import MonacoEditor from '../editor/MonacoEditor.svelte';
 import NoContainerEngineEmptyScreen from '../image/NoContainerEngineEmptyScreen.svelte';
-import FormPage from '../ui/FormPage.svelte';
 import KubePlayIcon from '../kube/KubePlayIcon.svelte';
-import ErrorMessage from '../ui/ErrorMessage.svelte';
+import EngineFormPage from '../ui/EngineFormPage.svelte';
+import FileInput from '../ui/FileInput.svelte';
 import WarningMessage from '../ui/WarningMessage.svelte';
-import type { V1NamespaceList } from '@kubernetes/client-node/dist/api';
-import { faCircleCheck } from '@fortawesome/free-solid-svg-icons';
-import Fa from 'svelte-fa';
-import Button from '../ui/Button.svelte';
 
 let runStarted = false;
 let runFinished = false;
@@ -23,12 +31,15 @@ let runWarning = '';
 let kubernetesYamlFilePath: string | undefined = undefined;
 let hasInvalidFields = true;
 
+$: hasInvalidFields = kubernetesYamlFilePath === undefined;
+
 let defaultContextName: string | undefined;
 let currentNamespace: string | undefined;
 let allNamespaces: V1NamespaceList;
 
 let playKubeResultRaw: string;
-let playKubeResultJSON: any;
+let playKubeResultJSON: unknown;
+let playKubeResult: { Pods?: unknown[] } | undefined = undefined;
 
 let userChoice: 'podman' | 'kubernetes' = 'podman';
 
@@ -43,12 +54,22 @@ $: selectedProviderConnection = providerConnections.length > 0 ? providerConnect
 let selectedProvider: ProviderContainerConnectionInfo | undefined = undefined;
 $: selectedProvider = !selectedProvider && selectedProviderConnection ? selectedProviderConnection : selectedProvider;
 
-function removeEmptyOrNull(obj: any) {
-  Object.keys(obj).forEach(
-    k =>
-      (obj[k] && typeof obj[k] === 'object' && removeEmptyOrNull(obj[k])) ||
-      (!obj[k] && obj[k] !== undefined && delete obj[k]),
-  );
+const kubeFileDialogOptions: OpenDialogOptions = {
+  title: 'Select a .yaml file to play',
+  filters: [
+    {
+      name: 'YAML files',
+      extensions: ['yaml', 'yml'],
+    },
+  ],
+};
+
+function removeEmptyOrNull(obj: object): object {
+  Object.keys(obj).forEach(k => {
+    const val = obj[k as keyof typeof obj];
+    (val && typeof val === 'object' && removeEmptyOrNull(val)) ||
+      (!val && val !== undefined && delete obj[k as keyof typeof obj]);
+  });
   return obj;
 }
 
@@ -69,17 +90,35 @@ async function playKubeFile(): Promise<void> {
         // If there are container errors, that means that it was *able* to create the container
         // but if failed to start. We will add this to the "warning" section as we were able to create the
         // We add this with comma deliminated errors
-        if (playKubeResultJSON.Pods.length > 0) {
-          // Filter out the pods that have container errors, but check to see that container errors exists first
-          const containerErrors = playKubeResultJSON.Pods.filter(
-            (pod: any) => pod.ContainerErrors && pod.ContainerErrors.length > 0,
-          );
+        if (playKubeResultJSON && typeof playKubeResultJSON === 'object') {
+          playKubeResult = {};
+          if (
+            'Pods' in playKubeResultJSON &&
+            playKubeResultJSON.Pods !== undefined &&
+            Array.isArray(playKubeResultJSON.Pods) &&
+            playKubeResultJSON.Pods.length > 0
+          ) {
+            playKubeResult.Pods = playKubeResultJSON.Pods;
+            // Filter out the pods that have container errors, but check to see that container errors exists first
+            const containerErrors = playKubeResultJSON.Pods.filter(
+              (pod: unknown) =>
+                pod &&
+                typeof pod === 'object' &&
+                'ContainerErrors' in pod &&
+                Array.isArray(pod.ContainerErrors) &&
+                pod.ContainerErrors.length > 0,
+            );
 
-          // For each Pod that has container errors, we will add the container errors to the warning message
-          if (containerErrors.length > 0) {
-            runWarning = `The following pods were created but failed to start: ${containerErrors
-              .map((pod: any) => pod.ContainerErrors.join(', '))
-              .join(', ')}`;
+            // For each Pod that has container errors, we will add the container errors to the warning message
+            if (containerErrors.length > 0) {
+              runWarning = `The following pods were created but failed to start: ${containerErrors
+                .map((pod: unknown) =>
+                  pod && typeof pod === 'object' && 'ContainerErrors' in pod && Array.isArray(pod.ContainerErrors)
+                    ? pod.ContainerErrors.join(', ')
+                    : '',
+                )
+                .join(', ')}`;
+            }
           }
         }
 
@@ -139,19 +178,11 @@ onDestroy(() => {
   }
 });
 
-function goBackToHistory(): void {
-  window.history.go(-1);
-}
-
-async function getKubernetesfileLocation() {
-  const result = await window.openFileDialog('Select a .yaml file to play', {
-    name: 'YAML files',
-    extensions: ['yaml', 'yml'],
+function goBackToPodsPage(): void {
+  // redirect to the pods page
+  handleNavigation({
+    page: NavigationPage.PODMAN_PODS,
   });
-  if (!result.canceled && result.filePaths.length === 1) {
-    kubernetesYamlFilePath = result.filePaths[0];
-    hasInvalidFields = false;
-  }
 }
 </script>
 
@@ -160,175 +191,185 @@ async function getKubernetesfileLocation() {
 {/if}
 
 {#if providerConnections.length > 0}
-  <FormPage title="Play Pods or Containers from a Kubernetes YAML File">
+  <EngineFormPage title="Create pods from a Kubernetes YAML file" inProgress={runStarted && !runFinished}>
     <KubePlayIcon slot="icon" size="30px" />
 
-    <div slot="content" class="p-5 min-w-full h-fit">
-      <div class="bg-charcoal-800 px-6 py-4 space-y-6 lg:px-8 sm:pb-6 xl:pb-8 rounded-lg">
-        <div class="text-xl font-medium">Select file:</div>
-        <div hidden="{runStarted}">
-          <label for="containerFilePath" class="block mb-2 text-sm font-bold text-gray-400">Kubernetes YAML file</label>
-          <input
-            on:click="{() => getKubernetesfileLocation()}"
-            name="containerFilePath"
-            id="containerFilePath"
-            bind:value="{kubernetesYamlFilePath}"
-            readonly
-            placeholder="Select a .yaml file to play"
-            class="w-full p-2 outline-none text-sm bg-charcoal-600 rounded-sm text-gray-700 placeholder-gray-700"
-            required />
-        </div>
-
-        <div>
-          <div class="text-sm font-bold text-gray-400 pb-2">Select Runtime:</div>
-
-          <div class="px-5">
-            <div class="flex flex-col space-y-3">
-              <button
-                hidden="{providerConnections.length === 0}"
-                class:border-2="{defaultContextName}"
-                class="rounded-md p-5 cursor-pointer {userChoice === 'podman'
-                  ? 'border-dustypurple-700'
-                  : 'border-charcoal-600'}"
-                on:click="{() => {
-                  userChoice = 'podman';
-                }}">
-                <div class="flex flex-row align-middle items-center">
-                  <div class=" text-2xl {userChoice === 'podman' ? 'text-dustypurple-500' : 'text-charcoal-600'}">
-                    <Fa icon="{faCircleCheck}" />
-                  </div>
-                  <div class="pl-2 text-gray-900">Using a Podman container engine</div>
-                </div>
-                <div hidden="{runStarted}">
-                  {#if providerConnections.length > 1}
-                    <label
-                      for="providerConnectionName"
-                      class="py-6 block mb-2 text-sm font-medium text-gray-400 dark:text-gray-400"
-                      >Container Engine
-                      <select
-                        class="border text-sm rounded-lg focus:ring-purple-500 focus:border-purple-500 block w-full p-2.5 bg-gray-900 border-gray-900 placeholder-gray-700 text-white"
-                        name="providerChoice"
-                        bind:value="{selectedProvider}">
-                        {#each providerConnections as providerConnection}
-                          <option value="{providerConnection}">{providerConnection.name}</option>
-                        {/each}
-                      </select>
-                    </label>
-                  {/if}
-                  {#if providerConnections.length === 1 && selectedProviderConnection}
-                    <input
-                      type="hidden"
-                      name="providerChoice"
-                      readonly
-                      bind:value="{selectedProviderConnection.name}" />
-                  {/if}
-                </div>
-              </button>
-              <button
-                hidden="{!defaultContextName}"
-                class="border-2 rounded-md p-5 cursor-pointer {userChoice === 'kubernetes'
-                  ? 'border-dustypurple-700'
-                  : 'border-charcoal-600'}"
-                on:click="{() => {
-                  userChoice = 'kubernetes';
-                }}">
-                <div class="flex flex-row align-middle items-center">
-                  <div class=" text-2xl {userChoice === 'kubernetes' ? 'text-dustypurple-500' : 'text-charcoal-600'}">
-                    <Fa icon="{faCircleCheck}" />
-                  </div>
-                  <div class="pl-2 text-gray-900">Using a Kubernetes cluster</div>
-                </div>
-
-                {#if defaultContextName}
-                  <div class="pt-2">
-                    <label
-                      for="contextToUse"
-                      class="block mb-1 text-sm font-bold text-gray-400"
-                      class:text-gray-900="{userChoice !== 'kubernetes'}">Kubernetes Context:</label>
-                    <input
-                      type="text"
-                      disabled="{userChoice === 'podman'}"
-                      bind:value="{defaultContextName}"
-                      name="defaultContextName"
-                      id="defaultContextName"
-                      readonly
-                      class="cursor-default w-full p-2 outline-none text-sm bg-charcoal-600 rounded-sm text-gray-700 placeholder-gray-700"
-                      required />
-                  </div>
-                {/if}
-
-                {#if allNamespaces}
-                  <div class="pt-2">
-                    <label
-                      for="namespaceToUse"
-                      class="block mb-1 text-sm font-medium text-gray-400"
-                      class:text-gray-900="{userChoice !== 'kubernetes'}">Kubernetes namespace:</label>
-                    <select
-                      disabled="{userChoice === 'podman'}"
-                      class="w-full p-2 outline-none text-sm bg-charcoal-900 rounded-sm text-gray-700 placeholder-gray-700"
-                      name="namespaceChoice"
-                      bind:value="{currentNamespace}">
-                      {#each allNamespaces.items as namespace}
-                        <option value="{namespace.metadata?.name}">
-                          {namespace.metadata?.name}
-                        </option>
-                      {/each}
-                    </select>
-                  </div>
-                {/if}
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {#if !runFinished}
-          <Button
-            on:click="{() => playKubeFile()}"
-            disabled="{hasInvalidFields || runStarted}"
-            class="w-full"
-            bind:inProgress="{runStarted}"
-            icon="{KubePlayIcon}">
-            Play
-          </Button>
-        {/if}
-        {#if runStarted}
-          <div class="text-gray-700 text-sm">
-            Please wait during the Play Kube and do not change screen. This process may take a few minutes to
-            complete...
-          </div>
-        {/if}
-
-        {#if runWarning}
-          <WarningMessage class="text-sm" error="{runWarning}" />
-        {/if}
-
-        {#if runError}
-          <ErrorMessage class="text-sm" error="{runError}" />
-        {/if}
-
-        {#if playKubeResultJSON}
-          <!-- Output area similar to DeployPodToKube.svelte -->
-          <div class="bg-charcoal-800 p-5 my-4">
-            <div class="flex flex-row items-center">
-              <div>
-                {#if playKubeResultJSON?.Pods.length > 1}
-                  Created pods:
-                {:else}
-                  Created pod:
-                {/if}
-              </div>
-            </div>
-
-            <div class="h-[100px] pt-2">
-              <MonacoEditor content="{playKubeResultRaw}" language="json" />
-            </div>
-          </div>
-        {/if}
-
-        {#if runFinished}
-          <Button on:click="{() => goBackToHistory()}" class="pt-4 w-full">Done</Button>
-        {/if}
+    <div slot="content" class="space-y-6">
+      <div hidden={runStarted}>
+        <label for="containerFilePath" class="block mb-2 text-base font-bold text-[var(--pd-content-card-header-text)]"
+          >Kubernetes YAML file</label>
+        <FileInput
+          name="containerFilePath"
+          id="containerFilePath"
+          readonly
+          required
+          bind:value={kubernetesYamlFilePath}
+          placeholder="Select a .yaml file to play"
+          options={kubeFileDialogOptions}
+          class="w-full p-2" />
       </div>
+
+      <div class="text-base font-bold text-[var(--pd-content-card-header-text)]">Runtime</div>
+
+      <div class="flex flex-col">
+        <button
+          hidden={providerConnections.length === 0}
+          class:border-2={defaultContextName}
+          class="rounded-md p-5 cursor-pointer bg-[var(--pd-content-card-inset-bg)]"
+          aria-label="Podman Container Engine Runtime"
+          aria-pressed={userChoice === 'podman' ? 'true' : 'false'}
+          class:border-[var(--pd-content-card-border-selected)]={userChoice === 'podman'}
+          class:border-[var(--pd-content-card-border)]={userChoice !== 'podman'}
+          on:click={(): void => {
+            userChoice = 'podman';
+          }}>
+          <div class="flex flex-row align-middle items-center">
+            <div
+              class="text-2xl"
+              class:text-[var(--pd-content-card-border-selected)]={userChoice === 'podman'}
+              class:text-[var(--pd-content-card-border)]={userChoice !== 'podman'}>
+              <Fa icon={faCircleCheck} />
+            </div>
+            <div
+              class="pl-2"
+              class:text-[var(--pd-content-card-text)]={userChoice === 'podman'}
+              class:text-[var(--pd-input-field-disabled-text)]={userChoice !== 'podman'}>
+              Podman container engine
+            </div>
+          </div>
+          <div hidden={runStarted}>
+            {#if providerConnections.length > 1}
+              <label
+                for="providerConnectionName"
+                class="block mb-2 font-medium"
+                class:text-[var(--pd-content-card-header-text)]={userChoice === 'podman'}
+                class:text-[var(--pd-input-field-disabled-text)]={userChoice !== 'podman'}
+                >Container Engine</label>
+              <ContainerConnectionDropdown
+                id="providerChoice"
+                name="providerChoice"
+                bind:value={selectedProvider}
+                disabled={userChoice === 'kubernetes'}
+                connections={providerConnections}/>
+            {/if}
+            {#if providerConnections.length === 1 && selectedProviderConnection}
+              <input type="hidden" name="providerChoice" readonly bind:value={selectedProviderConnection.name} />
+            {/if}
+          </div>
+        </button>
+        <button
+          hidden={!defaultContextName}
+          class="border-2 rounded-md p-5 cursor-pointer bg-[var(--pd-content-card-inset-bg)]"
+          aria-label="Kubernetes Cluster Runtime"
+          aria-pressed={userChoice === 'kubernetes' ? 'true' : 'false'}
+          class:border-[var(--pd-content-card-border-selected)]={userChoice === 'kubernetes'}
+          class:border-[var(--pd-content-card-border)]={userChoice !== 'kubernetes'}
+          on:click={(): void => {
+            userChoice = 'kubernetes';
+          }}>
+          <div class="flex flex-row align-middle items-center">
+            <div
+              class="text-2xl"
+              class:text-[var(--pd-content-card-border-selected)]={userChoice === 'kubernetes'}
+              class:text-[var(--pd-content-card-border)]={userChoice !== 'kubernetes'}>
+              <Fa icon={faCircleCheck} />
+            </div>
+            <div
+              class="pl-2"
+              class:text-[var(--pd-content-card-text)]={userChoice === 'kubernetes'}
+              class:text-[var(--pd-input-field-disabled-text)]={userChoice !== 'kubernetes'}>
+              Kubernetes cluster
+            </div>
+          </div>
+
+          {#if defaultContextName}
+            <div class="pt-2">
+              <label
+                for="contextToUse"
+                class="block mb-1 text-sm font-bold"
+                class:text-[var(--pd-content-card-header-text)]={userChoice === 'kubernetes'}
+                class:text-[var(--pd-input-field-disabled-text)]={userChoice !== 'kubernetes'}
+                >Kubernetes Context:</label>
+              <Input
+                disabled={userChoice === 'podman'}
+                bind:value={defaultContextName}
+                aria-label="Default Kubernetes Context"
+                name="defaultContextName"
+                id="defaultContextName"
+                readonly
+                required />
+            </div>
+          {/if}
+
+          {#if allNamespaces}
+            <div class="pt-2">
+              <label
+                for="namespaceToUse"
+                class="block mb-1 text-sm font-medium"
+                class:text-[var(--pd-content-card-header-text)]={userChoice === 'kubernetes'}
+                class:text-[var(--pd-input-field-disabled-text)]={userChoice !== 'kubernetes'}
+                >Kubernetes namespace:</label>
+              <Dropdown
+                disabled={userChoice === 'podman'}
+                ariaLabel="Kubernetes Namespace"
+                name="namespaceChoice"
+                bind:value={currentNamespace}
+                options={allNamespaces.items.map(namespace => ({
+                  label: namespace.metadata?.name ?? '',
+                  value: namespace.metadata?.name ?? '',
+                }))}>
+              </Dropdown>
+            </div>
+          {/if}
+        </button>
+      </div>
+
+      {#if !runFinished}
+        <Button
+          on:click={playKubeFile}
+          disabled={hasInvalidFields || runStarted}
+          class="w-full"
+          bind:inProgress={runStarted}
+          icon={KubePlayIcon}>
+          Play
+        </Button>
+      {/if}
+      {#if runStarted}
+        <div class="text-[var(--pd-content-card-text)] text-sm">
+          Please wait during the Play Kube and do not change screen. This process may take a few minutes to complete...
+        </div>
+      {/if}
+
+      {#if runWarning}
+        <WarningMessage class="text-sm" error={runWarning} />
+      {/if}
+
+      {#if runError}
+        <ErrorMessage class="text-sm" error={runError} />
+      {/if}
+
+      {#if playKubeResult}
+        <!-- Output area similar to DeployPodToKube.svelte -->
+        <div class="bg-[var(--pd--content-card-bg)] p-5 my-4 text-[var(--pd-content-card-text)]">
+          <div class="flex flex-row items-center">
+            <div>
+              {#if playKubeResult.Pods && playKubeResult.Pods.length > 1}
+                Created pods:
+              {:else}
+                Created pod:
+              {/if}
+            </div>
+          </div>
+
+          <div class="h-[100px] pt-2">
+            <MonacoEditor content={playKubeResultRaw} language="json" />
+          </div>
+        </div>
+      {/if}
+
+      {#if runFinished}
+        <Button on:click={goBackToPodsPage} class="w-full">Done</Button>
+      {/if}
     </div>
-  </FormPage>
+  </EngineFormPage>
 {/if}

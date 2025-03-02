@@ -1,5 +1,5 @@
 /**********************************************************************
- * Copyright (C) 2022-2023 Red Hat, Inc.
+ * Copyright (C) 2022-2024 Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,11 +17,13 @@
  ***********************************************************************/
 
 import { beforeEach, expect, test, vi } from 'vitest';
-import { ContainerUtils } from './container-utils';
-import type { ContainerInfo } from '../../../../main/src/plugin/api/container-info';
-import { ContainerGroupInfoTypeUI } from './ContainerInfoUI';
+
+import type { ContainerInfo } from '/@api/container-info';
+import type { ViewInfoUI } from '/@api/view-info';
+
 import { ContextUI } from '../context/context';
-import type { ViewInfoUI } from '../../../../main/src/plugin/api/view-info';
+import { ContainerUtils } from './container-utils';
+import { ContainerGroupInfoTypeUI, type ContainerGroupInfoUI, type ContainerInfoUI } from './ContainerInfoUI';
 
 let containerUtils: ContainerUtils;
 
@@ -96,6 +98,7 @@ test('container group status should be running when all compose containers are r
     Labels: { 'com.docker.compose.project': groupName },
     Names: ['container1'],
     State: 'RUNNING',
+    ImageID: 'sha256:dummy-sha256',
   } as unknown as ContainerInfo;
   const containerInfo2 = {
     Id: 'container2',
@@ -103,6 +106,7 @@ test('container group status should be running when all compose containers are r
     Labels: { 'com.docker.compose.project': groupName },
     Names: ['container2'],
     State: 'RUNNING',
+    ImageID: 'sha256:dummy-sha256',
   } as unknown as ContainerInfo;
   const groups = containerUtils.getContainerGroups([
     containerUtils.getContainerInfoUI(containerInfo),
@@ -122,6 +126,7 @@ test('container group status should be stopped when any compose container is sto
     Labels: { 'com.docker.compose.project': groupName },
     Names: ['container1'],
     State: 'RUNNING',
+    ImageID: 'sha256:dummy-sha256',
   } as unknown as ContainerInfo;
   const containerInfo2 = {
     Id: 'container2',
@@ -129,6 +134,7 @@ test('container group status should be stopped when any compose container is sto
     Labels: { 'com.docker.compose.project': groupName },
     Names: ['container2'],
     State: 'STOPPED',
+    ImageID: 'sha256:dummy-sha256',
   } as unknown as ContainerInfo;
   const groups = containerUtils.getContainerGroups([
     containerUtils.getContainerInfoUI(containerInfo),
@@ -154,6 +160,7 @@ test('container group status should be running when the pod status is running', 
     Names: ['container1'],
     State: 'RUNNING',
     pod: pod,
+    ImageID: 'sha256:dummy-sha256',
   } as unknown as ContainerInfo;
   const containerInfo2 = {
     Id: 'container2',
@@ -161,6 +168,7 @@ test('container group status should be running when the pod status is running', 
     Names: ['container2'],
     State: 'RUNNING',
     pod: pod,
+    ImageID: 'sha256:dummy-sha256',
   } as unknown as ContainerInfo;
   const groups = containerUtils.getContainerGroups([
     containerUtils.getContainerInfoUI(containerInfo),
@@ -185,6 +193,7 @@ test('container group status should be degraded when the pod status is degraded'
     Names: ['container1'],
     State: 'RUNNING',
     pod: pod,
+    ImageID: 'sha256:dummy-sha256',
   } as unknown as ContainerInfo;
   const containerInfo2 = {
     Id: 'container2',
@@ -192,6 +201,7 @@ test('container group status should be degraded when the pod status is degraded'
     Names: ['container2'],
     State: 'STOPPED',
     pod: pod,
+    ImageID: 'sha256:dummy-sha256',
   } as unknown as ContainerInfo;
   const groups = containerUtils.getContainerGroups([
     containerUtils.getContainerInfoUI(containerInfo),
@@ -225,8 +235,10 @@ test('should expect icon to be valid value with context/view set', async () => {
   const view: ViewInfoUI = {
     extensionId: 'extension',
     viewId: 'id',
-    icon: '${kind-icon}',
-    when: 'io.x-k8s.kind.cluster in containerLabelKeys',
+    value: {
+      icon: '${kind-icon}',
+      when: 'io.x-k8s.kind.cluster in containerLabelKeys',
+    },
   };
   const containerInfo = {
     Image: 'docker.io/kindest/node:foobar',
@@ -238,12 +250,30 @@ test('should expect icon to be valid value with context/view set', async () => {
   expect(icon).toBe('podman-desktop-icon-kind-icon');
 });
 
+test('should expect icon to be valid value with context/view set with containerImageName', async () => {
+  const context = new ContextUI();
+  const view: ViewInfoUI = {
+    extensionId: 'extension',
+    viewId: 'id',
+    value: {
+      icon: '${kind-icon}',
+      when: 'containerImageName == docker.io/kindest/node:foobar',
+    },
+  };
+  const containerInfo = {
+    Image: 'docker.io/kindest/node:foobar',
+  } as unknown as ContainerInfo;
+  const icon = containerUtils.iconClass(containerInfo, context, [view]);
+  expect(icon).toBe('podman-desktop-icon-kind-icon');
+});
+
 test('should expect icon to be ContainerIcon if no context/view is passed', async () => {
   const containerInfo = {
     Id: 'container1',
     Image: 'docker.io/kindest/node:foobar',
     Names: ['container1'],
     State: 'STOPPED',
+    ImageID: 'sha256:dummy-sha256',
   } as unknown as ContainerInfo;
   const containerUI = containerUtils.getContainerInfoUI(containerInfo);
   expect(containerUI.icon).toBeDefined();
@@ -264,6 +294,37 @@ test('check parsing of container info without names', async () => {
   expect(name).toBe('');
 });
 
+test('check that if a container is part of compose, it will use the Names field for output WITHOUT the project name even if there is a name for service', async () => {
+  const containerInfo = {
+    Id: 'container1',
+    Image: 'registry.k8s.io/pause:3.7',
+    Labels: {
+      'com.docker.compose.project': 'compose',
+      'com.docker.compose.service': 'compose_container',
+    },
+    Names: ['/compose-compose_container-1'],
+    State: 'RUNNING',
+  } as unknown as ContainerInfo;
+  const name = containerUtils.getName(containerInfo);
+  expect(name).toBe('compose_container-1');
+});
+
+test('test that if a container is part of compose, and that container_name has been specified, that means that the Names[0] should be used without the project name', async () => {
+  const containerInfo = {
+    Id: 'container1',
+    Image: 'registry.k8s.io/pause:3.7',
+    Labels: {
+      'com.docker.compose.project': 'compose',
+      'com.docker.compose.service': 'container_name',
+    },
+    // If container_name was specified in the compose file, this should be used (without the project name).
+    Names: ['/container_name'],
+    State: 'RUNNING',
+  } as unknown as ContainerInfo;
+  const name = containerUtils.getName(containerInfo);
+  expect(name).toBe('container_name');
+});
+
 test('check parsing of container info without labels', async () => {
   const context = new ContextUI();
   const containerInfo = {
@@ -274,4 +335,65 @@ test('check parsing of container info without labels', async () => {
     State: 'RUNNING',
   } as unknown as ContainerInfo;
   containerUtils.adaptContextOnContainer(context, containerInfo);
+});
+
+test('should expect imageHref to use image tag', async () => {
+  const containerInfo = {
+    Id: 'container1',
+    Image: 'docker.io/kindest/node:foobar',
+    Names: ['container1'],
+    State: 'STOPPED',
+    ImageID: 'sha256:dummy-sha256',
+    engineId: 'dummy-engine-id',
+    ImageBase64RepoTag: 'ZHVtbXktYmFzZS02NA==', //dummy-base-64
+  } as unknown as ContainerInfo;
+  const containerUI = containerUtils.getContainerInfoUI(containerInfo);
+  expect(containerUI.imageHref).toBe('/images/sha256:dummy-sha256/dummy-engine-id/ZHVtbXktYmFzZS02NA==/summary');
+});
+
+test('should expect imageHref to not use image tag', async () => {
+  const containerInfo = {
+    Id: 'container1',
+    Image: 'docker.io/kindest/node:foobar',
+    Names: ['container1'],
+    State: 'STOPPED',
+    ImageID: 'sha256:dummy-sha256',
+    engineId: 'dummy-engine-id',
+    ImageBase64RepoTag: 'c2hhMjU2OmFiYzEyMw==', //sha256:abc123
+  } as unknown as ContainerInfo;
+  const containerUI = containerUtils.getContainerInfoUI(containerInfo);
+  expect(containerUI.imageHref).toBe('/images/sha256:dummy-sha256/dummy-engine-id');
+});
+
+test('should expect imageHref to not use image tag when there is no tag', async () => {
+  const containerInfo = {
+    Id: 'container1',
+    Image: 'docker.io/kindest/node:foobar',
+    Names: ['container1'],
+    State: 'STOPPED',
+    ImageID: 'sha256:dummy-sha256',
+    engineId: 'dummy-engine-id',
+  } as unknown as ContainerInfo;
+  const containerUI = containerUtils.getContainerInfoUI(containerInfo);
+  expect(containerUI.imageHref).toBe('/images/sha256:dummy-sha256/dummy-engine-id');
+});
+
+test('should be able to identify container groups', async () => {
+  const containerGroupInfo = {
+    id: 'my-pod',
+    name: 'My pod',
+    type: ContainerGroupInfoTypeUI.POD,
+  } as unknown as ContainerGroupInfoUI;
+  expect(containerUtils.isContainerGroupInfoUI(containerGroupInfo)).toBe(true);
+  expect(containerUtils.isContainerInfoUI(containerGroupInfo)).toBe(false);
+});
+
+test('should be able to identify containers', async () => {
+  const containerInfo = {
+    id: 'container1',
+    name: 'a container',
+    state: 'RUNNING',
+  } as unknown as ContainerInfoUI;
+  expect(containerUtils.isContainerInfoUI(containerInfo)).toBe(true);
+  expect(containerUtils.isContainerGroupInfoUI(containerInfo)).toBe(false);
 });

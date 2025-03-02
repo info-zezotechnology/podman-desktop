@@ -1,6 +1,6 @@
 ---
 sidebar_position: 10
-title: Troubleshooting Podman
+title: Podman
 description: How to investigate when Podman does not work as expected.
 ---
 
@@ -212,7 +212,7 @@ Podman Desktop might then reconnect in rootless mode, and fail to display the im
 
 When running the Podman provider, a warning shows regarding Docker compatibility mode on the dashboard:
 
-```
+```<!-- markdownlint-disable MD040 -->
 ⚠️ Docker Socket Compatibility: Podman is not emulating the default Docker socket path: '/var/run/docker.sock'. Docker-specific tools may not work. See troubleshooting page on podman-desktop.io for more information.
 ```
 
@@ -233,3 +233,40 @@ This might appear when either:
 3. Restart the Podman machine to recreate and activate the default Docker socket path.
 
 _Note:_ If Docker Desktop is started again, it will automatically re-alias the default Docker socket location and the Podman compatibility warning will re-appear.
+
+## Uninstalling Podman Desktop preserves the old configuration data
+
+#### Issue
+
+After uninstalling Podman Desktop, the configuration data persists even though it is not needed for a fresh installation.
+
+#### Solution
+
+**_Deleting Podman Desktop configuration_**
+
+1. Go to the `$HOME/.local/share/containers` directory, where `$HOME` denotes the home folder of the current user.
+1. Delete the `podman-desktop` folder.
+
+**_Deleting Podman configuration_**
+
+Podman stores its configuration files in the `$HOME/.config/containers` directory. Options available to delete Podman configuration:
+
+- Using CLI
+  - Run the `podman machine reset` command.
+- Using UI
+  1.  Click the **Troubleshooting** icon in the status bar.
+  1.  Click the **Cleanup/Purge data** button to delete all resources from the engine.
+
+## Kubernetes clusters are not reachable from Podman Desktop
+
+#### Issue
+
+When you connect to a Kubernetes cluster, such as Amazon Web Services (AWS) or Oracle Cloud Infrastructure (OCI), you might get this error: `spawnSync <cloud-provider-binary> ENOENT`.
+
+Kubernetes clusters from cloud providers require an executable installed on the user's machine for authentication tokens. When you add the path of this executable to the `PATH` for the shell session, this change does not apply to Podman Desktop. This prevents Podman Desktop from obtaining new tokens, making clusters inaccessible.
+
+#### Solution
+
+1. Move the binary located in your `.kube/config` file to a system bin directory, such as `/usr/local/bin/`.
+
+1. Set the value of the `command` parameter to the full path of the executable in your Kubernetes configuration file. For example, `command: /usr/local/bin/<cloud-provider-binary>`, where `cloud-provider-binary` denotes the binary name, such as `aws` or `oci`.

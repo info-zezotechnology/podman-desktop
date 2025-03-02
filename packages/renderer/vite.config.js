@@ -20,9 +20,11 @@
 import { join } from 'path';
 import * as path from 'path';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
+import { svelteTesting } from '@testing-library/svelte/vite';
 import { defineConfig } from 'vite';
 import { fileURLToPath } from 'url';
 import { coverageConfig } from '../../vitest-shared-extensions.config';
+import tailwindcss from '@tailwindcss/vite';
 
 let filename = fileURLToPath(import.meta.url);
 const PACKAGE_ROOT = path.dirname(filename);
@@ -35,9 +37,10 @@ export default defineConfig({
   resolve: {
     alias: {
       '/@/': join(PACKAGE_ROOT, 'src') + '/',
+      '/@api/': join(PACKAGE_ROOT, '../api/src') + '/',
     },
   },
-  plugins: [svelte({ hot: !process.env.VITEST })],
+  plugins: [tailwindcss(), svelte({ hot: !process.env.VITEST }), svelteTesting()],
   optimizeDeps: {
     exclude: ['tinro'],
   },
@@ -46,15 +49,17 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom',
     alias: [
-      // https://github.com/vitest-dev/vitest/issues/2834
-      { find: /^svelte$/, replacement: 'svelte/internal' },
+      { find: '@testing-library/svelte', replacement: '@testing-library/svelte/svelte5' },
+      {
+        find: /^monaco-editor$/,
+        replacement: `${PACKAGE_ROOT}/../../node_modules/monaco-editor/esm/vs/editor/editor.api`,
+      },
     ],
     deps: {
-      inline: [
-        'moment',
-      ],
+      inline: ['moment'],
     },
-      ...coverageConfig(PACKAGE_ROOT, PACKAGE_NAME),
+    ...coverageConfig(PACKAGE_ROOT, PACKAGE_NAME),
+    setupFiles: ['./vite.tests.setup.js'],
   },
   base: '',
   server: {

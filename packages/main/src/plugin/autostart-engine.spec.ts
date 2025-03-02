@@ -16,15 +16,17 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
+import type { Configuration } from '@podman-desktop/api';
 import { beforeAll, beforeEach, expect, test, vi } from 'vitest';
+
+import type { ApiSenderType } from '/@/plugin/api.js';
+import { CONFIGURATION_DEFAULT_SCOPE, CONFIGURATION_ONBOARDING_SCOPE } from '/@api/configuration/constants.js';
+
+import { AutostartEngine } from './autostart-engine.js';
 import type { IConfigurationNode } from './configuration-registry.js';
 import { ConfigurationRegistry } from './configuration-registry.js';
 import type { Directories } from './directories.js';
 import type { ProviderRegistry } from './provider-registry.js';
-import { AutostartEngine } from './autostart-engine.js';
-import type { Configuration } from '@podman-desktop/api';
-import { CONFIGURATION_DEFAULT_SCOPE, CONFIGURATION_ONBOARDING_SCOPE } from './configuration-registry-constants.js';
-import type { ApiSenderType } from '/@/plugin/api.js';
 
 let configurationRegistry: ConfigurationRegistry;
 let providerRegistry: ProviderRegistry;
@@ -48,35 +50,6 @@ beforeAll(() => {
   configurationRegistry.registerConfigurations = mockRegisterConfiguration;
   configurationRegistry.deregisterConfigurations = vi.fn();
   providerRegistry.runAutostart = mockRunAutostart;
-});
-
-test('Check that default value is false if provider autostart setting is false', async () => {
-  vi.spyOn(configurationRegistry, 'getConfiguration').mockImplementation(() => {
-    return {
-      get: (_section: string, _defaultValue: boolean) => false,
-    } as Configuration;
-  });
-
-  const autoStartConfigurationNode: IConfigurationNode = {
-    id: `preferences.${extensionId}.engine.autostart`,
-    title: `Autostart ${extensionDisplayName} engine`,
-    type: 'object',
-    extension: {
-      id: extensionId,
-    },
-    properties: {
-      [`preferences.${extensionId}.engine.autostart`]: {
-        description: `Autostart ${extensionDisplayName} engine when launching Podman Desktop`,
-        type: 'boolean',
-        default: false,
-        scope: [CONFIGURATION_DEFAULT_SCOPE, CONFIGURATION_ONBOARDING_SCOPE],
-      },
-    },
-  };
-
-  const disposable = autostartEngine.registerProvider(extensionId, extensionDisplayName, 'internalId');
-  disposable.dispose();
-  expect(mockRegisterConfiguration).toBeCalledWith([autoStartConfigurationNode]);
 });
 
 test('Check that default value is true if provider autostart setting is not set', async () => {
@@ -107,6 +80,19 @@ test('Check that default value is true if provider autostart setting is not set'
   disposable.dispose();
 
   expect(mockRegisterConfiguration).toBeCalledWith([autoStartConfigurationNode]);
+});
+
+test('Disposing the provider should not delete the configuration', async () => {
+  vi.spyOn(configurationRegistry, 'getConfiguration').mockImplementation(() => {
+    return {
+      get: (_section: string, defaultValue: boolean) => defaultValue,
+    } as Configuration;
+  });
+
+  const disposable = autostartEngine.registerProvider(extensionId, extensionDisplayName, 'internalId');
+  disposable.dispose();
+
+  expect(configurationRegistry.deregisterConfigurations).not.toHaveBeenCalled();
 });
 
 test('Check that runAutostart is called once if only one provider has registered autostart process', async () => {

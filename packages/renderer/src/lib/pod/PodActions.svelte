@@ -1,30 +1,35 @@
 <script lang="ts">
 import {
+  faArrowsRotate,
+  faExternalLinkSquareAlt,
   faFileCode,
   faPlay,
   faRocket,
   faStop,
-  faArrowsRotate,
   faTrash,
-  faExternalLinkSquareAlt,
 } from '@fortawesome/free-solid-svg-icons';
-import type { PodInfoUI } from './PodInfoUI';
+import { DropdownMenu } from '@podman-desktop/ui-svelte';
+import { createEventDispatcher, onMount } from 'svelte';
 import { router } from 'tinro';
-import ListItemButtonIcon from '../ui/ListItemButtonIcon.svelte';
-import DropdownMenu from '../ui/DropdownMenu.svelte';
-import FlatMenu from '../ui/FlatMenu.svelte';
-import type { Menu } from '../../../../main/src/plugin/menu-registry';
+
 import ContributionActions from '/@/lib/actions/ContributionActions.svelte';
-import { onMount } from 'svelte';
+import { withConfirmation } from '/@/lib/dialogs/messagebox-utils';
+
+import type { Menu } from '../../../../main/src/plugin/menu-registry';
 import { MenuContext } from '../../../../main/src/plugin/menu-registry';
 import { ContainerUtils } from '../container/container-utils';
+import FlatMenu from '../ui/FlatMenu.svelte';
+import ListItemButtonIcon from '../ui/ListItemButtonIcon.svelte';
+import type { PodInfoUI } from './PodInfoUI';
 
 export let pod: PodInfoUI;
 export let dropdownMenu = false;
 export let detailed = false;
 
-export let inProgressCallback: (inProgress: boolean, state?: string) => void = () => {};
-export let errorCallback: (erroMessage: string) => void = () => {};
+const dispatch = createEventDispatcher<{ update: PodInfoUI }>();
+export let onUpdate: (update: PodInfoUI) => void = update => {
+  dispatch('update', update);
+};
 
 let contributions: Menu[] = [];
 onMount(async () => {
@@ -33,71 +38,115 @@ onMount(async () => {
 
 let urls: Array<string> = [];
 $: openingUrls = urls;
+$: openingKubernetesUrls = new Map();
 
-function extractPort(urlString: string) {
-  const match = urlString.match(/:(\d+)/);
+const portRegexp = RegExp(/:(\d+)/);
+
+function extractPort(urlString: string): number | undefined {
+  const match = portRegexp.exec(urlString);
   return match ? parseInt(match[1], 10) : undefined;
 }
 
 onMount(async () => {
-  const containerUtils = new ContainerUtils();
+  if (pod.kind === 'podman') {
+    const containerUtils = new ContainerUtils();
 
-  const containerIds = pod.containers.map(podContainer => podContainer.Id);
-  const podContainers = (await window.listContainers()).filter(
-    container => containerIds.findIndex(containerInfo => containerInfo === container.Id) >= 0,
-  );
+    const containerIds = pod.containers.map(podContainer => podContainer.Id);
+    const podContainers = (await window.listContainers()).filter(
+      container => containerIds.findIndex(containerInfo => containerInfo === container.Id) >= 0,
+    );
 
-  podContainers.forEach(container => {
-    const openingUrls = containerUtils.getOpeningUrls(container);
-    urls = [...new Set([...urls, ...openingUrls])];
-  });
+    podContainers.forEach(container => {
+      const openingUrls = containerUtils.getOpeningUrls(container);
+      urls = [...new Set([...urls, ...openingUrls])];
+    });
+  } else if (pod.kind === 'kubernetes') {
+    const ns = await window.kubernetesGetCurrentNamespace();
+    if (ns) {
+      const kubepod = await window.kubernetesReadNamespacedPod(pod.name, ns);
+      if (kubepod?.metadata?.labels?.app) {
+        const appName = kubepod.metadata.labels.app;
+        const routes = await window.kubernetesListRoutes();
+        const appRoutes = routes.filter(r => r.metadata.labels && r.metadata.labels['app'] === appName);
+        appRoutes.forEach(route => {
+          openingKubernetesUrls = openingKubernetesUrls.set(
+            route.metadata.name,
+            route.spec.tls ? `https://${route.spec.host}` : `http://${route.spec.host}`,
+          );
+        });
+      }
+    }
+  }
 });
 
-async function startPod(podInfoUI: PodInfoUI) {
-  inProgressCallback(true, 'STARTING');
+function inProgress(inProgress: boolean, state?: string): void {
+  pod.actionInProgress = inProgress;
+  // reset error when starting task
+  if (inProgress) {
+    pod.actionError = '';
+  }
+  if (state) {
+    pod.status = state;
+  }
+
+  onUpdate(pod);
+}
+
+function handleError(errorMessage: string): void {
+  pod.actionError = errorMessage;
+  pod.status = 'ERROR';
+  onUpdate(pod);
+}
+
+async function startPod(): Promise<void> {
+  inProgress(true, 'STARTING');
   try {
-    await window.startPod(podInfoUI.engineId, podInfoUI.id);
+    await window.startPod(pod.engineId, pod.id);
   } catch (error) {
-    errorCallback(String(error));
+    handleError(String(error));
   } finally {
-    inProgressCallback(false, 'RUNNING');
+    inProgress(false);
   }
 }
 
-async function restartPod(podInfoUI: PodInfoUI) {
-  inProgressCallback(true, 'RESTARTING');
-  try {
-    await window.restartPod(podInfoUI.engineId, podInfoUI.id);
-  } catch (error) {
-    errorCallback(String(error));
-  } finally {
-    inProgressCallback(false);
-  }
-}
-
-async function stopPod(podInfoUI: PodInfoUI) {
-  inProgressCallback(true, 'STOPPING');
-  try {
-    await window.stopPod(podInfoUI.engineId, podInfoUI.id);
-  } catch (error) {
-    errorCallback(String(error));
-  } finally {
-    inProgressCallback(false, 'STOPPED');
-  }
-}
-
-async function deletePod(podInfoUI: PodInfoUI): Promise<void> {
-  inProgressCallback(true, 'DELETING');
+async function restartPod(): Promise<void> {
+  inProgress(false, 'RESTARTING');
   try {
     if (pod.kind === 'podman') {
-      await window.removePod(podInfoUI.engineId, podInfoUI.id);
+      await window.restartPod(pod.engineId, pod.id);
     } else {
-      await window.kubernetesDeletePod(podInfoUI.name);
+      await window.restartKubernetesPod(pod.name);
     }
   } catch (error) {
-    errorCallback(String(error));
+    handleError(String(error));
   } finally {
-    inProgressCallback(false);
+    inProgress(false);
+  }
+}
+
+async function stopPod(): Promise<void> {
+  inProgress(false, 'STOPPING');
+  try {
+    await window.stopPod(pod.engineId, pod.id);
+  } catch (error) {
+    handleError(String(error));
+  } finally {
+    inProgress(false);
+  }
+}
+
+async function deletePod(): Promise<void> {
+  inProgress(false, 'DELETING');
+  try {
+    if (pod.kind === 'podman') {
+      await window.removePod(pod.engineId, pod.id);
+    } else {
+      await window.kubernetesDeletePod(pod.name);
+    }
+  } catch (error) {
+    handleError(String(error));
+  } finally {
+    inProgress(false);
   }
 }
 
@@ -121,86 +170,124 @@ if (dropdownMenu) {
 {#if pod.kind === 'podman'}
   <ListItemButtonIcon
     title="Start Pod"
-    onClick="{() => startPod(pod)}"
-    hidden="{pod.status === 'RUNNING' || pod.status === 'STOPPING'}"
-    detailed="{detailed}"
-    inProgress="{pod.actionInProgress && pod.status === 'STARTING'}"
-    icon="{faPlay}"
+    onClick={startPod}
+    hidden={pod.status === 'RUNNING' || pod.status === 'STOPPING'}
+    detailed={detailed}
+    inProgress={pod.actionInProgress && pod.status === 'STARTING'}
+    icon={faPlay}
     iconOffset="pl-[0.15rem]" />
   <ListItemButtonIcon
     title="Stop Pod"
-    onClick="{() => stopPod(pod)}"
-    hidden="{!(pod.status === 'RUNNING' || pod.status === 'STOPPING')}"
-    detailed="{detailed}"
-    inProgress="{pod.actionInProgress && pod.status === 'STOPPING'}"
-    icon="{faStop}" />
+    onClick={stopPod}
+    hidden={!(pod.status === 'RUNNING' || pod.status === 'STOPPING')}
+    detailed={detailed}
+    inProgress={pod.actionInProgress && pod.status === 'STOPPING'}
+    icon={faStop} />
 {/if}
 <ListItemButtonIcon
   title="Delete Pod"
-  onClick="{() => deletePod(pod)}"
-  icon="{faTrash}"
-  detailed="{detailed}"
-  inProgress="{pod.actionInProgress && pod.status === 'DELETING'}" />
+  onClick={(): void => withConfirmation(deletePod, `delete pod ${pod.name}`)}
+  icon={faTrash}
+  detailed={detailed}
+  inProgress={pod.actionInProgress && pod.status === 'DELETING'} />
 
 <!-- If dropdownMenu is true, use it, otherwise just show the regular buttons -->
-<svelte:component this="{actionsStyle}">
+<svelte:component this={actionsStyle}>
   {#if pod.kind === 'podman'}
     {#if !detailed}
       <ListItemButtonIcon
         title="Generate Kube"
-        onClick="{() => openGenerateKube()}"
-        menu="{dropdownMenu}"
-        detailed="{detailed}"
-        icon="{faFileCode}" />
+        onClick={openGenerateKube}
+        menu={dropdownMenu}
+        detailed={detailed}
+        icon={faFileCode} />
     {/if}
     <ListItemButtonIcon
       title="Deploy to Kubernetes"
-      onClick="{() => deployToKubernetes()}"
-      menu="{dropdownMenu}"
-      detailed="{detailed}"
-      icon="{faRocket}" />
+      onClick={deployToKubernetes}
+      menu={dropdownMenu}
+      detailed={detailed}
+      icon={faRocket} />
     {#if openingUrls.length === 0}
       <ListItemButtonIcon
         title="Open Exposed Port"
-        menu="{dropdownMenu}"
-        enabled="{false}"
-        hidden="{dropdownMenu}"
-        detailed="{detailed}"
-        icon="{faExternalLinkSquareAlt}" />
+        menu={dropdownMenu}
+        enabled={false}
+        hidden={dropdownMenu}
+        detailed={detailed}
+        icon={faExternalLinkSquareAlt} />
     {:else if openingUrls.length === 1}
       <ListItemButtonIcon
         title="Open {extractPort(openingUrls[0])}"
-        onClick="{() => window.openExternal(openingUrls[0])}"
-        menu="{dropdownMenu}"
-        enabled="{pod.status === 'RUNNING'}"
-        hidden="{dropdownMenu}"
-        detailed="{detailed}"
-        icon="{faExternalLinkSquareAlt}" />
+        onClick={(): Promise<void> => window.openExternal(openingUrls[0])}
+        menu={dropdownMenu}
+        enabled={pod.status === 'RUNNING'}
+        hidden={dropdownMenu}
+        detailed={detailed}
+        icon={faExternalLinkSquareAlt} />
     {:else if openingUrls.length > 1}
-      <DropdownMenu icon="{faExternalLinkSquareAlt}" hidden="{dropdownMenu}" shownAsMenuActionItem="{true}">
+      <DropdownMenu icon={faExternalLinkSquareAlt} hidden={dropdownMenu} shownAsMenuActionItem={true}>
         {#each openingUrls as url}
           <ListItemButtonIcon
             title="Open {extractPort(url)}"
-            onClick="{() => window.openExternal(url)}"
-            menu="{!dropdownMenu}"
-            enabled="{pod.status === 'RUNNING'}"
-            hidden="{dropdownMenu}"
-            detailed="{detailed}"
-            icon="{faExternalLinkSquareAlt}" />
+            onClick={(): Promise<void> => window.openExternal(url)}
+            menu={!dropdownMenu}
+            enabled={pod.status === 'RUNNING'}
+            hidden={dropdownMenu}
+            detailed={detailed}
+            icon={faExternalLinkSquareAlt} />
         {/each}
       </DropdownMenu>
     {/if}
-    <ListItemButtonIcon
-      title="Restart Pod"
-      onClick="{() => restartPod(pod)}"
-      menu="{dropdownMenu}"
-      detailed="{detailed}"
-      icon="{faArrowsRotate}" />
+  {/if}
+  <ListItemButtonIcon
+    title="Restart Pod"
+    onClick={restartPod}
+    menu={dropdownMenu}
+    detailed={detailed}
+    icon={faArrowsRotate} />
+  {#if pod.kind === 'kubernetes'}
+    {#if openingKubernetesUrls.size === 0}
+      <ListItemButtonIcon
+        title="Open Browser"
+        menu={dropdownMenu}
+        enabled={false}
+        hidden={dropdownMenu}
+        detailed={detailed}
+        icon={faExternalLinkSquareAlt} />
+    {:else if openingKubernetesUrls.size === 1}
+      <ListItemButtonIcon
+        title="Open {[...openingKubernetesUrls][0][0]}"
+        onClick={(): Promise<void> => window.openExternal([...openingKubernetesUrls][0][1])}
+        menu={dropdownMenu}
+        enabled={pod.status === 'RUNNING'}
+        hidden={dropdownMenu}
+        detailed={detailed}
+        icon={faExternalLinkSquareAlt} />
+    {:else if openingKubernetesUrls.size > 1}
+      <DropdownMenu
+        title="Open Kubernetes Routes"
+        icon={faExternalLinkSquareAlt}
+        hidden={dropdownMenu}
+        shownAsMenuActionItem={true}>
+        {#each Array.from(openingKubernetesUrls) as [routeName, routeHost]}
+          <ListItemButtonIcon
+            title="Open {routeName}"
+            onClick={(): Promise<void> => window.openExternal(routeHost)}
+            menu={!dropdownMenu}
+            enabled={pod.status === 'RUNNING'}
+            hidden={dropdownMenu}
+            detailed={detailed}
+            icon={faExternalLinkSquareAlt} />
+        {/each}
+      </DropdownMenu>
+    {/if}
   {/if}
   <ContributionActions
-    args="{[pod]}"
+    args={[pod]}
     contextPrefix="podItem"
-    dropdownMenu="{dropdownMenu}"
-    contributions="{contributions}"
-    onError="{errorCallback}" />
+    dropdownMenu={dropdownMenu}
+    contributions={contributions}
+    detailed={detailed}
+    onError={handleError} />
 </svelte:component>

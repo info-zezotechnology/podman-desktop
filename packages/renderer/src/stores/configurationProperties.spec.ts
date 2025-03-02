@@ -19,13 +19,14 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { beforeAll, expect, test, vi } from 'vitest';
-import { onDidChangeConfiguration, setupConfigurationChange } from './configurationProperties';
+
 import type { IConfigurationChangeEvent } from '../../../main/src/plugin/configuration-registry';
+import { onDidChangeConfiguration, setupConfigurationChange } from './configurationProperties';
 
 // first, patch window object
 const callbacks = new Map<string, any>();
 const eventEmitter = {
-  receive: (message: string, callback: any) => {
+  receive: (message: string, callback: any): void => {
     callbacks.set(message, callback);
   },
 };

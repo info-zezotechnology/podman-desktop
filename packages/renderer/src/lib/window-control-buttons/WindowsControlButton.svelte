@@ -1,12 +1,13 @@
 <script lang="ts">
-import { onMount } from 'svelte';
+import { type Component, onMount } from 'svelte';
+
 import WindowsExitIcon from '/@/lib/images/WindowsExitIcon.svelte';
 import WindowsMaxIcon from '/@/lib/images/WindowsMaxIcon.svelte';
-import WindowsUnmaxIcon from '/@/lib/images/WindowsUnmaxIcon.svelte';
 import WindowsMinIcon from '/@/lib/images/WindowsMinIcon.svelte';
+import WindowsUnmaxIcon from '/@/lib/images/WindowsUnmaxIcon.svelte';
 
 const iconSize = '16';
-let icon: any;
+let icon: Component;
 let state = 'initial';
 
 export let name: string;
@@ -26,7 +27,7 @@ onMount(() => {
   titleName = name;
 });
 
-function executeAction() {
+function executeAction(): void {
   // perform action
   action();
 
@@ -54,11 +55,13 @@ function executeAction() {
 </script>
 
 <button
-  on:click="{() => executeAction()}"
-  aria-label="{name}"
-  title="{titleName}"
-  class="h-[32px] w-[45px] cursor-pointer text-white {name === 'Close'
-    ? 'hover:bg-[#be4425]'
-    : 'hover:bg-[#2d2d2d]'} flex place-items-center justify-center">
-  <svelte:component this="{icon}" size="{iconSize}" />
+  on:click={executeAction}
+  aria-label={name}
+  title={titleName}
+  class="h-[32px] w-[45px] cursor-pointer {name === 'Close'
+    ? 'hover:bg-[var(--pd-titlebar-windows-hover-exit-bg)] hover:text-white'
+    : 'hover:bg-[var(--pd-titlebar-windows-hover-bg)]'} text-[var(--pd-titlebar-icon)] flex place-items-center justify-center">
+  {#if icon}
+    <svelte:component this={icon} size={iconSize} />
+  {/if}
 </button>

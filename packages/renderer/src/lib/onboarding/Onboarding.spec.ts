@@ -16,19 +16,22 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 import '@testing-library/jest-dom/vitest';
-import { test, expect, vi } from 'vitest';
+
 import { fireEvent, render, screen } from '@testing-library/svelte';
-import Onboarding from './Onboarding.svelte';
-import { ContextUI } from '../context/context';
-import { onboardingList } from '/@/stores/onboarding';
+import userEvent from '@testing-library/user-event';
+import { tick } from 'svelte';
+import { beforeAll, expect, test, vi } from 'vitest';
+
 import { context } from '/@/stores/context';
+import { onboardingList } from '/@/stores/onboarding';
+
+import { ContextUI } from '../context/context';
+import Onboarding from './Onboarding.svelte';
 
 async function waitRender(customProperties: object): Promise<void> {
-  const result = render(Onboarding, { ...customProperties });
-  // wait that result.component.$$.ctx[0] is set
-  while (result.component.$$.ctx[0] === undefined) {
-    await new Promise(resolve => setTimeout(resolve, 100));
-  }
+  render(Onboarding, { ...customProperties });
+  await tick();
+  await tick();
 }
 
 global.ResizeObserver = vi.fn().mockImplementation(() => ({
@@ -36,14 +39,21 @@ global.ResizeObserver = vi.fn().mockImplementation(() => ({
   unobserve: vi.fn(),
 }));
 
-test('Expect to have the "Try again" and Cancel buttons if the step represent a failed state', async () => {
-  (window as any).resetOnboarding = vi.fn();
-  (window as any).updateStepState = vi.fn();
+beforeAll(() => {
+  Object.defineProperty(window, 'resetOnboarding', { value: vi.fn() });
+  Object.defineProperty(window, 'updateStepState', { value: vi.fn() });
+  Object.defineProperty(window, 'telemetryTrack', { value: vi.fn() });
+});
 
+test('Expect to have the "Try again" and Cancel buttons if the step represent a failed state', async () => {
   onboardingList.set([
     {
       extension: 'id',
+      removable: true,
       title: 'onboarding',
+      name: 'foobar',
+      displayName: 'FooBar',
+      icon: 'data:image/png;base64,foobar',
       steps: [
         {
           id: 'step',
@@ -61,20 +71,21 @@ test('Expect to have the "Try again" and Cancel buttons if the step represent a 
   });
   const button = screen.getByRole('button', { name: 'Try again' });
   expect(button).toBeInTheDocument();
-  const buttonCancel = screen.getByRole('button', { name: 'Cancel setup' });
+  const buttonCancel = screen.getByRole('button', { name: 'Cancel Setup' });
   expect(buttonCancel).toBeInTheDocument();
-  const infoMessage = screen.queryByLabelText('next-info-message');
+  const infoMessage = screen.queryByLabelText('Next Info Message');
   expect(infoMessage).not.toBeInTheDocument();
 });
 
 test('Expect not to have the "Try again" and "Cancel" buttons if the step represent a completed state', async () => {
-  (window as any).resetOnboarding = vi.fn();
-  (window as any).updateStepState = vi.fn();
-
   onboardingList.set([
     {
       extension: 'id',
+      removable: true,
       title: 'onboarding',
+      name: 'foobar',
+      displayName: 'FooBar',
+      icon: 'data:image/png;base64,foobar',
       steps: [
         {
           id: 'step',
@@ -92,20 +103,21 @@ test('Expect not to have the "Try again" and "Cancel" buttons if the step repres
   });
   const buttonTryAgain = screen.queryByRole('button', { name: 'Try again' });
   expect(buttonTryAgain).not.toBeInTheDocument();
-  const buttonCancel = screen.queryByRole('button', { name: 'Cancel setup' });
+  const buttonCancel = screen.queryByRole('button', { name: 'Cancel Setup' });
   expect(buttonCancel).not.toBeInTheDocument();
-  const infoMessage = screen.getByLabelText('next-info-message');
+  const infoMessage = screen.getByLabelText('Next Info Message');
   expect(infoMessage).toBeInTheDocument();
 });
 
-test('Expect to have the "step body" div if the step does not include a component', async () => {
-  (window as any).resetOnboarding = vi.fn();
-  (window as any).updateStepState = vi.fn();
-
+test('Expect to have the "Step Body" div if the step does not include a component', async () => {
   onboardingList.set([
     {
       extension: 'id',
+      removable: true,
       title: 'onboarding',
+      name: 'foobar',
+      displayName: 'FooBar',
+      icon: 'data:image/png;base64,foobar',
       steps: [
         {
           id: 'step',
@@ -121,20 +133,21 @@ test('Expect to have the "step body" div if the step does not include a componen
   await waitRender({
     extensionIds: ['id'],
   });
-  const bodyDiv = screen.getByLabelText('step body');
+  const bodyDiv = screen.getByLabelText('Step Body');
   expect(bodyDiv).toBeInTheDocument();
-  const onboardingComponent = screen.queryByLabelText('onboarding component');
+  const onboardingComponent = screen.queryByLabelText('Onboarding Component');
   expect(onboardingComponent).not.toBeInTheDocument();
 });
 
 test('Expect to have the embedded component if the step includes a component', async () => {
-  (window as any).resetOnboarding = vi.fn();
-  (window as any).updateStepState = vi.fn();
-
   onboardingList.set([
     {
       extension: 'id',
+      removable: true,
       title: 'onboarding',
+      name: 'foobar',
+      displayName: 'FooBar',
+      icon: 'data:image/png;base64,foobar',
       steps: [
         {
           id: 'step',
@@ -152,20 +165,21 @@ test('Expect to have the embedded component if the step includes a component', a
     extensionIds: ['id'],
   });
 
-  const onboardingComponent = screen.getByLabelText('onboarding component');
+  const onboardingComponent = screen.getByLabelText('Onboarding Component');
   expect(onboardingComponent).toBeInTheDocument();
-  const bodyDiv = screen.queryByLabelText('step body');
+  const bodyDiv = screen.queryByLabelText('Step Body');
   expect(bodyDiv).not.toBeInTheDocument();
 });
 
 test('Expect content to show / render when when clause is true', async () => {
-  (window as any).resetOnboarding = vi.fn();
-  (window as any).updateStepState = vi.fn();
-
   onboardingList.set([
     {
       extension: 'id',
+      removable: true,
       title: 'onboarding',
+      name: 'foobar',
+      displayName: 'FooBar',
+      icon: 'data:image/png;base64,foobar',
       steps: [
         {
           id: 'step',
@@ -195,13 +209,14 @@ test('Expect content to show / render when when clause is true', async () => {
 });
 
 test('Expect content to NOT show / render when when clause is false', async () => {
-  (window as any).resetOnboarding = vi.fn();
-  (window as any).updateStepState = vi.fn();
-
   onboardingList.set([
     {
       extension: 'id',
+      removable: true,
       title: 'onboarding',
+      name: 'foobar',
+      displayName: 'FooBar',
+      icon: 'data:image/png;base64,foobar',
       steps: [
         {
           id: 'step',
@@ -230,9 +245,6 @@ test('Expect content to NOT show / render when when clause is false', async () =
 });
 
 test('Expect content with "when" to change dynamically when setting has been updated via context.', async () => {
-  (window as any).resetOnboarding = vi.fn();
-  (window as any).updateStepState = vi.fn();
-
   const contextConfig = new ContextUI();
   context.set(contextConfig);
   contextConfig.setValue('config.test', false);
@@ -240,7 +252,11 @@ test('Expect content with "when" to change dynamically when setting has been upd
   onboardingList.set([
     {
       extension: 'id',
+      removable: true,
       title: 'onboarding',
+      name: 'foobar',
+      displayName: 'FooBar',
+      icon: 'data:image/png;base64,foobar',
       steps: [
         {
           id: 'step',
@@ -279,10 +295,7 @@ test('Expect content with "when" to change dynamically when setting has been upd
   expect(helloExists[0]).toBeInTheDocument();
 });
 
-test('Expect step body to clean up if new step has no content to display.', async () => {
-  (window as any).resetOnboarding = vi.fn();
-  (window as any).updateStepState = vi.fn();
-
+test('Expect Step Body to clean up if new step has no content to display.', async () => {
   const contextConfig = new ContextUI();
   context.set(contextConfig);
   contextConfig.setValue('config.test', false);
@@ -290,7 +303,11 @@ test('Expect step body to clean up if new step has no content to display.', asyn
   onboardingList.set([
     {
       extension: 'id',
+      removable: true,
       title: 'onboarding',
+      name: 'foobar',
+      displayName: 'FooBar',
+      icon: 'data:image/png;base64,foobar',
       steps: [
         {
           id: 'step',
@@ -322,7 +339,7 @@ test('Expect step body to clean up if new step has no content to display.', asyn
   expect(helloExists[0]).toBeInTheDocument();
 
   // click on the next button
-  const nextButton = screen.getByRole('button', { name: 'Next' });
+  const nextButton = screen.getByLabelText('Next Step');
   expect(nextButton).toBeInTheDocument();
   await fireEvent.click(nextButton);
 
@@ -333,4 +350,373 @@ test('Expect step body to clean up if new step has no content to display.', asyn
   // Expect "helloworld" to not be in the document
   const helloDoesntExist = screen.queryByText('helloworld');
   expect(helloDoesntExist).not.toBeInTheDocument();
+});
+
+// Expect that hitting "Escape" key will trigger the sendShowMessageBoxOnSelect
+test('Expect that Esc closes', async () => {
+  const contextConfig = new ContextUI();
+  context.set(contextConfig);
+  contextConfig.setValue('config.test', false);
+
+  //
+
+  onboardingList.set([
+    {
+      extension: 'id',
+      removable: true,
+      title: 'onboarding',
+      name: 'foobar',
+      displayName: 'FooBar',
+      icon: 'data:image/png;base64,foobar',
+      steps: [
+        {
+          id: 'step',
+          title: 'step',
+          content: [
+            [
+              {
+                value: 'helloworld',
+              },
+            ],
+          ],
+        },
+        {
+          id: 'step2',
+          title: 'step2',
+          state: 'completed',
+        },
+      ],
+      enablement: 'true',
+    },
+  ]);
+
+  await waitRender({
+    extensionIds: ['id'],
+  });
+
+  // Expect "helloworld" to exist
+  const helloExists = screen.getAllByText('helloworld');
+  expect(helloExists[0]).toBeInTheDocument();
+
+  // Press esc
+  await userEvent.keyboard('{Escape}');
+
+  // Espect the div 'Skip Setup Popup' to be in the document
+  const skipSetupPopup = screen.getByLabelText('Skip Setup Popup');
+  expect(skipSetupPopup).toBeInTheDocument();
+});
+
+test('Expect onboarding to handle two extension ids and global onboarding set to true', async () => {
+  const contextConfig = new ContextUI();
+  context.set(contextConfig);
+  contextConfig.setValue('config.test', false);
+
+  onboardingList.set([
+    {
+      extension: 'id',
+      removable: true,
+      title: 'Foobar Onboarding',
+      name: 'foobar',
+      displayName: 'FooBar',
+      icon: 'data:image/png;base64,foobar',
+      steps: [
+        {
+          id: 'step',
+          title: 'step',
+          content: [
+            [
+              {
+                value: 'foobar1stepcontent',
+              },
+            ],
+          ],
+        },
+        {
+          id: 'step2',
+          title: 'step2',
+          state: 'completed',
+          content: [
+            [
+              {
+                value: 'foobar1completed',
+              },
+            ],
+          ],
+        },
+      ],
+      enablement: 'true',
+    },
+    {
+      extension: 'id2',
+      removable: true,
+      title: 'Foobar2 Onboarding',
+      name: 'foobar2',
+      displayName: 'FooBar2',
+      icon: 'data:image/png;base64,foobar2',
+      steps: [
+        {
+          id: 'step',
+          title: 'step',
+          content: [
+            [
+              {
+                value: 'foobar2stepcontent',
+              },
+            ],
+          ],
+        },
+        {
+          id: 'step2',
+          title: 'step2',
+          state: 'completed',
+          content: [
+            [
+              {
+                value: 'foobar2completed',
+              },
+            ],
+          ],
+        },
+      ],
+      enablement: 'true',
+    },
+  ]);
+
+  await waitRender({
+    extensionIds: ['id', 'id2'],
+    global: true,
+  });
+
+  // Check that 'Get started with Podman Desktop' is shown
+  const title = screen.getByText('Get started with Podman Desktop');
+  expect(title).toBeInTheDocument();
+
+  /*
+   ** Checking the first extension
+   */
+
+  // Expect the onboarding title 'Foobar Onboarding' to be in the document
+  const displayName = screen.getByText('Foobar Onboarding');
+  expect(displayName).toBeInTheDocument();
+
+  // Expect the first step 'helloworld' to be in the document
+  const helloExists = screen.getAllByText('foobar1stepcontent');
+  expect(helloExists[0]).toBeInTheDocument();
+
+  // Click next
+  const nextButton = screen.getByLabelText('Next Step');
+  expect(nextButton).toBeInTheDocument();
+  await fireEvent.click(nextButton);
+
+  // Wait until 'foobar1completed' is shown
+  while (screen.queryAllByText('foobar1completed').length !== 0) {
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+
+  // Click next again
+  await fireEvent.click(nextButton);
+
+  /*
+   ** Checking the second extension
+   */
+
+  // Wait until 'foobar2stepcontent' is shown
+  while (screen.queryAllByText('foobar2stepcontent').length !== 0) {
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+
+  // Get the title of the second extension
+  const displayName2 = screen.getByText('Foobar2 Onboarding');
+  expect(displayName2).toBeInTheDocument();
+
+  // Click next again
+  await fireEvent.click(nextButton);
+
+  // Wait until 'foobar2completed' is shown
+  while (screen.queryAllByText('foobar2completed').length !== 0) {
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+
+  // Click next again
+  await fireEvent.click(nextButton);
+
+  // Expect the onboarding to be closed since we have reached the last step
+  const onboarding = screen.queryByLabelText('Onboarding');
+  expect(onboarding).not.toBeInTheDocument();
+});
+
+test('Expect onboarding to handle two extension ids and global onboarding set to false', async () => {
+  const contextConfig = new ContextUI();
+  context.set(contextConfig);
+  contextConfig.setValue('config.test', false);
+
+  onboardingList.set([
+    {
+      extension: 'id',
+      removable: true,
+      title: 'Foobar Onboarding',
+      name: 'foobar',
+      displayName: 'FooBar',
+      icon: 'data:image/png;base64,foobar',
+      steps: [
+        {
+          id: 'step',
+          title: 'step',
+          content: [
+            [
+              {
+                value: 'foobar1stepcontent',
+              },
+            ],
+          ],
+        },
+        {
+          id: 'step2',
+          title: 'step2',
+          state: 'completed',
+          content: [
+            [
+              {
+                value: 'foobar1completed',
+              },
+            ],
+          ],
+        },
+      ],
+      enablement: 'true',
+    },
+    {
+      extension: 'id2',
+      removable: true,
+      title: 'Foobar2 Onboarding',
+      name: 'foobar2',
+      displayName: 'FooBar2',
+      icon: 'data:image/png;base64,foobar2',
+      steps: [
+        {
+          id: 'step',
+          title: 'step',
+          content: [
+            [
+              {
+                value: 'foobar2stepcontent',
+              },
+            ],
+          ],
+        },
+        {
+          id: 'step2',
+          title: 'step2',
+          state: 'completed',
+          content: [
+            [
+              {
+                value: 'foobar2completed',
+              },
+            ],
+          ],
+        },
+      ],
+      enablement: 'true',
+    },
+  ]);
+
+  await waitRender({
+    extensionIds: ['id', 'id2'],
+    global: false,
+  });
+
+  // Check that 'Get started with Podman Desktop' is not shown
+  const title = screen.queryByText('Get started with Podman Desktop');
+  expect(title).not.toBeInTheDocument();
+
+  /*
+   ** Checking the first extension
+   */
+
+  // Expect the onboarding title 'Foobar Onboarding' to be in the document
+  const displayName = screen.getByText('Foobar Onboarding');
+  expect(displayName).toBeInTheDocument();
+
+  // Expect the first step 'helloworld' to be in the document
+  const helloExists = screen.getAllByText('foobar1stepcontent');
+  expect(helloExists[0]).toBeInTheDocument();
+
+  // Click next
+  const nextButton = screen.getByLabelText('Next Step');
+  expect(nextButton).toBeInTheDocument();
+  await fireEvent.click(nextButton);
+
+  // Wait until 'foobar1completed' is shown
+  while (screen.queryAllByText('foobar1completed').length !== 0) {
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+
+  // Click next again
+  await fireEvent.click(nextButton);
+
+  /*
+   ** Checking the second extension
+   */
+
+  // Wait until 'foobar2stepcontent' is shown
+  while (screen.queryAllByText('foobar2stepcontent').length !== 0) {
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+
+  // The title of the next extension is NOT shown since 'global' is set to false (wont show top section).
+  const displayName2 = screen.queryByText('Foobar2 Onboarding');
+  expect(displayName2).not.toBeInTheDocument();
+
+  // Click next again
+  await fireEvent.click(nextButton);
+
+  // Wait until 'foobar2completed' is shown
+  while (screen.queryAllByText('foobar2completed').length !== 0) {
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+
+  // Click next again
+  await fireEvent.click(nextButton);
+
+  // Expect the onboarding to be closed since we have reached the last step
+  const onboarding = screen.queryByLabelText('Onboarding');
+  expect(onboarding).not.toBeInTheDocument();
+});
+
+test('Expect onboarding to be reset when starting completed onboarding', async () => {
+  onboardingList.set([
+    {
+      extension: 'id',
+      removable: true,
+      title: 'onboarding',
+      name: 'foobar',
+      displayName: 'FooBar',
+      icon: 'data:image/png;base64,foobar',
+      steps: [
+        {
+          id: 'step',
+          title: 'step',
+          state: 'completed',
+          status: 'completed',
+          completionEvents: [],
+          content: [
+            [
+              {
+                value: 'helloworld',
+              },
+            ],
+          ],
+        },
+      ],
+      enablement: 'true',
+      status: 'completed',
+    },
+  ]);
+  context.set(new ContextUI());
+  await waitRender({
+    extensionIds: ['id'],
+  });
+  const helloDoesntExist = screen.queryAllByText('helloworld');
+  expect(helloDoesntExist.length).toBeGreaterThan(0);
 });

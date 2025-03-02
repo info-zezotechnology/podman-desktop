@@ -16,6 +16,7 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
+import type { Uri as APIUri } from '@podman-desktop/api';
 import { afterEach, expect, test, vi } from 'vitest';
 
 import { Uri } from './uri.js';
@@ -48,4 +49,67 @@ test('check uri.file', async () => {
 test('toString', () => {
   const uri = Uri.parse('https://podman-desktop.io');
   expect(uri.toString()).toBe('https://podman-desktop.io/');
+});
+
+test('joinPath without path', () => {
+  const uri = Uri.parse('https://podman-desktop.io');
+
+  // delete path for the error
+  uri['_path'] = '';
+
+  expect(() => Uri.joinPath(uri, 'foo')).toThrowError('cannot call joinPath on Uri without a path');
+});
+
+test.each([
+  ['file:///foo/', '../../bar', 'file:///bar'],
+  ['file:///foo', '../../bar', 'file:///bar'],
+  ['file:///foo/bar', './baz', 'file:///foo/bar/baz'],
+  ['http://foo', 'bar', 'http://foo/bar'],
+  ['https://foo', 'bar', 'https://foo/bar'],
+])('joinPath %s %s', (left, right, expected) => {
+  const leftUri = Uri.parse(left);
+  const joinPathUri = Uri.joinPath(leftUri, right);
+  expect(joinPathUri.toString()).toBe(expected);
+});
+
+test('Uri.with without any change should return same object', () => {
+  const uri = Uri.parse('https://podman-desktop.io');
+
+  const updatedUri = uri.with();
+
+  expect(updatedUri).toBe(uri);
+});
+
+test('Uri.with and undefined path', () => {
+  const uri = Uri.parse('https://podman-desktop.io');
+
+  const updatedUri = uri.with({ scheme: 'http' });
+
+  expect(updatedUri.scheme).toBe('http');
+});
+
+test('Uri.with and same change', () => {
+  const uri = Uri.parse('https://podman-desktop.io');
+
+  const updatedUri = uri.with({ scheme: 'https', authority: 'podman-desktop.io', path: '/', query: '', fragment: '' });
+
+  expect(updatedUri).toBe(uri);
+});
+
+test('Expect revive to return revived Uri object', () => {
+  const uriSerialized = {
+    _scheme: 'scheme',
+    _authority: 'authority',
+    _path: 'path',
+    _query: 'query',
+    _fragment: 'fragment',
+  } as unknown as APIUri;
+
+  const revived = Uri.revive(uriSerialized);
+  expect(revived.authority).equals('authority');
+  expect(revived.scheme).equals('scheme');
+  expect(revived.path).equals('path');
+  expect(revived.fsPath).equals('path');
+  expect(revived.query).equals('query');
+  expect(revived.fragment).equals('fragment');
 });

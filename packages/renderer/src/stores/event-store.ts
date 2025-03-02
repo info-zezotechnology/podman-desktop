@@ -1,5 +1,5 @@
 /**********************************************************************
- * Copyright (C) 2023 Red Hat, Inc.
+ * Copyright (C) 2023-2024 Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,14 +16,14 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
-// eslint-disable-next-line import/no-duplicates
-import type { Writable } from 'svelte/store';
+import humanizeDuration from 'humanize-duration';
 // eslint-disable-next-line import/no-duplicates
 import type { ComponentType } from 'svelte';
+// eslint-disable-next-line import/no-duplicates
+import type { Writable } from 'svelte/store';
 
-import { addStore, updateStore } from './event-store-manager';
-import humanizeDuration from 'humanize-duration';
 import DesktopIcon from '../lib/images/DesktopIcon.svelte';
+import { addStore, updateStore } from './event-store-manager';
 
 // 1.5 SECOND for DEBOUNCE and 5s for THROTTLE
 const SECOND = 1000;
@@ -106,7 +106,7 @@ export class EventStore<T> {
     }
   }
 
-  protected updateEvent(eventStoreInfo: EventStoreInfo, event: EventStoreInfoEvent) {
+  protected updateEvent(eventStoreInfo: EventStoreInfo, event: EventStoreInfoEvent): void {
     // update the info object
     eventStoreInfo.bufferEvents.push(event);
     if (eventStoreInfo.bufferEvents.length > 100) {
@@ -152,7 +152,7 @@ export class EventStore<T> {
     } finally {
       this.updateEvent(eventStoreInfo, {
         name: eventName,
-        args: args || [],
+        args: args ?? [],
         date: Date.now(),
         skipped: !needUpdate,
         length: numberOfResults,
@@ -196,11 +196,11 @@ export class EventStore<T> {
     // for throttling every 5s if not already done
     let timeoutThrottle: NodeJS.Timeout | undefined;
 
-    const update = async (eventName: string, args?: unknown[]) => {
+    const update = async (eventName: string, args?: unknown[]): Promise<void> => {
       const needUpdate = await this.checkForUpdate(eventName, args);
 
       // method that do the update
-      const doUpdate = async () => {
+      const doUpdate = async (): Promise<void> => {
         await this.performUpdate(needUpdate, eventStoreInfo, eventName, args);
       };
 
@@ -216,7 +216,7 @@ export class EventStore<T> {
 
         this.updateEvent(eventStoreInfo, {
           name: `debounce-${eventName}`,
-          args: args || [],
+          args: args ?? [],
           date: Date.now(),
           skipped: true,
           length: 0,
@@ -258,8 +258,10 @@ export class EventStore<T> {
     };
 
     this.windowEvents.forEach(eventName => {
-      window.events?.receive(eventName, async (args?: unknown[]) => {
-        await update(eventName, args);
+      window.events?.receive(eventName, (args?: unknown) => {
+        update(eventName, args as unknown[]).catch((error: unknown) => {
+          console.error(`Failed to update ${this.name}`, error);
+        });
       });
     });
 

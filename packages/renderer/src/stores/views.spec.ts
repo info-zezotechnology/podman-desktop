@@ -21,18 +21,20 @@
 import { get } from 'svelte/store';
 import type { Mock } from 'vitest';
 import { beforeAll, expect, test, vi } from 'vitest';
-import { fetchViews, viewsEventStore, viewsContributions } from './views';
-import type { ViewInfoUI } from '../../../main/src/plugin/api/view-info';
+
+import type { ViewInfoUI } from '/@api/view-info';
+
+import { fetchViews, viewsContributions, viewsEventStore } from './views';
 
 // first, path window object
 const callbacks = new Map<string, any>();
 const eventEmitter = {
-  receive: (message: string, callback: any) => {
+  receive: (message: string, callback: any): void => {
     callbacks.set(message, callback);
   },
 };
 
-const listViewsMock: Mock<any, Promise<ViewInfoUI[]>> = vi.fn();
+const listViewsMock: Mock<() => Promise<ViewInfoUI[]>> = vi.fn();
 
 Object.defineProperty(global, 'window', {
   value: {
@@ -81,6 +83,9 @@ test('views should be updated in case of an extension is stopped', async () => {
   const extensionStoppedCallback = callbacks.get('extension-stopped');
   expect(extensionStoppedCallback).toBeDefined();
   await extensionStoppedCallback();
+
+  // wait a little
+  await new Promise(resolve => setTimeout(resolve, 100));
 
   // check if the volumes are updated
   const views2 = get(viewsContributions);

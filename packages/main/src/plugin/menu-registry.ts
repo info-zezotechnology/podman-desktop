@@ -1,5 +1,5 @@
 /**********************************************************************
- * Copyright (C) 2023 Red Hat, Inc.
+ * Copyright (C) 2023-2024 Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,6 +23,7 @@ export interface Menu {
   title: string;
   when?: string;
   disabled?: string;
+  icon?: string;
 }
 
 export enum MenuContext {
@@ -30,6 +31,7 @@ export enum MenuContext {
   DASHBOARD_CONTAINER = 'dashboard/container',
   DASHBOARD_POD = 'dashboard/pod',
   DASHBOARD_COMPOSE = 'dashboard/compose',
+  DASHBOARD_CONTAINER_CONNECTION = 'dashboard/container-connection',
 }
 
 export class MenuRegistry {
@@ -40,7 +42,7 @@ export class MenuRegistry {
   registerMenus(menus: { [key: string]: Menu[] }): Disposable {
     for (const name in menus) {
       const contextMenus = menus[name];
-      contextMenus.forEach(menu => this.registerMenu(name, menu));
+      contextMenus?.forEach(menu => this.registerMenu(name, menu));
     }
 
     return Disposable.create(() => {
@@ -51,12 +53,22 @@ export class MenuRegistry {
   unregisterMenus(menus: { [key: string]: Menu[] }): void {
     for (const name in menus) {
       const contextMenus = menus[name];
-      contextMenus.forEach(menu => this.unregisterMenu(name, menu));
+      contextMenus?.forEach(menu => this.unregisterMenu(name, menu));
     }
   }
 
   registerMenu(context: string, menu: Menu): void {
     let contextMenus = this.menus.get(context);
+
+    // do we have a single match for the command ? if yes, get the command
+    const matchingCommandDefinition = this.commandRegisty
+      .getCommandPaletteCommands()
+      .find(command => command.id === menu.command);
+    // apply the icon if one
+    if (matchingCommandDefinition?.icon) {
+      menu.icon = matchingCommandDefinition.icon;
+    }
+
     if (!contextMenus) {
       contextMenus = new Map<string, Menu>();
       this.menus.set(context, contextMenus);

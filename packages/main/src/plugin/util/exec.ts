@@ -16,19 +16,21 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
-import type { ChildProcessWithoutNullStreams } from 'child_process';
-import { spawn } from 'child_process';
+import type { ChildProcessWithoutNullStreams } from 'node:child_process';
+import { spawn } from 'node:child_process';
+
 import type { RunError, RunOptions, RunResult } from '@podman-desktop/api';
-import { isLinux, isMac, isWindows } from '../../util.js';
-import type { Proxy } from '../proxy.js';
 import * as sudo from 'sudo-prompt';
 
-export const macosExtraPath = '/usr/local/bin:/opt/homebrew/bin:/opt/local/bin:/opt/podman/bin';
+import { isLinux, isMac, isWindows } from '../../util.js';
+import type { Proxy } from '../proxy.js';
+
+export const macosExtraPath = '/opt/podman/bin:/usr/local/bin:/opt/homebrew/bin:/opt/local/bin';
 
 class RunErrorImpl extends Error implements RunError {
   constructor(
-    readonly name: string,
-    readonly message: string,
+    override readonly name: string,
+    override readonly message: string,
     readonly exitCode: number,
     readonly command: string,
     readonly stdout: string,
@@ -45,7 +47,7 @@ export class Exec {
   constructor(private proxy: Proxy) {}
 
   exec(command: string, args?: string[], options?: RunOptions): Promise<RunResult> {
-    let env = Object.assign({}, process.env);
+    let env = { ...process.env };
 
     if (options?.env) {
       env = Object.assign(env, options.env);
@@ -53,18 +55,18 @@ export class Exec {
 
     if (this.proxy.isEnabled()) {
       if (this.proxy.proxy?.httpsProxy) {
-        env.HTTPS_PROXY = `http://${this.proxy.proxy.httpsProxy}`;
+        env['HTTPS_PROXY'] = `${this.proxy.proxy.httpsProxy}`;
       }
       if (this.proxy.proxy?.httpProxy) {
-        env.HTTP_PROXY = `http://${this.proxy.proxy.httpProxy}`;
+        env['HTTP_PROXY'] = `${this.proxy.proxy.httpProxy}`;
       }
       if (this.proxy.proxy?.noProxy) {
-        env.NO_PROXY = this.proxy.proxy.noProxy;
+        env['NO_PROXY'] = this.proxy.proxy.noProxy;
       }
     }
 
     if (isMac() || isWindows()) {
-      env.PATH = getInstallationPath(env.PATH);
+      env['PATH'] = getInstallationPath(env['PATH']);
     }
 
     // do we have an admin task ?
@@ -83,7 +85,7 @@ export class Exec {
            * See https://github.com/jorangreef/sudo-prompt/blob/c3cc31a51bc50fe21fadcbf76a88609c0c77026f/index.js#L96
            */
           for (const key of Object.keys(sudoEnv)) {
-            if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(key)) {
+            if (!/^[a-zA-Z_]\w*$/.test(key)) {
               delete sudoEnv[key];
             }
           }
@@ -91,9 +93,9 @@ export class Exec {
             name: 'Admin usage',
             env: sudoEnv,
           };
-          const sudoCommand = `${command} ${args || [].join(' ')}`;
+          const sudoCommand = `${command} ${(args ?? []).join(' ')}`;
 
-          const callback = (error?: Error, stdout?: string | Buffer, stderr?: string | Buffer) => {
+          const callback = (error?: Error, stdout?: string | Buffer, stderr?: string | Buffer): void => {
             if (error) {
               // need to return a RunError
               const errResult: RunError = new RunErrorImpl(
@@ -101,8 +103,8 @@ export class Exec {
                 `Failed to execute command: ${error.message}`,
                 1,
                 sudoCommand,
-                stdout?.toString() || '',
-                stderr?.toString() || '',
+                stdout?.toString() ?? '',
+                stderr?.toString() ?? '',
                 false,
                 false,
               );
@@ -111,8 +113,8 @@ export class Exec {
             }
             const result: RunResult = {
               command,
-              stdout: stdout?.toString() || '',
-              stderr: stderr?.toString() || '',
+              stdout: stdout?.toString() ?? '',
+              stderr: stderr?.toString() ?? '',
             };
             // in case of success
             resolve(result);
@@ -123,19 +125,23 @@ export class Exec {
       } else if (isMac()) {
         args = [
           '-e',
-          `do shell script "${command} ${(args || []).join(
+          `do shell script "${command} ${(args ?? []).join(
             ' ',
           )}" with prompt "Podman Desktop requires admin privileges " with administrator privileges`,
         ];
         command = 'osascript';
       } else if (isLinux()) {
-        args = [command, ...(args || [])];
+        args = [command, ...(args ?? [])];
         command = 'pkexec';
       }
     }
 
-    if (env.FLATPAK_ID) {
-      args = ['--host', command, ...(args || [])];
+    if (env['FLATPAK_ID']) {
+      const customEnvVariables: string[] = [];
+      for (const envVar in options?.env) {
+        customEnvVariables.push(`--env=${envVar}=${options.env[envVar]}`);
+      }
+      args = ['--host', ...customEnvVariables, command, ...(args ?? [])];
       command = 'flatpak-spawn';
     }
 
@@ -208,7 +214,7 @@ export class Exec {
         reject(errResult);
       });
 
-      childProcess.on('exit', exitCode => {
+      childProcess.on('close', exitCode => {
         if (exitCode === 0) {
           const result: RunResult = {
             command,
@@ -221,7 +227,7 @@ export class Exec {
           const errResult: RunError = new RunErrorImpl(
             `Command execution failed with exit code ${exitCode}`,
             `Command execution failed with exit code ${exitCode}`,
-            exitCode || 1,
+            exitCode ?? 1,
             command,
             stdout.trim(),
             stderr.trim(),
@@ -237,7 +243,7 @@ export class Exec {
 
 export function getInstallationPath(envPATH?: string): string {
   if (!envPATH) {
-    envPATH = process.env.PATH;
+    envPATH = process.env['PATH'];
   }
 
   if (isWindows()) {
@@ -246,9 +252,9 @@ export function getInstallationPath(envPATH?: string): string {
     if (!envPATH) {
       return macosExtraPath;
     } else {
-      return envPATH.concat(':').concat(macosExtraPath);
+      return macosExtraPath.concat(':').concat(envPATH);
     }
   } else {
-    return envPATH || '';
+    return envPATH ?? '';
   }
 }

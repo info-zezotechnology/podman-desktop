@@ -1,58 +1,84 @@
+/**********************************************************************
+ * Copyright (C) 2023-2024 Red Hat, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ ***********************************************************************/
+
 import '@testing-library/jest-dom/vitest';
-import { test, expect, vi, beforeAll } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/svelte';
-import ComposeDetails from './ComposeDetails.svelte';
-import { mockBreadcrumb } from '../../stores/breadcrumb.spec';
+
 import type { ContainerInspectInfo } from '@podman-desktop/api';
+import { fireEvent, render, screen } from '@testing-library/svelte';
+/* eslint-disable import/no-duplicates */
+import { tick } from 'svelte';
+import { get } from 'svelte/store';
+/* eslint-enable import/no-duplicates */
+import { beforeAll, expect, test, vi } from 'vitest';
+
+import { mockBreadcrumb } from '../../stores/breadcrumb.spec';
 import { containersInfos } from '../../stores/containers';
 import { providerInfos } from '../../stores/providers';
-import { get } from 'svelte/store';
+import ComposeDetails from './ComposeDetails.svelte';
 
 const listContainersMock = vi.fn();
 const getProviderInfosMock = vi.fn();
 const getContributedMenusMock = vi.fn();
 
-vi.mock('xterm', () => {
+vi.mock('@xterm/xterm', () => {
   return {
-    Terminal: vi.fn().mockReturnValue({ loadAddon: vi.fn(), open: vi.fn(), write: vi.fn(), clear: vi.fn() }),
+    Terminal: vi
+      .fn()
+      .mockReturnValue({ loadAddon: vi.fn(), open: vi.fn(), write: vi.fn(), clear: vi.fn(), dispose: vi.fn() }),
   };
 });
 
 beforeAll(() => {
   const onDidUpdateProviderStatusMock = vi.fn();
-  (window as any).onDidUpdateProviderStatus = onDidUpdateProviderStatusMock;
+  Object.defineProperty(window, 'onDidUpdateProviderStatus', { value: onDidUpdateProviderStatusMock });
   onDidUpdateProviderStatusMock.mockImplementation(() => Promise.resolve());
 
   (window.events as unknown) = {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    receive: (_channel: string, func: any) => {
+    receive: (_channel: string, func: () => void): void => {
       func();
     },
   };
-  (window as any).getConfigurationValue = vi.fn();
-  (window as any).matchMedia = vi.fn().mockReturnValue({
-    addListener: vi.fn(),
+  Object.defineProperty(window, 'getConfigurationValue', { value: vi.fn().mockResolvedValue(undefined) });
+  Object.defineProperty(window, 'getConfigurationProperties', { value: vi.fn().mockResolvedValue({}) });
+  Object.defineProperty(window, 'matchMedia', {
+    value: vi.fn().mockReturnValue({
+      addListener: vi.fn(),
+    }),
   });
-  (window as any).ResizeObserver = vi.fn().mockReturnValue({ observe: vi.fn(), unobserve: vi.fn() });
-  (window as any).initializeProvider = vi.fn().mockResolvedValue([]);
-  (window as any).getContainerInspect = vi.fn().mockResolvedValue(containerInspectInfo);
-  (window as any).listNetworks = vi.fn().mockResolvedValue([]);
-  (window as any).getProviderInfos = getProviderInfosMock;
-  (window as any).listContainers = listContainersMock;
-  (window as any).logsContainer = vi.fn();
-  (window as any).listViewsContributions = vi.fn();
-  (window as any).generatePodmanKube = vi.fn();
-  (window as any).getContributedMenus = getContributedMenusMock;
+  Object.defineProperty(window, 'ResizeObserver', {
+    value: vi.fn().mockReturnValue({ observe: vi.fn(), unobserve: vi.fn() }),
+  });
+  Object.defineProperty(window, 'initializeProvider', { value: vi.fn().mockResolvedValue([]) });
+  Object.defineProperty(window, 'getContainerInspect', { value: vi.fn().mockResolvedValue(containerInspectInfo) });
+  Object.defineProperty(window, 'listNetworks', { value: vi.fn().mockResolvedValue([]) });
+  Object.defineProperty(window, 'getProviderInfos', { value: getProviderInfosMock });
+  Object.defineProperty(window, 'listContainers', { value: listContainersMock });
+  Object.defineProperty(window, 'logsContainer', { value: vi.fn() });
+  Object.defineProperty(window, 'listViewsContributions', { value: vi.fn() });
+  Object.defineProperty(window, 'generatePodmanKube', { value: vi.fn() });
+  Object.defineProperty(window, 'getContributedMenus', { value: getContributedMenusMock });
   getContributedMenusMock.mockImplementation(() => Promise.resolve([]));
   mockBreadcrumb();
 });
 
 async function waitRender(name: string, engineId: string): Promise<void> {
-  const result = render(ComposeDetails, { composeName: name, engineId: engineId });
-  // wait that result.component.$$.ctx[2] is set
-  while (result.component.$$.ctx[2] === undefined) {
-    await new Promise(resolve => setTimeout(resolve, 100));
-  }
+  render(ComposeDetails, { composeName: name, engineId: engineId });
+  await tick();
 }
 
 const containerInspectInfo: ContainerInspectInfo = {
@@ -186,7 +212,7 @@ test('Simple test that compose summary is clickable and loadable', async () => {
   await fireEvent.click(summaryHref);
 
   // Check that 'Name:' is displayed meaning it has loaded correctly.
-  expect(screen.getByText('Name:')).toBeInTheDocument();
+  expect(screen.getByText('Name')).toBeInTheDocument();
 });
 
 test('Compose details inspect is clickable and loadable', async () => {
@@ -215,6 +241,7 @@ test('Compose details inspect is clickable and loadable', async () => {
       Labels: {
         'com.docker.compose.project': 'foobar',
       },
+      ImageID: 'sha256:dummy-image-id',
     },
     {
       Id: 'sha256:1234567890123',
@@ -226,6 +253,7 @@ test('Compose details inspect is clickable and loadable', async () => {
       Labels: {
         'com.docker.compose.project': 'foobar',
       },
+      ImageID: 'sha256:dummy-image-id',
     },
   ];
 
@@ -253,6 +281,8 @@ test('Compose details inspect is clickable and loadable', async () => {
 });
 
 test('Test that compose kube tab is clickable and loadable', async () => {
+  listContainersMock.mockResolvedValue([]);
+
   render(ComposeDetails, { composeName: 'foobar', engineId: 'engine' });
   const kubeHref = screen.getByRole('link', { name: 'Kube' });
   await fireEvent.click(kubeHref);

@@ -15,13 +15,13 @@
  *
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { expect, test, vi } from 'vitest';
-import * as extensionApi from '@podman-desktop/api';
 import type { Configuration } from '@podman-desktop/api';
-import * as handler from './handler';
+import * as extensionApi from '@podman-desktop/api';
+import { expect, test, vi } from 'vitest';
+
 import type * as detect from './detect';
+import * as handler from './handler';
 
 const config: Configuration = {
   get: () => {
@@ -34,7 +34,7 @@ const config: Configuration = {
 vi.mock('@podman-desktop/api', async () => {
   return {
     configuration: {
-      getConfiguration: () => config,
+      getConfiguration: (): Configuration => config,
     },
     window: {
       showInformationMessage: vi.fn(),

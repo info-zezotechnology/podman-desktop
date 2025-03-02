@@ -1,5 +1,5 @@
 /**********************************************************************
- * Copyright (C) 2023 Red Hat, Inc.
+ * Copyright (C) 2023-2024 Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,13 +17,15 @@
  ***********************************************************************/
 
 import '@testing-library/jest-dom/vitest';
-import { test, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/svelte';
 
+import { fireEvent } from '@testing-library/dom';
+import { render, screen } from '@testing-library/svelte';
+import { router } from 'tinro';
+import { expect, test, vi } from 'vitest';
+
+import ImageIcon from '../images/ImageIcon.svelte';
 import ImageColumnName from './ImageColumnName.svelte';
 import type { ImageInfoUI } from './ImageInfoUI';
-import { router } from 'tinro';
-import { fireEvent } from '@testing-library/dom';
 
 const image: ImageInfoUI = {
   id: 'my-image',
@@ -38,24 +40,35 @@ const image: ImageInfoUI = {
   humanSize: '',
   base64RepoTag: 'repoTag',
   selected: false,
-  inUse: false,
+  status: 'UNUSED',
+  icon: ImageIcon,
+  badges: [],
+  digest: 'sha256:1234567890',
 };
+const getImageMock = vi.fn();
+
+vi.mock('/@/lib/appearance/appearance-util', () => {
+  return {
+    AppearanceUtil: class {
+      getImage = getImageMock;
+    },
+  };
+});
 
 test('Expect simple column styling', async () => {
   render(ImageColumnName, { object: image });
 
   const text = screen.getByText(image.name);
   expect(text).toBeInTheDocument();
-  expect(text).toHaveClass('text-sm');
-  expect(text).toHaveClass('text-gray-300');
+  expect(text).toHaveClass('text-[var(--pd-table-body-text-highlight)]');
 
   const id = screen.getByText(image.shortId);
   expect(id).toBeInTheDocument();
-  expect(id).toHaveClass('text-violet-400');
+  expect(id).toHaveClass('text-[var(--pd-table-body-text-sub-secondary)]');
 
   const tag = screen.getByText(image.tag);
   expect(tag).toBeInTheDocument();
-  expect(tag).toHaveClass('text-gray-400');
+  expect(tag).toHaveClass('text-[var(--pd-table-body-text)]');
   expect(tag).toHaveClass('font-extra-light');
 });
 
@@ -71,4 +84,108 @@ test('Expect clicking works', async () => {
   fireEvent.click(text);
 
   expect(routerGotoSpy).toBeCalledWith('/images/my-image/podman/repoTag/summary');
+});
+
+test('Expect badge with simple color', async () => {
+  const imageWithBadges: ImageInfoUI = {
+    ...image,
+    badges: [
+      {
+        label: 'my-badge',
+        color: '#ff0000',
+      },
+    ],
+  };
+  getImageMock.mockReturnValue('#ff0000');
+  render(ImageColumnName, { object: imageWithBadges });
+
+  // wait for image to be rendered using timeout
+  await new Promise(resolve => setTimeout(resolve, 100));
+
+  const text = screen.getByText(image.name);
+  expect(text).toBeInTheDocument();
+
+  // get label 'my-badge'
+  const badge = screen.getByText('my-badge');
+  expect(badge).toBeInTheDocument();
+
+  // check background color
+  await vi.waitFor(async () => expect(badge).toHaveStyle('background-color: #ff0000'));
+});
+
+test('Expect badge with dark color', async () => {
+  const imageWithBadges: ImageInfoUI = {
+    ...image,
+    badges: [
+      {
+        label: 'my-dark-badge',
+        color: {
+          dark: '#0000ff',
+          light: '#00ff00',
+        },
+      },
+    ],
+  };
+  getImageMock.mockReturnValue('#0000ff');
+  render(ImageColumnName, { object: imageWithBadges });
+
+  // wait for image to be rendered using timeout
+  await new Promise(resolve => setTimeout(resolve, 100));
+
+  const text = screen.getByText(image.name);
+  expect(text).toBeInTheDocument();
+
+  // get label 'my-badge'
+  const badge = screen.getByText('my-dark-badge');
+  expect(badge).toBeInTheDocument();
+
+  // check background color
+  await vi.waitFor(async () => expect(badge).toHaveStyle('background-color: #0000ff'));
+});
+
+test('Expect badge with light color', async () => {
+  const imageWithBadges: ImageInfoUI = {
+    ...image,
+    badges: [
+      {
+        label: 'my-light-badge',
+        color: {
+          dark: '#0000ff',
+          light: '#00ff00',
+        },
+      },
+    ],
+  };
+  getImageMock.mockReturnValue('#00ff00');
+  render(ImageColumnName, { object: imageWithBadges });
+
+  // wait for image to be rendered using timeout
+  await new Promise(resolve => setTimeout(resolve, 100));
+
+  const text = screen.getByText(image.name);
+  expect(text).toBeInTheDocument();
+
+  // get label 'my-badge'
+  const badge = screen.getByText('my-light-badge');
+  expect(badge).toBeInTheDocument();
+
+  // check background color
+  await vi.waitFor(async () => expect(badge).toHaveStyle('background-color: #00ff00'));
+});
+
+test('Expect if image is a manifest, the on:click IS there', async () => {
+  const manifestImage: ImageInfoUI = {
+    ...image,
+    isManifest: true,
+  };
+  render(ImageColumnName, { object: manifestImage });
+
+  // Make sure text shows image name then (manifest)
+  const text = screen.getByText(`${image.name} (manifest)`);
+  expect(text).toBeInTheDocument();
+
+  // test click
+  const routerGotoSpy = vi.spyOn(router, 'goto');
+  fireEvent.click(text);
+  expect(routerGotoSpy).toBeCalled();
 });

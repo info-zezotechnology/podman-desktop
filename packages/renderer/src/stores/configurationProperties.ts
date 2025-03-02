@@ -1,5 +1,5 @@
 /**********************************************************************
- * Copyright (C) 2022-2023 Red Hat, Inc.
+ * Copyright (C) 2022-2024 Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,7 +16,8 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
-import { writable, type Writable } from 'svelte/store';
+import { type Writable, writable } from 'svelte/store';
+
 import type {
   IConfigurationChangeEvent,
   IConfigurationPropertyRecordedSchema,
@@ -61,10 +62,10 @@ class ConfigurationChangeEvent extends CustomEvent<IConfigurationChangeEvent> {
   }
 }
 
-export function setupConfigurationChange() {
+export function setupConfigurationChange(): void {
   // be notified when a specific property is being changed
-  window.events?.receive('onDidChangeConfiguration', async (data: IConfigurationChangeEvent) => {
-    onDidChangeConfiguration.dispatchEvent(new ConfigurationChangeEvent(data));
+  window.events?.receive('onDidChangeConfiguration', (data: unknown) => {
+    onDidChangeConfiguration.dispatchEvent(new ConfigurationChangeEvent(data as IConfigurationChangeEvent));
   });
 }
 

@@ -16,10 +16,13 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
-import { afterEach, beforeEach, expect, test, vi } from 'vitest';
-import { Directories } from './directories.js';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
+
+import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+
+import { Directories } from './directories.js';
+
 class TestDirectories extends Directories {
   public getDesktopAppHomeDir(): string {
     return this.desktopAppHomeDir;
@@ -32,7 +35,7 @@ const originalProcessEnv = process.env;
 
 beforeEach(() => {
   // mock the env variable
-  process.env = Object.assign({}, process.env);
+  process.env = { ...process.env };
 
   // mock the fs module
   vi.mock('node:fs');
@@ -42,7 +45,7 @@ beforeEach(() => {
   existSyncSpy.mockImplementation(() => true);
 
   const mkdirSpy = vi.spyOn(fs, 'mkdirSync');
-  mkdirSpy.mockImplementation(() => Promise.resolve(''));
+  mkdirSpy.mockImplementation(() => '');
 });
 
 afterEach(() => {

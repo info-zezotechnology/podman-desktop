@@ -1,8 +1,10 @@
 <script lang="ts">
 import { onDestroy, onMount } from 'svelte';
-import { providerInfos } from '/@/stores/providers';
+import type { Unsubscriber } from 'svelte/store';
+
 import { notificationQueue } from '/@/stores/notifications';
-import type { Unsubscriber } from 'svelte/motion';
+import { providerInfos } from '/@/stores/providers';
+
 import NewContentBadge from '../ui/NewContentBadge.svelte';
 
 let providersId: string[] = [];
@@ -52,12 +54,12 @@ function hasNewProvider(oldProvidersId: string[], newProvidersId: string[]): boo
   return false;
 }
 
-function onHide() {
+function onHide(): void {
   hasNewProviders = false;
   hasNewNotifications = false;
 }
 </script>
 
 <div class="absolute top-0 right-[-9px]">
-  <NewContentBadge pagePath="/" show="{hasNew}" onHide="{onHide}" />
+  <NewContentBadge pagePath="/" show={hasNew} onHide={onHide} />
 </div>

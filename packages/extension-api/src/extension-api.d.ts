@@ -1,5 +1,5 @@
 /**********************************************************************
- * Copyright (C) 2022-2023 Red Hat, Inc.
+ * Copyright (C) 2022-2024 Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,7 +16,37 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
+/**
+ * The Podman Desktop API is intended to be consumed by extensions interacting with Podman Desktop.
+ *
+ * This documentation is automatically generated from typedoc comments
+ * in the source code `extension-api.d.ts` and provided [on our website](https://podman-desktop.io/api).
+ *
+ * This type declaration file can be installed from [the npm registry](https://www.npmjs.com/package/@podman-desktop/api).
+ *
+ * For more information, see the main
+ * [Podman Desktop developing extensions documentation](https://podman-desktop.io/docs/extensions/developing).
+ *
+ * @example
+ * ```shell
+ * $ npm install @podman-desktop/api
+ * ```
+ *
+ * ```typescript
+ * import * as api from '@podman-desktop/api';
+ *
+ * console.log(api.version);
+ * ```
+ *
+ * @module @podman-desktop/api
+ **/
+
 declare module '@podman-desktop/api' {
+  /**
+   * The version of Podman Desktop.
+   */
+  export const version: string;
+
   /**
    * Represents a reference to a command. Provides a title which
    * will be used to represent a command in the UI and, optionally,
@@ -64,7 +94,7 @@ declare module '@podman-desktop/api' {
      * on dispose.
      * @param callOnDispose Function that disposes something.
      */
-    // eslint-disable-next-line @typescript-eslint/ban-types
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
     constructor(callOnDispose: Function);
 
     /**
@@ -88,13 +118,39 @@ declare module '@podman-desktop/api' {
   }
 
   /**
-   * Event to subscribe
+   * Interface to subscribe specific events.
+   *
+   * @example
+   * This is an example for an hypothetic function `onDidValueChange` implementing
+   * the `Event` interface.
+   *
+   * ```typescript
+   * import * as api from '@podman-desktop/api';
+   *
+   * class MyValueManager {
+   *   private value: boolean | undefined = undefined;
+   *
+   *   private onChange(e: boolean) {
+   *     this.value = e;
+   *     console.log(this.value);
+   *   }
+   *
+   *   public init(subscriptions: api.Disposable[]) {
+   *     onDidValueChange(this.onChange, this, subscriptions);
+   *   }
+   * }
+   *
+   * export async function activate(extensionContext: api.ExtensionContext): Promise<void> {
+   *   const myValueManager = new MyValueManager();
+   *   myValueManager.init(extensionContext.subscriptions);
+   * }
+   * ```
    */
   export interface Event<T> {
     /**
      * @param listener The listener function will be called when the event happens.
      * @param thisArgs The `this`-argument which will be used when calling the event listener.
-     * @param disposables An array to which a {@link Disposable} will be added.
+     * @param disposables An array to which the resulting {@link Disposable} will be added.
      * @return A disposable which unsubscribes the event listener.
      */
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -115,7 +171,7 @@ declare module '@podman-desktop/api' {
     event: Event<T>;
     /**
      * To fire an event to the subscribers
-     * @param event The event to send to the registered listeners
+     * @param data The event to send to the registered listeners
      */
     fire(data: T): void;
     /**
@@ -134,6 +190,92 @@ declare module '@podman-desktop/api' {
      * up to the extension.
      */
     readonly storagePath: string;
+
+    /**
+     * The uri of the directory containing the extension.
+     */
+    readonly extensionUri: Uri;
+
+    /**
+     * A storage utility for secrets. Secrets are persisted across reloads.
+     */
+    readonly secrets: SecretStorage;
+  }
+
+  /**
+   * Represents an extension.
+   *
+   * To get an instance of an `Extension` use {@link extensions.getExtension getExtension}.
+   */
+  export interface Extension<T> {
+    /**
+     * The canonical extension identifier in the form of: `publisher.name`.
+     */
+    readonly id: string;
+
+    /**
+     * The uri of the directory containing the extension.
+     */
+    readonly extensionUri: Uri;
+
+    /**
+     * The absolute file path of the directory containing this extension. Shorthand
+     * notation for {@link Extension.extensionUri Extension.extensionUri.fsPath} (independent of the uri scheme).
+     */
+    readonly extensionPath: string;
+
+    /**
+     * The parsed contents of the extension's package.json.
+     */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    readonly packageJSON: any;
+
+    /**
+     * The public API exported by this extension (return value of `activate`).
+     * It is an invalid action to access this field before this extension has been activated.
+     */
+    readonly exports: T;
+  }
+
+  /**
+   * Namespace for dealing with installed extensions. Extensions are represented
+   * by an {@link Extension}-interface which enables reflection on them.
+   *
+   * Extension writers can provide APIs to other extensions by returning their API public
+   * surface from the `activate`-call.
+   *
+   * When depending on the API of another extension add an `extensionDependencies`-entry
+   * to `package.json`, and use the {@link extensions.getExtension getExtension}-function
+   * and the {@link Extension.exports exports}-property, like below:
+   *
+   * ```typescript
+   * const podmanExtension = extensions.getExtension('podman-desktop.podman');
+   * const podmanExtensionAPI = podmanExtension.exports;
+   *
+   * podmanExtensionAPI....
+   * ```
+   */
+  export namespace extensions {
+    /**
+     * Get an extension by its full identifier in the form of: `publisher.name`.
+     *
+     * @param extensionId An extension identifier.
+     * @returns An extension or `undefined`.
+     */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    export function getExtension<T = any>(extensionId: string): Extension<T> | undefined;
+
+    /**
+     * All extensions currently known to the system.
+     */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    export const all: readonly Extension<any>[];
+
+    /**
+     * An event which fires when `extensions.all` changes. This can happen when extensions are
+     * installed, uninstalled, enabled or disabled.
+     */
+    export const onDidChange: Event<void>;
   }
 
   /**
@@ -233,6 +375,13 @@ declare module '@podman-desktop/api' {
     start?(startContext: LifecycleContext, logger?: Logger): Promise<void>;
     stop?(stopContext: LifecycleContext, logger?: Logger): Promise<void>;
     delete?(logger?: Logger): Promise<void>;
+    edit?(
+      editContext: LifecycleContext,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      params: { [key: string]: any },
+      logger?: Logger,
+      token?: CancellationToken,
+    ): Promise<void>;
   }
 
   export interface ContainerProviderConnectionEndpoint {
@@ -241,10 +390,129 @@ declare module '@podman-desktop/api' {
 
   export interface ContainerProviderConnection {
     name: string;
+    displayName?: string;
     type: 'docker' | 'podman';
     endpoint: ContainerProviderConnectionEndpoint;
+    shellAccess?: ProviderConnectionShellAccess;
     lifecycle?: ProviderConnectionLifecycle;
     status(): ProviderConnectionStatus;
+    vmType?: string;
+    /**
+     * the vmTypeDisplayName property cannot be set if vmType is undefined
+     */
+    vmTypeDisplayName?: string;
+  }
+
+  export interface PodCreatePortOptions {
+    host_ip: string;
+    container_port: number;
+    host_port: number;
+    protocol: string;
+    range: number;
+  }
+
+  export interface PodCreateOptions {
+    /**
+     * Name is the name of the pod. If not provided, a name will be generated when the pod is created. Optional.
+     */
+    name?: string;
+    /**
+     * PortMappings is a set of ports to map into the infra container.
+     * As, by default, containers share their network with the infra container, this will forward the ports to the entire pod.
+     * Only available if NetNS is set to Bridge, Slirp, or Pasta.
+     */
+    portmappings?: PodCreatePortOptions[];
+    /**
+     * Labels are key-value pairs that are used to add metadata to pods. Optional.
+     */
+    labels?: { [key: string]: string };
+    // Set the provider to use, if not we will try select the first one available (sorted in favor of Podman).
+    provider?: ContainerProviderConnection;
+    /**
+     * Map of networks names to ids the container should join to.
+     * You can request additional settings for each network, you can set network aliases,
+     *
+     * @remarks
+     * {@link PodCreateOptions.netns.nsmode} need to be set to `bridge` to join a network
+     */
+    Networks?: {
+      [key: string]: {
+        aliases?: string[];
+        interface_name?: string;
+      };
+    };
+    /**
+     * Network namespace
+     */
+    netns?: {
+      /**
+       * NamespaceMode
+       * @example
+       * `bridge` indicates that the network backend (CNI/netavark) should be used.
+       * @example
+       * `pasta` indicates that a pasta network stack should be used.
+       */
+      nsmode: string;
+    };
+    /**
+     * ExitPolicy determines the pod's exit and stop behaviour.
+     * @example
+     * "continue": the pod continues running. This is the default policy
+     * when creating a pod.
+     *
+     * @example
+     * "stop": stop the pod when the last container exits. This is the
+     * default behaviour for play kube.
+     */
+    exit_policy?: string;
+  }
+
+  export interface ManifestCreateOptions {
+    images: string[];
+    name: string;
+    amend?: boolean;
+    all?: boolean;
+
+    // Provider to use for the manifest creation, if not, we will try to select the first one available (similar to podCreate)
+    provider?: ContainerProviderConnection;
+  }
+
+  // Matches required API parameters of Podman options
+  export interface ManifestPushOptions {
+    /**
+     * The destination of the manifest list to push.
+     * this can be the same as 'name' or a different one.
+     * @example
+     * "quay.io/myrepo/myotherdestination"
+     */
+    destination: string;
+    /**
+     * The name of the manifest list to push
+     * @example
+     * "quay.io/myrepo/mymanifest"
+     */
+    name: string;
+    // Provider to use for the manifest pushing, if not, we will default to the first one available
+    provider?: ContainerProviderConnection;
+  }
+
+  export interface ManifestInspectInfo {
+    engineId: string;
+    engineName: string;
+    manifests: {
+      digest: string;
+      mediaType: string;
+      platform: {
+        architecture: string;
+        features?: string[];
+        os: string;
+        variant?: string;
+      };
+      size: number;
+      urls?: string[];
+    }[];
+    mediaType: string;
+    schemaVersion: number;
   }
 
   export interface KubernetesProviderConnectionEndpoint {
@@ -339,13 +607,42 @@ declare module '@podman-desktop/api' {
     preflightChecks?(): InstallCheck[];
   }
 
+  export interface AutostartContext {
+    /**
+     * updateContainerConnection must be called by the provider when a connection status is updated
+     */
+    updateContainerConnection(containerProviderConnection: ContainerProviderConnection): void;
+  }
+
   /**
    * By providing this interface, when Podman Desktop is starting
    * It'll start the provider through this interface.
    * It can be turned off/on by the user.
+   *
+   * `context` contains helper functions to be called by the provider during startup (see {@link AutostartContext})
    */
   export interface ProviderAutostart {
-    start(logger: Logger): Promise<void>;
+    start(logger: Logger, context?: AutostartContext): Promise<void>;
+  }
+
+  /**
+   * Allow to clean some resources in case for example
+   */
+  export interface ProviderCleanup {
+    getActions(): Promise<ProviderCleanupAction[]>;
+  }
+
+  export interface ProviderCleanupExecuteOptions {
+    logger: Logger;
+    token?: CancellationToken;
+  }
+
+  // describe the action to perform
+  // for example, "remove a folder" or 'kill foo process'
+  export interface ProviderCleanupAction {
+    name: string;
+    // execute the action (can be canceled)
+    execute(options: ProviderCleanupExecuteOptions): Promise<void>;
   }
 
   export type ProviderLinks = Link;
@@ -378,6 +675,8 @@ declare module '@podman-desktop/api' {
     // register autostart flow
     registerAutostart(autostart: ProviderAutostart): Disposable;
 
+    registerCleanup(cleanup: ProviderCleanup): Disposable;
+
     dispose(): void;
     readonly name: string;
     readonly id: string;
@@ -409,9 +708,59 @@ declare module '@podman-desktop/api' {
     onDidUpdateDetectionChecks: Event<ProviderDetectionCheck[]>;
   }
 
+  /**
+   * The commands module provides functions to register and execute commands
+   * Existing commands available for extensions to use:
+   * - `pullImage`: uses Podman Desktop's UI pull image behavior. This command will create a visible task to show the progress of the pullImage action with the option to include a task action.
+   * It uses the same parameters as the original pullImage function, in addition to having `taskActionName: string` and `taskActionCallback: () => void` as parameters to create a task action (optional).
+   *
+   * @example
+   * ```typescript
+   * import * as api from '@podman-desktop/api';
+   *
+   * export async function activate(extensionContext: api.ExtensionContext): Promise<void> {
+   *
+   *   const myCommand = api.commands.registerCommand(
+   *     'extension-name.my-command',
+   *     (arg1: string, arg2: number) => {
+   *       console.log('my-command executed with', arg1, arg2);
+   *     },
+   *   );
+   *
+   *   extensionContext.subscriptions.push(myCommand);
+   *
+   *   // [...]
+   *
+   *   api.commands.executeCommand('extension-name.my-command', 'a-string', 1001);
+   * }
+   * ```
+   */
   export namespace commands {
+    /**
+     * Define a command, to be executed later, either by calling {@link commands.executeCommand} or by referencing its name in the `command` field of a {@link StatusBarItem}.
+     *
+     * For examples, see {@link commands} and {@link window.createStatusBarItem}.
+     *
+     * @param command the name of the command. The name must be unique over all extensions. It is recommended to prefix this name with the name of the extension, to avoid conflicts with commands from other extensions.
+     * @param callback the command to execute
+     * @param thisArg The value of `this` provided for the call to callback
+     * @returns A disposable that unregisters this command when being disposed
+     * @throws if a command with the same name is already registered.
+     */
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     export function registerCommand(command: string, callback: (...args: any[]) => any, thisArg?: any): Disposable;
+    /**
+     * Execute a command, previously registered with {@link commands.registerCommand}.
+     *
+     * For an example, see {@link commands}.
+     *
+     * @param command the name used for registering the command
+     * @param rest the parameters to pass to the command
+     * @param T the type of the value returned by the command
+     * @returns the value returned by the command
+     * @throws if the command is not registered
+     * @throws if the command throws an exception
+     */
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     export function executeCommand<T = unknown>(command: string, ...rest: any[]): PromiseLike<T>;
   }
@@ -452,6 +801,179 @@ declare module '@podman-desktop/api' {
     connection: ContainerProviderConnection;
   }
 
+  /**
+   * Callback for openning shell session
+   */
+  export interface ProviderConnectionShellAccess {
+    /**
+     * Opens new session using ProviderConnectionShellAccessImpl class
+     * @example
+     * import * as api from '@podman-desktop/api';
+     *
+     * class ProviderConnectionShellAccessImpl implements ProviderConnectionShellAccess {
+     *  open(): ProviderConnectionShellAccessSession {
+     *    // This is client that will connect to your shell
+     *    #client = new Client();
+     *
+     *    // You need to listen to events from client and forward them to the caller by using the object returned below
+     *
+     *    return {
+     *      onData,
+     *      onError,
+     *      onEnd,
+     *      write,
+     *      resize,
+     *      close,
+     *    };
+     *  }
+     * }
+     *
+     * export async function activate(extensionContext: api.ExtensionContext): Promise<void> {
+     *  const providerConnectionShellAccess = new ProviderConnectionShellAccessImpl(machineInfo);
+     *
+     *  // Create containerProviderConnection object
+     *  const containerProviderConnection: extensionApi.ContainerProviderConnection = {
+     *    ...
+     *    shellAccess: providerConnectionShellAccess,
+     *    ...
+     *  };
+     *
+     *  const disposable = provider.registerContainerProviderConnection(containerProviderConnection);
+     *  extensionContext.subscriptions.push(disposable);
+     * }
+     */
+    open(): ProviderConnectionShellAccessSession;
+  }
+
+  /**
+   * Callbacks for interaction with shell session
+   */
+  export interface ProviderConnectionShellAccessSession {
+    onData: Event<ProviderConnectionShellAccessData>;
+    onError: Event<ProviderConnectionShellAccessError>;
+    onEnd: Event<void>;
+    write(data: string | Uint8Array): void;
+    resize(dimensions: ProviderConnectionShellDimensions): void;
+    close(): void;
+  }
+
+  export interface ProviderConnectionShellDimensions {
+    rows: number;
+    cols: number;
+  }
+
+  export interface ProviderConnectionShellAccessError {
+    error: string;
+  }
+
+  export interface ProviderConnectionShellAccessData {
+    data: string;
+  }
+
+  /**
+   * the description of a file in an image filesystem layer
+   */
+  export interface ImageFile {
+    path: string;
+    type: 'directory' | 'symlink' | 'file';
+    // File mode encoded on 4 octal digits
+    mode: number;
+    uid: number;
+    gid: number;
+    size: number;
+    ctime: Date;
+    atime: Date;
+    mtime: Date;
+  }
+
+  /**
+   * the description of a symlink in an image filesystem layer
+   */
+  export interface ImageFileSymlink extends ImageFile {
+    type: 'symlink';
+    // path of the target file
+    linkPath: string;
+  }
+
+  /**
+   * a filesystem layer of an image as defined by [spec](https://github.com/opencontainers/image-spec/blob/main/spec.md)
+   */
+  export interface ImageFilesystemLayer {
+    /**
+     * unique id of the layer
+     */
+    id: string;
+    /**
+     * the command which created the layer
+     */
+    createdBy?: string;
+    /**
+     * files indicate the paths of the files added or modified in the layer
+     */
+    files?: ImageFile[];
+    /**
+     * whiteouts indicate the paths of the files to be deleted from previous layers.
+     */
+    whiteouts?: string[];
+    /**
+     * opaque whiteouts indicate the directories in which the content has to be completely deleted from previous layers.
+     */
+    opaqueWhiteouts?: string[];
+  }
+
+  /**
+   * the complete list of filesystem layers
+   */
+  export interface ImageFilesystemLayers {
+    layers: ImageFilesystemLayer[];
+  }
+
+  /**
+   * Interface to be implemented by image files providers
+   */
+  export interface ImageFilesCallbacks {
+    /**
+     *
+     * @param image Info about the image
+     * @param token a cancellation token the function can use to be informed when the caller asks for the operation to be cancelled
+     * @return the complete result of the layers, either synchronously of through a Promise
+     */
+    getFilesystemLayers(image: ImageInfo, token?: CancellationToken): ProviderResult<ImageFilesystemLayers>;
+  }
+
+  /**
+   * Provider returned to the extension when calling createImageFilesProvider
+   * Provides helper functions for building the response of the `createImageFilesProvider` callback
+   */
+  export interface ImageFilesProvider extends Disposable {
+    /**
+     * add a file to the layer
+     */
+    addFile(layer: ImageFilesystemLayer, opts: { path: string; mode: number; size: number }): ImageFilesProvider;
+    /**
+     * add a directory to the layer
+     */
+    addDirectory(layer: ImageFilesystemLayer, opts: { path: string; mode: number }): ImageFilesProvider;
+    /**
+     * add a symbolic link to the layer
+     */
+    addSymlink(layer: ImageFilesystemLayer, opts: { path: string; mode: number; linkPath: string }): ImageFilesProvider;
+    /**
+     * add a file or directory to remove from previous layers
+     * @param path
+     */
+    addWhiteout(layer: ImageFilesystemLayer, path: string): ImageFilesProvider;
+    /**
+     * add a complete directory to remove from previous layers
+     * @param path
+     */
+    addOpaqueWhiteout(layer: ImageFilesystemLayer, path: string): ImageFilesProvider;
+  }
+
+  export interface ImageFilesProviderMetadata {
+    readonly label: string;
+  }
+
   export namespace provider {
     export function createProvider(provider: ProviderOptions): Provider;
     export const onDidUpdateProvider: Event<ProviderEvent>;
@@ -465,14 +987,28 @@ declare module '@podman-desktop/api' {
      * If no context is found it throws an error
      *
      * @param providerId the provider id
-     * @param providerConnectionInfo the connection to retrieve the lifecycle context for
+     * @param containerProviderConnection the connection to retrieve the lifecycle context for
      * @returns the lifecycle context
      * @throws if no provider with the id has been found or there is no context associate to it.
      */
     export function getProviderLifecycleContext(
       providerId: string,
-      providerConnectionInfo: ProviderContainerConnectionInfo | ProviderKubernetesConnectionInfo,
+      containerProviderConnection: ContainerProviderConnection,
     ): LifecycleContext;
+    /**
+     * @beta Register the extension as an Image Files provider.
+     *
+     * As an image files provider, a provider needs to implement a specific interface, so the core
+     * application can call the provider with specific tasks when necessary.
+     *
+     * @param imageFilesCallbacks an object implementing the `ImageFilesProvider` interface
+     * @param metadata optional metadata attached to this provider
+     * @return A disposable that unregisters this provider when being disposed
+     */
+    export function createImageFilesProvider(
+      imageFilesCallbacks: ImageFilesCallbacks,
+      metadata?: ImageFilesProviderMetadata,
+    ): ImageFilesProvider;
   }
 
   export interface ProxySettings {
@@ -481,14 +1017,72 @@ declare module '@podman-desktop/api' {
     noProxy: string | undefined;
   }
 
+  /**
+   * The proxy module provides functions to set and get (immediately and reactively) HTTP proxy configuration.
+   * Note that it is not possible to change the state (enabled or disabled) of the proxy settings from the API.
+   *
+   * @example
+   *
+   * ```typescript
+   * import * as api from '@podman-desktop/api';
+   *
+   * export async function activate(extensionContext: api.ExtensionContext): Promise<void> {
+   *   const handleProxyConfiguration = (e: boolean | undefined, s: api.ProxySettings | undefined) => {
+   *     console.log(e, s);
+   *   }
+   *
+   *   let enabled: boolean | undefined = undefined;
+   *   let settings: api.ProxySettings | undefined = undefined;
+   *
+   *   // Configuration changes
+   *   extensionContext.subscriptions.push(
+   *     api.proxy.onDidStateChange((e: boolean) => {
+   *       enabled = e;
+   *       handleProxyConfiguration(enabled, settings);
+   *     }),
+   *     api.proxy.onDidUpdateProxy((s: api.ProxySettings) => {
+   *       settings = s;
+   *       handleProxyConfiguration(enabled, settings);
+   *     }),
+   *   );
+   *   // Initial configuration
+   *   enabled = api.proxy.isEnabled();
+   *   settings = api.proxy.getProxySettings();
+   *   handleProxyConfiguration(enabled, settings);
+   * }
+   * ```
+   */
   export namespace proxy {
+    /**
+     * Return the current settings of the HTTP proxy.
+     *
+     * For an example, see {@link proxy}.
+     */
     export function getProxySettings(): ProxySettings | undefined;
+    /**
+     * Register new HTTP proxy settings. Note that registering new settings does not change the state (enabled or disabled) of the proxy settings.
+     */
     export function setProxy(proxySettings: ProxySettings): Promise<void>;
-    // Podman Desktop has updated the settings, propagates the changes to the provider.
+    /**
+     * Listen for changes on the proxy settings. The listener will be called with the new settings
+     * every time the settings change.
+     *
+     * For examples, see {@link proxy} and {@link Event}.
+     */
     export const onDidUpdateProxy: Event<ProxySettings>;
 
-    // The state of the proxy
+    /**
+     * Return the current state (enabled or disabled) of the proxy settings.
+     *
+     * For an example, see {@link proxy}.
+     */
     export function isEnabled(): boolean;
+    /**
+     * Listen for changes on the proxy state (enabled or disabled). The listener will be called with the new state
+     * every time the state changes.
+     *
+     * For examples, see {@link proxy} and {@link Event}.
+     */
     export const onDidStateChange: Event<boolean>;
   }
 
@@ -500,7 +1094,7 @@ declare module '@podman-desktop/api' {
     url: string;
 
     // Optional base64 PNG image (for transparency / non vector icons)
-    icon?: string;
+    icon?: string | { light: string; dark: string };
   }
 
   export interface Registry extends RegistryCreateOptions {
@@ -508,7 +1102,7 @@ declare module '@podman-desktop/api' {
 
     // Optional name and icon for the registry when it's being added (used for display within the UI)
     name?: string;
-    icon?: string;
+    icon?: string | { light: string; dark: string };
   }
 
   export interface RegistryCreateOptions {
@@ -516,6 +1110,7 @@ declare module '@podman-desktop/api' {
     username: string;
     secret: string;
     insecure?: boolean;
+    alias?: string;
   }
 
   export interface RegistryProvider {
@@ -680,6 +1275,39 @@ declare module '@podman-desktop/api' {
      * button.
      */
     cancellable?: boolean;
+
+    /**
+     * You may specify a navigation object, making the task having a
+     * navigate action that the user can trigger.
+     * @example
+     * ```ts
+     * import { window, type ProgressLocation } from '@podman-desktop/api';
+     *
+     * await window.withProgress<string>(
+     *     {
+     *       location: ProgressLocation.TASK_WIDGET,
+     *       title: 'My task',
+     *       details: {
+     *         routeId: 'dummy-route-id',
+     *         routeArgs: ['hello', 'world'],
+     *       }
+     *     },
+     *     async () => {
+     *       return 'dummy result';
+     *     },
+     *   );
+     * ```
+     */
+    details?: {
+      /**
+       * The routeId used in {@link navigation.register}
+       */
+      routeId: string;
+      /**
+       * The arguments to provide the route
+       */
+      routeArgs: string[];
+    };
   }
 
   /**
@@ -699,7 +1327,7 @@ declare module '@podman-desktop/api' {
     onCancellationRequested: Event<any>;
   }
 
-  export interface CancellationTokenSource {
+  export class CancellationTokenSource {
     /**
      * The cancellation token of this source.
      */
@@ -772,7 +1400,7 @@ declare module '@podman-desktop/api' {
     /**
      * A description of the field to be show (Markdown format)
      */
-    markdownDescription?;
+    markdownDescription?: string;
 
     /**
      * An optional string to show as placeholder in the input box to guide the user what to type.
@@ -1058,6 +1686,8 @@ declare module '@podman-desktop/api' {
     dispose(): void;
   }
 
+  type NotificationType = 'info' | 'warn' | 'error';
+
   export interface NotificationOptions {
     /**
      * A title for the notification, which will be shown at the top of the notification window when it is shown.
@@ -1137,7 +1767,7 @@ declare module '@podman-desktop/api' {
      */
     enabled: boolean;
     /**
-     * The identifier of a command to run on click.
+     * The identifier of a command, previously registered with {@link commands.registerCommand}, to run on click.
      */
     command?: string;
     /**
@@ -1187,6 +1817,16 @@ declare module '@podman-desktop/api' {
     static file(path: string): Uri;
 
     /**
+     * Create a new uri which path is the result of joining
+     * the path of the base uri with the provided path segments.
+     *
+     * @param base An uri. Must have a path.
+     * @param pathSegments One more more path fragments
+     * @returns A new uri which path is joined with the given fragments
+     */
+    static joinPath(base: Uri, ...pathSegments: string[]): Uri;
+
+    /**
      * Use the `file` and `parse` factory functions to create new `Uri` objects.
      */
     private constructor(scheme: string, authority: string, path: string, query: string, fragment: string);
@@ -1223,6 +1863,43 @@ declare module '@podman-desktop/api' {
      */
     readonly fragment: string;
 
+    /**
+     * Derive a new Uri from this Uri.
+     *
+     * ```ts
+     * const foo = Uri.parse('http://foo');
+     * const httpsFoo = foo.with({ scheme: 'https' });
+     * // httpsFoo is now 'https://foo'
+     * ```
+     *
+     * @param change An object that describes a change to this Uri. To unset components use `undefined` or
+     *  the empty string.
+     * @returns A new Uri that reflects the given change. Will return `this` Uri if the change
+     *  is not changing anything.
+     */
+    with(change: {
+      /**
+       * The new scheme, defaults to this Uri's scheme.
+       */
+      scheme?: string;
+      /**
+       * The new authority, defaults to this Uri's authority.
+       */
+      authority?: string;
+      /**
+       * The new path, defaults to this Uri's path.
+       */
+      path?: string;
+      /**
+       * The new query, defaults to this Uri's query.
+       */
+      query?: string;
+      /**
+       * The new fragment, defaults to this Uri's fragment.
+       */
+      fragment?: string;
+    }): Uri;
+
     toString(): string;
   }
 
@@ -1237,6 +1914,209 @@ declare module '@podman-desktop/api' {
 
   export namespace fs {
     export function createFileSystemWatcher(path: string): FileSystemWatcher;
+  }
+
+  /**
+   * Content settings for a webview.
+   */
+  export interface WebviewOptions {
+    /**
+     * Root paths from which the webview can load local (filesystem) resources using uris from `asWebviewUri`
+     *
+     * Default to the root folders of the current workspace plus the extension's install directory.
+     *
+     * Pass in an empty array to disallow access to any local resources.
+     */
+    readonly localResourceRoots?: readonly Uri[];
+  }
+
+  /**
+   * Displays html content, similarly to an iframe.
+   */
+  export interface Webview {
+    /**
+     * Content settings for the webview.
+     */
+    options: WebviewOptions;
+
+    /**
+     * HTML contents of the webview.
+     *
+     * This should be a complete, valid html document. Changing this property causes the webview to be reloaded.
+     *
+     */
+    html: string;
+
+    /**
+     * Fired when the webview content posts a message.
+     *
+     * Webview content can post strings or json serializable objects back to an extension.
+     */
+    readonly onDidReceiveMessage: Event<unknown>;
+
+    /**
+     * Post a message to the webview content.
+     */
+    postMessage(message: unknown): Promise<boolean>;
+
+    /**
+     * Convert a uri for the local file system to one that can be used inside webviews.
+     */
+    asWebviewUri(localResource: Uri): Uri;
+
+    /**
+     * Content security policy source for webview resources.
+     *
+     */
+    readonly cspSource: string;
+  }
+
+  /**
+   * A panel that contains a webview.
+   */
+  interface WebviewPanel {
+    /**
+     * Identifies the type of the webview panel.
+     */
+    readonly viewType: string;
+
+    /**
+     * Title of the panel shown in UI.
+     */
+    title: string;
+
+    /**
+     * Icon for the panel shown in UI.
+     */
+    iconPath?:
+      | Uri
+      | {
+          /**
+           * The icon path for the light theme.
+           */
+          readonly light: Uri;
+          /**
+           * The icon path for the dark theme.
+           */
+          readonly dark: Uri;
+        };
+
+    /**
+     * {@linkcode Webview} belonging to the panel.
+     */
+    readonly webview: Webview;
+
+    /**
+     * Whether the panel is active (focused by the user).
+     */
+    readonly active: boolean;
+
+    /**
+     * Whether the panel is visible.
+     */
+    readonly visible: boolean;
+
+    /**
+     * Fired when the panel's view state changes.
+     */
+    readonly onDidChangeViewState: Event<WebviewPanelOnDidChangeViewStateEvent>;
+
+    /**
+     * Fired when the panel is disposed.
+     *
+     * This may be because the user closed the panel or because `.dispose()` was
+     * called on it.
+     *
+     * Trying to use the panel after it has been disposed throws an exception.
+     */
+    readonly onDidDispose: Event<void>;
+
+    /**
+     * Show the webview panel.
+     * @param preserveFocus When `true`, the webview will not take focus.
+     */
+    reveal(preserveFocus?: boolean): void;
+
+    /**
+     * Dispose of the webview panel.
+     *
+     * This closes the panel if it showing and disposes of the resources owned by the webview.
+     * Webview panels are also disposed when the user closes the webview panel. Both cases
+     * fire the `onDispose` event.
+     */
+    dispose(): void;
+  }
+
+  /**
+   * Options to configure the behaviour of a file open dialog.
+   */
+  export interface OpenDialogOptions {
+    /**
+     * The resource the dialog shows when opened.
+     */
+    defaultUri?: Uri;
+
+    /**
+     * A human-readable string for the open button.
+     */
+    openLabel?: string;
+
+    /**
+     * Contains which features the dialog should use. The following values are
+     * supported:
+     */
+    selectors?: Array<'openFile' | 'openDirectory' | 'multiSelections' | 'showHiddenFiles'>;
+
+    /**
+     * A set of file filters that are used by the dialog.
+     */
+    filters?: {
+      extensions: string[];
+      name: string;
+    }[];
+
+    /**
+     * Dialog title.
+     */
+    title?: string;
+  }
+
+  /**
+   * Options to configure the behaviour of a file save dialog.
+   */
+  export interface SaveDialogOptions {
+    /**
+     * The resource the dialog shows when opened.
+     */
+    defaultUri?: Uri;
+
+    /**
+     * A human-readable string for the save button.
+     */
+    saveLabel?: string;
+
+    /**
+     * A set of file filters that are used by the dialog.
+     */
+    filters?: {
+      extensions: string[];
+      name: string;
+    }[];
+
+    /**
+     * Dialog title.
+     */
+    title?: string;
+  }
+
+  /**
+   * Event fired when a webview panel's view state changes.
+   */
+  export interface WebviewPanelOnDidChangeViewStateEvent {
+    /**
+     * Webview panel whose view state changed.
+     */
+    readonly webviewPanel: WebviewPanel;
   }
 
   export namespace window {
@@ -1270,6 +2150,65 @@ declare module '@podman-desktop/api' {
      */
     export function showErrorMessage(message: string, ...items: string[]): Promise<string | undefined>;
 
+    /**
+     * Show progress in Podman Desktop. Progress is shown while running the given callback
+     * and while the promise it returned isn't resolved nor rejected. The location at which
+     * progress should show (and other details) is defined via the passed {@linkcode ProgressOptions}.
+     *
+     * @param options the options for the task's details
+     * @param task A callback returning a promise. Progress state can be reported with
+     * the provided {@link Progress}-object.
+     *
+     * To report discrete progress, use `increment` to indicate how much work has been completed. Each call with
+     * a `increment` value will be summed up and reflected as overall progress until 100% is reached (a value of
+     * e.g. `10` accounts for `10%` of work done).
+     * Note that currently only `ProgressLocation.Notification` is capable of showing discrete progress.
+     *
+     * To monitor if the operation has been cancelled by the user, use the provided {@linkcode CancellationToken}.
+     * Note that currently only `ProgressLocation.Notification` is supporting to show a cancel button to cancel the
+     * long-running operation.
+     *
+     * @return The promise the task-callback returned.
+     *
+     * @example
+     * Here is a simple example
+     * ```ts
+     * await window.withProgress({ location: ProgressLocation.TASK_WIDGET, title: `Running task` },
+     *   async progress => {
+     *     progress.report({message: 'task1' });
+     *     await task1();
+     *     progress.report({increment: 50, message: 'task2' });
+     *     await task2();
+     *   },
+     * );
+     * ```
+     * @example
+     * The error is propagated if thrown inside the task callback.
+     * ```ts
+     * try {
+     *    await window.withProgress(
+     *        { location: ProgressLocation.TASK_WIDGET, title: `Running task` },
+     *        async progress => {
+     *           throw new Error('error when running a task');
+     *        },
+     *      );
+     *  } catch (error) {
+     *     // do something with the error
+     *  }
+     * ```
+     *
+     * @example
+     * You can return a value from the task callback
+     * ```ts
+     * const result: number = await window.withProgress<number>(
+     *    { location: ProgressLocation.TASK_WIDGET, title: `Running task` },
+     *    async progress => {
+     *       // compute something
+     *       return 55;
+     *    },
+     * );
+     * ```
+     */
     export function withProgress<R>(
       options: ProgressOptions,
       task: (progress: Progress<{ message?: string; increment?: number }>, token: CancellationToken) => Promise<R>,
@@ -1287,6 +2226,24 @@ declare module '@podman-desktop/api' {
      * @param alignment The alignment of the item.
      * @param priority The priority of the item. Higher values mean more to the left or more to the right.
      * @return A new status bar item.
+     *
+     * @example
+     * ```typescript
+     * import * as api from '@podman-desktop/api';
+     *
+     * export async function activate(extensionContext: api.ExtensionContext): Promise<void> {
+     *   const statusBarItem = api.window.createStatusBarItem();
+     *   statusBarItem.text = 'Information';
+     *   statusBarItem.tooltip = 'A problem occured';
+     *   statusBarItem.command = 'extension-name.my-command';
+     *   statusBarItem.iconClass = 'fa fa-exclamation-triangle';
+     *   extensionContext.subscriptions.push(
+     *     api.commands.registerCommand('extension-name.my-command', () => { console.log('command executed'); }),
+     *     statusBarItem,
+     *   );
+     *   statusBarItem.show();
+     * }
+     * ```
      */
     export function createStatusBarItem(alignment?: StatusBarAlignment, priority?: number): StatusBarItem;
 
@@ -1302,6 +2259,24 @@ declare module '@podman-desktop/api' {
      * @return A promise that resolves to a string the user provided or to `undefined` in case of dismissal.
      */
     export function showInputBox(options?: InputBoxOptions, token?: CancellationToken): Promise<string | undefined>;
+
+    /**
+     * Shows a file open dialog to the user which allows to select a file
+     * for opening-purposes.
+     *
+     * @param options Options that control the dialog.
+     * @returns A promise that resolves to the selected resources or `undefined`.
+     */
+    export function showOpenDialog(options?: OpenDialogOptions): Promise<Uri[] | undefined>;
+
+    /**
+     * Shows a file save dialog to the user which allows to select a file
+     * for saving-purposes.
+     *
+     * @param options Options that control the dialog.
+     * @returns A promise that resolves to the selected resource or `undefined`.
+     */
+    export function showSaveDialog(options?: SaveDialogOptions): Promise<Uri | undefined>;
 
     /**
      * Shows a selection list allowing multiple selections.
@@ -1364,6 +2339,19 @@ declare module '@podman-desktop/api' {
      * @return A new CustomPick
      */
     export function createCustomPick<T extends CustomPickItem>(): CustomPick<T>;
+
+    /**
+     * Create and show a new webview panel.
+     *
+     * @param viewType Identifies the type of the webview panel.
+     * @param title Title of the panel.
+     * @param options Settings for the new panel.
+     *
+     * @returns New webview panel.
+     */
+    export function createWebviewPanel(viewType: string, title: string, options?: WebviewOptions): WebviewPanel;
+
+    export function listWebviews(): Promise<WebviewInfo[]>;
   }
 
   export namespace kubernetes {
@@ -1382,7 +2370,6 @@ declare module '@podman-desktop/api' {
 
     /**
      * Add a KubernetesGenerator to KubernetesGeneratorRegistry
-     * @param selector
      * @param provider the custom provider to add
      */
     export function registerKubernetesGenerator(provider: KubernetesGeneratorProvider): Disposable;
@@ -1436,6 +2423,84 @@ declare module '@podman-desktop/api' {
     SharedSize: number;
     Labels: { [label: string]: string };
     Containers: number;
+    History?: string[];
+    Digest: string;
+
+    // isManifest will be returned and set to true if the image is identified to be a manifest list
+    isManifest?: boolean;
+  }
+
+  export interface ImageInspectInfo {
+    engineId: string;
+    engineName: string;
+    Id: string;
+    RepoTags: string[];
+    RepoDigests: string[];
+    Parent: string;
+    Comment: string;
+    Created: string;
+    Container: string;
+    ContainerConfig: {
+      Hostname: string;
+      Domainname: string;
+      User: string;
+      AttachStdin: boolean;
+      AttachStdout: boolean;
+      AttachStderr: boolean;
+      ExposedPorts: { [portAndProtocol: string]: unknown };
+      Tty: boolean;
+      OpenStdin: boolean;
+      StdinOnce: boolean;
+      Env: string[];
+      Cmd: string[];
+      ArgsEscaped: boolean;
+      Image: string;
+      Volumes: { [path: string]: unknown };
+      WorkingDir: string;
+      Entrypoint?: string | string[];
+      OnBuild?: unknown[];
+      Labels: { [label: string]: string };
+    };
+    DockerVersion: string;
+    Author: string;
+    Config: {
+      Hostname: string;
+      Domainname: string;
+      User: string;
+      AttachStdin: boolean;
+      AttachStdout: boolean;
+      AttachStderr: boolean;
+      ExposedPorts: { [portAndProtocol: string]: unknown };
+      Tty: boolean;
+      OpenStdin: boolean;
+      StdinOnce: boolean;
+      Env: string[];
+      Cmd: string[];
+      ArgsEscaped: boolean;
+      Image: string;
+      Volumes: { [path: string]: unknown };
+      WorkingDir: string;
+      Entrypoint?: string | string[];
+      OnBuild: unknown[];
+      Labels: { [label: string]: string };
+    };
+    Architecture: string;
+    Os: string;
+    Size: number;
+    VirtualSize: number;
+    GraphDriver: {
+      Name: string;
+      Data: {
+        DeviceId: string;
+        DeviceName: string;
+        DeviceSize: string;
+      };
+    };
+    RootFS: {
+      Type: string;
+      Layers?: string[];
+      BaseLayer?: string;
+    };
   }
 
   export interface NetworkContainer {
@@ -1445,6 +2510,13 @@ declare module '@podman-desktop/api' {
     IPv4Address: string;
     IPv6Address: string;
   }
+
+  interface IPAM {
+    Driver: string;
+    Config?: Array<{ [key: string]: string }>;
+    Options?: { [key: string]: string };
+  }
+
   export interface NetworkInspectInfo {
     engineId: string;
     engineName: string;
@@ -1520,6 +2592,28 @@ declare module '@podman-desktop/api' {
     MacAddress: string;
   }
 
+  interface PodContainerInfo {
+    Id: string;
+    Names: string;
+    Status: string;
+  }
+
+  interface PodInfo {
+    engineId: string;
+    engineName: string;
+    kind: 'kubernetes' | 'podman';
+    Cgroup: string;
+    Containers: PodContainerInfo[];
+    Created: string;
+    Id: string;
+    InfraId: string;
+    Labels: { [key: string]: string };
+    Name: string;
+    Namespace: string;
+    Networks: string[];
+    Status: string;
+  }
+
   interface AuthConfig {
     username: string;
     password: string;
@@ -1546,6 +2640,52 @@ declare module '@podman-desktop/api' {
   interface HostRestartPolicy {
     Name: string;
     MaximumRetryCount?: number;
+  }
+
+  type MountType = 'bind' | 'volume' | 'tmpfs';
+
+  type MountConsistency = 'default' | 'consistent' | 'cached' | 'delegated';
+
+  type MountPropagation = 'private' | 'rprivate' | 'shared' | 'rshared' | 'slave' | 'rslave';
+
+  interface MountSettings {
+    Target: string;
+    Source: string;
+    Type: MountType;
+    ReadOnly?: boolean;
+    Consistency?: MountConsistency;
+    Mode?: string;
+    BindOptions?: {
+      Propagation: MountPropagation;
+    };
+    VolumeOptions?: {
+      NoCopy: boolean;
+      Labels: { [label: string]: string };
+      DriverConfig: {
+        Name: string;
+        Options: { [option: string]: string };
+      };
+    };
+    TmpfsOptions?: {
+      SizeBytes: number;
+      Mode: number;
+    };
+  }
+
+  type MountConfig = MountSettings[];
+
+  interface DeviceRequest {
+    Driver?: string;
+    Count?: number;
+    DeviceIDs?: string[];
+    Capabilities?: string[][];
+    Options?: { [key: string]: string };
+  }
+
+  interface DeviceMapping {
+    CgroupPermissions: string;
+    PathInContainer: string;
+    PathOnHost: string;
   }
 
   interface HostConfig {
@@ -1601,7 +2741,7 @@ declare module '@podman-desktop/api' {
     CpuQuota?: number;
     CpusetCpus?: string;
     CpusetMems?: string;
-    Devices?: unknown;
+    Devices?: DeviceMapping[];
     DeviceCgroupRules?: string[];
     DeviceRequests?: DeviceRequest[];
     DiskQuota?: number;
@@ -1619,6 +2759,46 @@ declare module '@podman-desktop/api' {
     CpuPercent?: number;
     CpuRealtimePeriod?: number;
     CpuRealtimeRuntime?: number;
+  }
+
+  /**
+   * HealthCheckResults describes the results/logs from a healthcheck
+   */
+  export interface HealthCheckResults {
+    /**
+     * Status is starting, healthy or unhealthy
+     */
+    Status: string;
+    /**
+     * FailingStreak is the number of consecutive failed healthchecks
+     */
+    FailingStreak: number;
+    /**
+     * Log describes healthcheck attempts and results
+     */
+    Log: HealthCheckLog[];
+  }
+
+  /**
+   * HealthCheckLog describes the results of a single healthcheck
+   */
+  export interface HealthCheckLog {
+    /**
+     * Start time as string
+     */
+    Start: string;
+    /**
+     * End time as a string
+     */
+    End: string;
+    /**
+     * Exitcode is 0 or 1
+     */
+    ExitCode: number;
+    /**
+     *  Output is the stdout/stderr from the healthcheck command
+     */
+    Output: string;
   }
 
   export interface ContainerInspectInfo {
@@ -1640,16 +2820,7 @@ declare module '@podman-desktop/api' {
       Error: string;
       StartedAt: string;
       FinishedAt: string;
-      Health?: {
-        Status: string;
-        FailingStreak: number;
-        Log: Array<{
-          Start: string;
-          End: string;
-          ExitCode: number;
-          Output: string;
-        }>;
-      };
+      Health?: HealthCheckResults;
     };
     Image: string;
     ResolvConfPath: string;
@@ -1759,12 +2930,16 @@ declare module '@podman-desktop/api' {
     Type?: string;
   }
 
+  /**
+   * Authentication credentials, used when pushing an image to a registry
+   */
   interface ContainerAuthInfo {
     username: string;
     password: string;
     serveraddress: string;
     email?: string;
   }
+
   interface PullEvent {
     stream?: string;
     id?: string;
@@ -1778,32 +2953,660 @@ declare module '@podman-desktop/api' {
     errorDetails?: { message?: string };
   }
 
-  export interface ContainerCreateOptions {
-    name?: string;
-    Hostname?: string;
-    User?: string;
-    Env?: string[];
+  /**
+   * Configuration options for defining a healthcheck for a container.
+   * To get health check result you can use {@link containerEngine.inspectContainer} and inside the obtained {@link ContainerInspectInfo} you can access the `Status.Health` property containing a {@link HealthCheckResults}.
+   */
+  interface HealthConfig {
+    /**
+     * The test to perform.
+     *
+     * @example
+     * // Inherit healthcheck from image
+     * Test?: [];
+     *
+     * @example
+     * // Disable healthcheck
+     * Test?: ["NONE"];
+     *
+     * @example
+     * // Execute command in host system
+     * Test?: ["CMD", "curl", "http://localhost"];
+     *
+     * @example
+     * // Podman will execute the command inside the target container and wait for either a "0" or "failure  exit" code.
+     * Test?: ["CMD-SHELL", "curl http://localhost || exit 1"];
+     */
+    Test?: string[];
 
-    // environment files to use
-    EnvFiles?: string[];
+    /**
+     * The time to wait between checks in nanoseconds. It should be 0 or at least 1000000 (1 ms). 0 means inherit.
+     *
+     * @example
+     * // Set interval to 1 second
+     * Interval?: 1000000000;
+     */
+    Interval?: number;
 
-    // eslint-disable-next-line @typescript-eslint/ban-types
-    ExposedPorts?: { [port: string]: {} };
-    HostConfig?: HostConfig;
-    Image?: string;
-    Tty?: boolean;
-    Cmd?: string[];
-    Entrypoint?: string | string[];
-    AttachStdin?: boolean;
-    AttachStdout?: boolean;
-    AttachStderr?: boolean;
-    OpenStdin?: boolean;
-    StdinOnce?: boolean;
-    Detach?: boolean;
+    /**
+     * The time to wait before considering the check to have hung. It should be 0 or at least 1000000 (1 ms). 0 means inherit.
+     *
+     * @example
+     * // Set timeout to 5 seconds
+     * Timeout?: 5000000000;
+     */
+    Timeout?: number;
+
+    /**
+     * Start period for the container to initialize before starting health-retries countdown in nanoseconds. It should
+     * be 0 or at least 1000000 (1 ms). 0 means inherit.
+     *
+     * @example
+     * // Set start period to 2 seconds
+     * StartPeriod?: 2000000000;
+     */
+    StartPeriod?: number;
+
+    /**
+     * The number of consecutive failures needed to consider a container as unhealthy. 0 means inherit.
+     *
+     * @example
+     * // Set retries to 3
+     * Retries?: 3;
+     */
+    Retries?: number;
   }
 
+  interface EndpointIPAMConfig {
+    IPv4Address?: string;
+    IPv6Address?: string;
+    LinkLocalIPs?: string[];
+  }
+
+  interface EndpointSettings {
+    /**
+     * EndpointIPAMConfig represents an endpoint's IPAM configuration.
+     */
+    IPAMConfig?: EndpointIPAMConfig;
+
+    Links?: string[];
+
+    /**
+     * MAC address for the endpoint on this network. The network driver might ignore this parameter.
+     */
+    MacAddress?: string;
+
+    Aliases?: string[];
+
+    /**
+     * Unique ID of the network.
+     */
+    NetworkID?: string;
+
+    /**
+     * Unique ID for the service endpoint in a Sandbox.
+     */
+    EndpointID?: string;
+
+    /**
+     * Gateway address for this network.
+     */
+    Gateway?: string;
+
+    /**
+     * IPv4 address.
+     */
+    IPAddress?: string;
+
+    /**
+     * Mask length of the IPv4 address.
+     */
+    IPPrefixLen?: number;
+
+    /**
+     * IPv6 gateway address.
+     */
+    IPv6Gateway?: string;
+
+    /**
+     * Global IPv6 address.
+     */
+    GlobalIPv6Address?: string;
+
+    /**
+     * Mask length of the global IPv6 address.
+     */
+    GlobalIPv6PrefixLen?: number;
+
+    /**
+     * DriverOpts is a mapping of driver options and values. These options are passed directly to the driver and are driver specific.
+     */
+    DriverOpts?: { [key: string]: string };
+
+    /**
+     * List of all DNS names an endpoint has on a specific network. This list is based on the container name, network
+     * aliases, container short ID, and hostname.
+     *
+     * These DNS names are non-fully qualified but can contain several dots. You can get fully qualified DNS names by
+     * appending `.<network-name>`. For instance, if container name is `my.ctr` and the network is named
+     * `testnet`, `DNSNames` will contain `my.ctr` and the FQDN will be `my.ctr.testnet`.
+     */
+    DNSNames?: string[];
+  }
+
+  interface NetworkingConfig {
+    EndpointsConfig?: { [key: string]: EndpointSettings };
+  }
+
+  export interface PodmanContainerCreateOptions {
+    command?: string[];
+    entrypoint?: string | string[];
+    env?: { [key: string]: string };
+    pod?: string;
+    hostname?: string;
+    image?: string;
+    name?: string;
+    mounts?: Array<{
+      Name?: string;
+      Type: string;
+      Source: string;
+      Destination: string;
+      Driver?: string;
+      Mode: string;
+      RW: boolean;
+      Propagation: string;
+      Options?: string[];
+    }>;
+  }
+
+  export interface ContainerCreateOptions {
+    /**
+     * Assign the specified name to the container. Must match the regular expression`/?[a-zA-Z0-9][a-zA-Z0-9_.-]+`. If not speficied, the platform assigns a unique name to the container
+     */
+    name?: string;
+
+    /**
+     *  Default: ""
+     *
+     * Platform in the format `os[/arch[/variant]]` used for image lookup.
+     *
+     * When specified, the daemon checks if the requested image is present in the local image cache with the given OS and Architecture, and otherwise returns a `404` status.
+     *
+     * If the option is not set, the host's native OS and Architecture are used to look up the image in the image cache. However, if no platform is passed and the given image does exist in the local image cache, but its OS or architecture does not match, the container is created with the available image, and a warning is added to the `Warnings` field in the response, for example;
+     *
+     * ```text
+     * WARNING: The requested image's platform (linux/arm64/v8) does not
+     *          match the detected host platform (linux/amd64) and no
+     *          specific platform was requested
+     * ```
+     */
+    platform?: string;
+
+    /**
+     * The hostname to use for the container, as a valid RFC 1123 hostname
+     */
+    Hostname?: string;
+
+    /**
+     * The domain name to use for the container.
+     */
+    Domainname?: string;
+
+    /**
+     * The user that commands are run as inside the container
+     */
+    User?: string;
+
+    /**
+     * A list of environment variables to set inside the container in the form `["VAR=value", ...]`. A variable without `=` is removed from the environment, rather than to have an empty value
+     */
+    Env?: string[];
+
+    /**
+     * Environment files to use
+     * */
+    EnvFiles?: string[];
+
+    /**
+     * User-defined key/value metadata
+     */
+    Labels?: { [label: string]: string };
+
+    /**
+     * An object mapping ports to an empty object in the form: `{"<port>/<tcp|udp|sctp>": {}}`
+     */
+    // eslint-disable-next-line @typescript-eslint/no-empty-object-type
+    ExposedPorts?: { [port: string]: {} };
+
+    /**
+     * Container configuration that depends on the host we are running on
+     */
+    HostConfig?: HostConfig;
+
+    /**
+     * The name (or reference) of the image to use when creating the container
+     */
+    Image?: string;
+
+    /**
+     * Attach standard streams to a TTY, including stdin if it is not closed (default false)
+     */
+    Tty?: boolean;
+
+    /**
+     * Command to run specified as an array of strings
+     */
+    Cmd?: string[];
+
+    /**
+     * The entry point for the container as a string or an array of strings.
+     *
+     * If the array consists of exactly one empty string (`[""]`) then the entry point is reset to system default (i.e., the entry point used by docker when there is no ENTRYPOINT instruction in the Containerfile).
+     */
+    Entrypoint?: string | string[];
+
+    /**
+     * Whether to attach to `stdin` (default false)
+     */
+    AttachStdin?: boolean;
+
+    /**
+     * Whether to attach to `stdout`(default false)
+     */
+    AttachStdout?: boolean;
+
+    /**
+     * Whether to attach to `stderr` (default false)
+     */
+    AttachStderr?: boolean;
+
+    /**
+     * Whether to open `stdin` (default false)
+     */
+    OpenStdin?: boolean;
+
+    /**
+     * Close `stdin` after one attached client disconnects (deafult false)
+     */
+    StdinOnce?: boolean;
+
+    /**
+     * Run the container in the background
+     */
+    Detach?: boolean;
+
+    /**
+     * Start the container immediately (default true)
+     */
+    start?: boolean;
+
+    /**
+     * A test to perform to check that the container is healthy. See {@link HealthConfig} for usage details
+     */
+    HealthCheck?: HealthConfig;
+
+    /**
+     *  Default: `false`
+     *
+     * Command is already escaped (Windows only)
+     */
+    ArgsEscaped?: boolean;
+
+    /**
+     * An object mapping mount point paths inside the container to empty objects.
+     */
+    Volumes?: { [volume: string]: object };
+
+    /**
+     * The working directory for commands to run in.
+     */
+    WorkingDir?: string;
+
+    /**
+     * Disable networking for the container.
+     */
+    NetworkDisabled?: boolean;
+
+    /**
+     * MAC address of the container.
+     */
+    MacAddress?: string;
+
+    /**
+     * `ONBUILD` metadata that were defined in the image's `Dockerfile`.
+     */
+    OnBuild?: string[];
+
+    /**
+     * Signal to stop a container as a string or unsigned integer.
+     */
+    StopSignal?: string;
+
+    /**
+     *  Default: `10`
+     *
+     * Timeout to stop a container in seconds.
+     */
+    StopTimeout?: number;
+
+    /**
+     * Shell for when `RUN`, `CMD`, and `ENTRYPOINT` uses a shell.
+     */
+    Shell?: string[];
+
+    NetworkConfig?: NetworkingConfig;
+
+    /**
+     * Pod where to create the container in
+     */
+    pod?: string;
+  }
+
+  /**
+   * Information about the container created by calling the {@link containerEngine.createContainer} method
+   */
   export interface ContainerCreateResult {
+    /**
+     * a string uniquely identifying the created container, which can be used to execute other methods on the container ({@link containerEngine.deleteContainer}, {@link containerEngine.inspectContainer}, {@link containerEngine.startContainer}, {@link containerEngine.stopContainer}, {@link containerEngine.logsContainer})
+     */
     id: string;
+    /**
+     * the engineId where the container is running
+     */
+    engineId: string;
+  }
+
+  export interface WebviewInfo {
+    id: string;
+    viewType: string;
+    title: string;
+  }
+
+  export interface PidsStats {
+    current?: number;
+    limit?: number;
+  }
+
+  export interface BlkioStatEntry {
+    major: number;
+    minor: number;
+    op: string;
+    value: number;
+  }
+
+  export interface BlkioStats {
+    io_service_bytes_recursive: BlkioStatEntry[];
+    io_serviced_recursive: BlkioStatEntry[];
+    io_queue_recursive: BlkioStatEntry[];
+    io_service_time_recursive: BlkioStatEntry[];
+    io_wait_time_recursive: BlkioStatEntry[];
+    io_merged_recursive: BlkioStatEntry[];
+    io_time_recursive: BlkioStatEntry[];
+    sectors_recursive: BlkioStatEntry[];
+  }
+
+  export interface StorageStats {
+    read_count_normalized?: number;
+    read_size_bytes?: number;
+    write_count_normalized?: number;
+    write_size_bytes?: number;
+  }
+
+  export interface NetworkStats {
+    [name: string]: {
+      rx_bytes: number;
+      rx_dropped: number;
+      rx_errors: number;
+      rx_packets: number;
+      tx_bytes: number;
+      tx_dropped: number;
+      tx_errors: number;
+      tx_packets: number;
+      endpoint_id?: string; // not used on linux
+      instance_id?: string; // not used on linux
+    };
+  }
+
+  export interface MemoryStats {
+    // Linux Memory Stats
+    stats: {
+      total_pgmajfault: number;
+      cache: number;
+      mapped_file: number;
+      total_inactive_file: number;
+      pgpgout: number;
+      rss: number;
+      total_mapped_file: number;
+      writeback: number;
+      unevictable: number;
+      pgpgin: number;
+      total_unevictable: number;
+      pgmajfault: number;
+      total_rss: number;
+      total_rss_huge: number;
+      total_writeback: number;
+      total_inactive_anon: number;
+      rss_huge: number;
+      hierarchical_memory_limit: number;
+      total_pgfault: number;
+      total_active_file: number;
+      active_anon: number;
+      total_active_anon: number;
+      total_pgpgout: number;
+      total_cache: number;
+      inactive_anon: number;
+      active_file: number;
+      pgfault: number;
+      inactive_file: number;
+      total_pgpgin: number;
+    };
+    max_usage: number;
+    usage: number;
+    failcnt: number;
+    limit: number;
+
+    // Windows Memory Stats
+    commitbytes?: number;
+    commitpeakbytes?: number;
+    privateworkingset?: number;
+  }
+
+  export interface CPUUsage {
+    percpu_usage: number[];
+    usage_in_usermode: number;
+    total_usage: number;
+    usage_in_kernelmode: number;
+  }
+
+  export interface ThrottlingData {
+    periods: number;
+    throttled_periods: number;
+    throttled_time: number;
+  }
+
+  export interface CPUStats {
+    cpu_usage: CPUUsage;
+    system_cpu_usage: number;
+    online_cpus: number;
+    throttling_data: ThrottlingData;
+  }
+
+  export interface ContainerStatsInfo {
+    engineId: string;
+    engineName: string;
+    read: string;
+    preread: string;
+    pids_stats?: PidsStats;
+    blkio_stats?: BlkioStats;
+    num_procs: number;
+    storage_stats?: StorageStats;
+    networks: NetworkStats;
+    memory_stats: MemoryStats;
+    cpu_stats: CPUStats;
+    precpu_stats: CPUStats;
+  }
+
+  export interface BuildImageOptions {
+    /**
+     * Specifies a Containerfile which contains instructions for building the image
+     */
+    containerFile?: string;
+
+    /**
+     * Specifies the name which is assigned to the resulting image if the build process completes successfully
+     */
+    tag?: string;
+
+    /**
+     * Set the os/arch of the built image (and its base image, when using one) to the provided value instead of using the current operating system and architecture of the host
+     */
+    platform?: string;
+
+    /**
+     * Set the provider to use, if not we will try select the first one available (sorted in favor of Podman)
+     */
+    provider?: ContainerProviderConnection;
+
+    /**
+     * The abort controller for running the build image operation
+     */
+    abortController?: AbortController;
+
+    /**
+     * Extra hosts to add to /etc/hosts
+     */
+    extrahosts?: string;
+
+    /**
+     * A Git repository URI or HTTP/HTTPS context URI. If the URI points to a single text file, the file’s contents are
+     * placed into a file called Dockerfile and the image is built from that file. If the URI points to a tarball, the
+     * file is downloaded by the daemon and the contents therein used as the context for the build. If the URI points
+     * to a tarball and the dockerfile parameter is also specified, there must be a file with the corresponding path
+     * inside the tarball.
+     */
+    remote?: string;
+
+    /**
+     * Default: false
+     *
+     * Suppress verbose build output.
+     */
+    q?: boolean;
+
+    /**
+     *  JSON array of images used for build cache resolution.
+     */
+    cachefrom?: string;
+
+    /**
+     * Attempt to pull the image even if an older image exists locally.
+     */
+    pull?: string;
+
+    /**
+     * Default: true
+     *
+     * Remove intermediate containers after a successful build.
+     */
+    rm?: boolean;
+
+    /**
+     * Default: false
+     *
+     * Always remove intermediate containers, even upon failure.
+     */
+    forcerm?: boolean;
+
+    /**
+     * Set memory limit for build.
+     */
+    memory?: number;
+
+    /**
+     * Total memory (memory + swap). Set as -1 to disable swap.
+     */
+    memswap?: number;
+
+    /**
+     * CPU shares (relative weight).
+     */
+    cpushares?: number;
+
+    /**
+     * CPUs in which to allow execution (e.g., 0-3, 0,1).
+     */
+    cpusetcpus?: number;
+
+    /**
+     * The length of a CPU period in microseconds.
+     */
+    cpuperiod?: number;
+
+    /**
+     * Microseconds of CPU time that the container can get in a CPU period.
+     */
+    cpuquota?: number;
+
+    /**
+     * JSON map of string pairs for build-time variables. Users pass these values at build-time. Docker uses the
+     * buildargs as the environment context for commands run via the `Dockerfile` RUN instruction, or for variable
+     * expansion in other `Dockerfilev` instructions. This is not meant for passing secret values.
+     * For example, the build arg `FOO=bar` would become `{"FOO":"bar"}` in JSON. This would result in the query
+     * parameter `buildargs={"FOO":"bar"}`. Note that `{"FOO":"bar"}` should be URI component encoded.
+     */
+    buildargs?: { [key: string]: string };
+
+    /**
+     * Size of `/dev/shm` in bytes. The size must be greater than 0. If omitted the system uses 64MB.
+     */
+    shmsize?: number;
+
+    /**
+     * Squash the resulting images layers into a single layer.
+     */
+    squash?: boolean;
+
+    /**
+     * Arbitrary key/value labels to set on the image, as a JSON map of string pairs.
+     */
+    labels?: { [key: string]: string };
+
+    /**
+     * Sets the networking mode for the run commands during build. Supported standard values are: `bridge`,
+     * `host`, `none`, and `container:<name|id>`. Any other value is taken as a custom network's name or ID
+     * to which this container should connect to.
+     */
+    networkmode?: string;
+
+    /**
+     * Default: ""
+     *
+     * Target build stage
+     */
+    target?: string;
+
+    /**
+     * Default: ""
+     *
+     * BuildKit output configuration
+     */
+    outputs?: string;
+
+    /**
+     * Default: false
+     *
+     * Do not use the cache when building the image.
+     */
+    nocache?: boolean;
+  }
+
+  export interface ListImagesOptions {
+    /**
+     * The provider we want to list the images. If not provided, will return all container images across all container engines.
+     *
+     * @defaultValue undefined
+     */
+    provider?: ContainerProviderConnection;
   }
 
   export interface NetworkCreateOptions {
@@ -1814,34 +3617,259 @@ declare module '@podman-desktop/api' {
     Id: string;
   }
 
+  /**
+   * Resources information about a container engine
+   */
   interface ContainerEngineInfo {
+    /**
+     * unique id identifying the container engine
+     */
+    engineId: string;
+    /**
+     * name of the container engine
+     */
+    engineName: string;
+    /**
+     * engine type, either 'podman' or 'docker'
+     */
+    engineType: 'podman' | 'docker';
+    /**
+     * number of CPUs available for the container engine
+     */
     cpus?: number;
+    /**
+     * Percentage of idle CPUs (for Podman engines only)
+     */
     cpuIdle?: number;
+    /**
+     * Quantity of memory available for the container engine
+     */
     memory?: number;
+    /**
+     * Quantity of memory used by the container engine (for Podman engines only)
+     */
     memoryUsed?: number;
+    /**
+     * Quantity of disk space available for the container engine (for Podman engines only)
+     */
     diskSize?: number;
+    /**
+     * Quantity of disk space used by the container engine (for Podman engines only)
+     */
     diskUsed?: number;
   }
 
+  export interface VolumeInfo {
+    engineId: string;
+    engineName: string;
+    CreatedAt: string;
+    containersUsage: { id: string; names: string[] }[];
+    Name: string;
+    Driver: string;
+    Mountpoint: string;
+    Status?: { [key: string]: string };
+    Labels: { [key: string]: string };
+    Scope: 'local' | 'global';
+    Options?: { [key: string]: string } | null;
+    UsageData?: {
+      Size: number;
+      RefCount: number;
+    } | null;
+  }
+  export interface VolumeListInfo {
+    Volumes: VolumeInfo[];
+    Warnings: string[];
+    engineId: string;
+    engineName: string;
+  }
+  export interface VolumeCreateOptions {
+    // name of the volume to create
+    Name: string;
+    // Set the provider to use, if not we will try select the first one available (sorted in favor of Podman).
+    provider?: ContainerProviderConnection;
+  }
+
+  export interface VolumeDeleteOptions {
+    // Set the provider to use, if not we will try select the first one available (sorted in favor of Podman).
+    provider?: ContainerProviderConnection;
+  }
+
+  export interface VolumeCreateResponseInfo {
+    Name: string;
+    Driver: string;
+    Mountpoint: string;
+    CreatedAt?: string;
+    Status?: { [key: string]: string };
+    Labels: { [label: string]: string };
+    Scope: string;
+  }
+
+  export interface ListInfosOptions {
+    /**
+     * The provider we want to list the infos. If not provided, will return info for all engines.
+     *
+     * @defaultValue undefined
+     */
+    provider?: ContainerProviderConnection;
+  }
+
+  /**
+   *  Module providing operations to execute on all container providers
+   */
   export namespace containerEngine {
+    /**
+     * Returns the list of containers across all container engines, in any state (running or not).
+     *
+     * @return A promise resolving to an array of containers information. This method returns a subset of the available information for containers. To get the complete description of a specific container, you can use the {@link containerEngine.inspectContainer} method.
+     */
     export function listContainers(): Promise<ContainerInfo[]>;
+
+    /**
+     * Get the complete low-level information about a specific container.
+     *
+     * @param engineId the id of the engine managing the container, obtained from the result of {@link containerEngine.listContainers}
+     * @param id the id or name of the container on this engine, obtained from the result of {@link containerEngine.listContainers} or as the result of {@link containerEngine.createContainer}
+     * @return A promise resolving to a structure containing the container information
+     */
     export function inspectContainer(engineId: string, id: string): Promise<ContainerInspectInfo>;
 
+    /**
+     * Create a new container on a specific container engine
+     *
+     * @param engineId the id of the engine on which to create the container, obtained from the result of {@link containerEngine.listContainers}
+     * @param containerCreateOptions the details of the container to create
+     * @return A promise resolving to the information on the created container
+     */
     export function createContainer(
       engineId: string,
       containerCreateOptions: ContainerCreateOptions,
     ): Promise<ContainerCreateResult>;
+
+    /**
+     * Start an existing container
+     *
+     * @param engineId the id of the engine managing the container, obtained from the result of {@link containerEngine.listContainers}
+     * @param id the id or name of the container on this engine, obtained from the result of {@link containerEngine.listContainers} or as the result of {@link containerEngine.createContainer}
+     */
     export function startContainer(engineId: string, id: string): Promise<void>;
+
+    /**
+     * Get the streamed logs of a container
+     *
+     * @param engineId the id of the engine managing the container, obtained from the result of {@link containerEngine.listContainers}
+     * @param id the id of the container on this engine, obtained from the result of {@link containerEngine.listContainers} or as the result of {@link containerEngine.createContainer}
+     * @param callback the function called when new logs are emitted or new events happen on the stream. The value of `name` can be either `data` (and `data` contains the logs), or `end` indicating the end of the stream, or `first-message` indicating no data has been emitted yet on the stream.
+     */
     export function logsContainer(
       engineId: string,
       id: string,
       callback: (name: string, data: string) => void,
     ): Promise<void>;
+
+    /**
+     * Get the streamed stats of a running container.
+     *
+     * @param engineId the id of the engine managing the container, obtained from the result of {@link containerEngine.listContainers}
+     * @param id the id or name of the container on this engine, obtained from the result of {@link containerEngine.listContainers} or as the result of {@link containerEngine.createContainer}
+     * @param callback the function called when container stats info are emitted.
+     *
+     * @return A Promise resolving a {@link Disposable} that unregister the callback when called.
+     *
+     * @example
+     * Here is a usage example
+     * ```ts
+     * const disposable = await statsContainer('engineId', 'containerId', (stats: ContainerStatsInfo): void => {
+     *  console.log('CPU Usage', stats.cpu_stats.cpu_usage.total_usage);
+     * });
+     *
+     * // When no longer needed
+     * disposable.dispose();
+     * ```
+     */
+    export function statsContainer(
+      engineId: string,
+      id: string,
+      callback: (stats: ContainerStatsInfo) => void,
+    ): Promise<Disposable>;
+
+    /**
+     * Stop an existing container
+     *
+     * @param engineId the id of the engine managing the container, obtained from the result of {@link containerEngine.listContainers}
+     * @param id the id of the container on this engine, obtained from the result of {@link containerEngine.listContainers} or as the result of {@link containerEngine.createContainer}
+     */
     export function stopContainer(engineId: string, id: string): Promise<void>;
+
+    /**
+     * Delete an existing container
+     *
+     * @param engineId the id of the engine managing the container, obtained from the result of {@link containerEngine.listContainers}
+     * @param id the id of the container on this engine, obtained from the result of {@link containerEngine.listContainers} or as the result of {@link containerEngine.createContainer}
+     */
+
     export function deleteContainer(engineId: string, id: string): Promise<void>;
-    export function saveImage(engineId: string, id: string, filename: string): Promise<void>;
-    export function listImages(): Promise<ImageInfo[]>;
+    /**
+     * Build a container image
+     *
+     * @param context the build context directory
+     * @param eventCollect a function called when new build logs are emitted or new events happen during the build operation. The value of `eventName` can be either `stream` (and `data` contains the logs), or `finish` indicating the end of the build operation, or `error` in case of build error (and `data` contains the error message)
+     * @param options parameters for the build operation
+     */
+    export function buildImage(
+      context: string,
+      eventCollect: (eventName: 'stream' | 'error' | 'finish', data: string) => void,
+      options?: BuildImageOptions,
+    ): Promise<unknown>;
+
+    /**
+     * Save on disk a tarball containing the image and its metadata.
+     *
+     * @param engineId the id of the engine managing the image, obtained from the result of {@link containerEngine.listImages}
+     * @param id the id or name of the image on this engine, obtained from the result of {@link containerEngine.listImages}
+     * @param filename the file on which to save the container image content
+     * @param token an optional cancellation token which will cancel saving the image on disk when the token is canceled
+     */
+    export function saveImage(engineId: string, id: string, filename: string, token?: CancellationToken): Promise<void>;
+
+    /**
+     * List the container images. Only images from a final layer (no children) are returned.
+     *
+     * @param options optional options for listing images
+     * @returns A promise resolving to an array of images information. This method returns a subset of the available information for images. To get the complete description of a specific image, you can use the {@link containerEngine.getImageInspect} method.
+     *
+     * @example
+     * // Example 1: List all container images when no specific provider is provided.
+     * const images = await listImages();
+     * console.log(images);
+     *
+     * @example
+     * // Example 2: List container images for a specific provider.
+     * const provider = provider.getContainerConnections().find(connection => connection.connection.status() === 'started');
+     * const images = await listImages({ provider: provider.connection });
+     * console.log(images);
+     */
+    export function listImages(options?: ListImagesOptions): Promise<ImageInfo[]>;
+
+    /**
+     * Tag an image so that it becomes part of a repository
+     *
+     * @param engineId the id of the engine managing the image, obtained from the result of {@link containerEngine.listImages}
+     * @param imageId the id of the image on this engine, obtained from the result of {@link containerEngine.listImages}
+     * @param repo The repository to tag in. For example, `someuser/someimage`
+     * @param tag The name of the new tag
+     */
     export function tagImage(engineId: string, imageId: string, repo: string, tag?: string): Promise<void>;
+
+    /**
+     * Push an image to a registry.
+     *
+     * If you wish to push an image on to a private registry, that image must already have a tag which references the registry. For example, `registry.example.com/myimage:latest`.
+     *
+     * @param engineId the id of the engine managing the image, obtained from the result of {@link containerEngine.listImages}
+     * @param imageId the id of the image on this engine, obtained from the result of {@link containerEngine.listImages}
+     * @param callback the function called when new logs are emitted or new events happen on the stream. The value of `name` can be either `data`(and `data` contains the logs), or `end` indicating the end of the stream, or `first-message` indicating no data has been emitted yet on the stream.
+     * @param authInfo Authentication credentials
+     */
     export function pushImage(
       engineId: string,
       imageId: string,
@@ -1849,14 +3877,59 @@ declare module '@podman-desktop/api' {
       authInfo?: ContainerAuthInfo,
     ): Promise<void>;
 
+    /**
+     * Pull an image from a registry
+     *
+     * @param containerProviderConnection the connection to the local engine to use for pulling the image
+     * @param imageName the name of the image to pull
+     * @param callback the function called when new logs are emitted during the pull operation
+     * @param platform the platform of the image to pull (optional, by default it will pull the same architecture as the host)
+     */
     export function pullImage(
       containerProviderConnection: ContainerProviderConnection,
       imageName: string,
       callback: (event: PullEvent) => void,
+      platform?: string,
     ): Promise<void>;
+
+    /**
+     * Delete a container image from a local engine
+     *
+     * @param engineId the id of the engine managing the image, obtained from the result of {@link containerEngine.listImages}
+     * @param id the id of the image on this engine, obtained from the result of {@link containerEngine.listImages}
+     */
     export function deleteImage(engineId: string, id: string): Promise<void>;
 
+    /**
+     * Return low-level information about an image
+     *
+     * @param engineId the id of the engine managing the image, obtained from the result of {@link containerEngine.listImages}
+     * @param id the id of the image on this engine, obtained from the result of {@link containerEngine.listImages}
+     * @return A promise resolving to a structure containing the image information
+     */
+    export function getImageInspect(engineId: string, id: string): Promise<ImageInspectInfo>;
+
     export function info(engineId: string): Promise<ContainerEngineInfo>;
+
+    /**
+     * List the engines information.
+     *
+     * @param options optional options for listing information
+     * @returns A promise resolving to an array of engine information.
+     *
+     * @remarks only returns the {@link ContainerEngineInfo} of **running** connections
+     * @example
+     * // Example 1: List all engine information when no specific provider is provided.
+     * const infos = await listInfos();
+     * console.log(infos);
+     *
+     * @example
+     * // Example 2: List information for a specific provider.
+     * const provider = provider.getContainerConnections().find(connection => connection.connection.status() === 'started');
+     * const info = await listInfos({ provider: provider.connection });
+     * console.log(info);
+     */
+    export function listInfos(options?: ListInfosOptions): Promise<ContainerEngineInfo[]>;
     export const onEvent: Event<ContainerJSONEvent>;
 
     export function listNetworks(): Promise<NetworkInspectInfo[]>;
@@ -1864,6 +3937,27 @@ declare module '@podman-desktop/api' {
       containerProviderConnection: ContainerProviderConnection,
       networkCreateOptions: NetworkCreateOptions,
     ): Promise<NetworkCreateResult>;
+
+    export function listVolumes(): Promise<VolumeListInfo[]>;
+    export function createVolume(options?: VolumeCreateOptions): Promise<VolumeCreateResponseInfo>;
+    export function deleteVolume(volumeName: string, options?: VolumeDeleteOptions): Promise<void>;
+
+    export function createPod(podOptions: PodCreateOptions): Promise<{ engineId: string; Id: string }>;
+    export function replicatePodmanContainer(
+      source: { engineId: string; id: string },
+      target: { engineId: string },
+      overrideParameters: PodmanContainerCreateOptions,
+    ): Promise<{ Id: string; Warnings: string[] }>;
+    export function startPod(engineId: string, podId: string): Promise<void>;
+    export function listPods(): Promise<PodInfo[]>;
+    export function stopPod(engineId: string, podId: string): Promise<void>;
+    export function removePod(engineId: string, podId: string): Promise<void>;
+
+    // Manifest related methods
+    export function createManifest(options: ManifestCreateOptions): Promise<{ engineId: string; Id: string }>;
+    export function inspectManifest(engineId: string, id: string): Promise<ManifestInspectInfo>;
+    export function pushManifest(options: ManifestPushOptions): Promise<void>;
+    export function removeManifest(engineId: string, id: string): Promise<void>;
   }
 
   /**
@@ -2123,7 +4217,7 @@ declare module '@podman-desktop/api' {
      * @param id The unique identifier of the provider.
      * @param label The human-readable name of the provider.
      * @param provider The authentication provider provider.
-     * @params options Additional options for the provider.
+     * @param options Additional options for the provider.
      * @return A [disposable](#Disposable) that unregisters this provider when being disposed.
      */
     export function registerAuthenticationProvider(
@@ -2177,7 +4271,7 @@ declare module '@podman-desktop/api' {
     /**
      * Opens a link externally using the default application. Depending on the
      *
-     * @param target The uri that should be opened.
+     * @param uri The uri that should be opened.
      * @returns A promise indicating if open was successful.
      */
     export function openExternal(uri: Uri): Promise<boolean>;
@@ -2461,16 +4555,17 @@ declare module '@podman-desktop/api' {
     /**
      * Store a new value for key in the context.
      * This can be used in enablement of command or with the when property.
-     * The key should consists of '<extension-
-     * id>.<actual-key>'.
+     * The key should consists of '"extension-id"."actual-key"'.
      *
      * @param key the key of the key/value pair to be added to the context
      * @param value value associated to the key
      * @param scope the scope to use to save the value
      */
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    export function setValue(key: string, value: any, scope?: 'onboarding'): void;
+    export function setValue(key: string, value: any, scope?: 'onboarding' | 'DockerCompatibility'): void;
   }
+
+  export type CliToolInstallationSource = 'extension' | 'external';
 
   /**
    * Options to create new CliTool instance and register it in podman desktop
@@ -2488,9 +4583,17 @@ declare module '@podman-desktop/api' {
      * Passing in path will also help to show where the CLI tool is expected to be installed.
      * This is usually the ~/.local/share/containers/podman-desktop/extensions-storage directory.
      * Note: The expected value should not include 'v'.
+     * Note: If the version and path are not defined (= the tool is not installed), the install logic should be implemented
      */
-    version: string;
-    path: string;
+    version?: string;
+    path?: string;
+
+    /**
+     * How the cli tool has been installed
+     * - external: it has been installed by the user externally from podman desktop. Its update process is disable.
+     * - extension: it has been installed by podman desktop extension. It can be updated
+     */
+    installationSource?: CliToolInstallationSource;
   }
 
   /**
@@ -2502,6 +4605,7 @@ declare module '@podman-desktop/api' {
     markdownDescription?: string;
     images?: ProviderImages;
     path?: string;
+    installationSource?: CliToolInstallationSource;
   }
 
   export interface CliToolUpdate {
@@ -2509,25 +4613,44 @@ declare module '@podman-desktop/api' {
     doUpdate: (logger: Logger) => Promise<void>;
   }
 
+  export interface CliToolSelectUpdate {
+    selectVersion: () => Promise<string>;
+    doUpdate: (logger: Logger) => Promise<void>;
+  }
+
+  export interface CliToolInstaller {
+    selectVersion: () => Promise<string>;
+    doInstall: (logger: Logger) => Promise<void>;
+    doUninstall: (logger: Logger) => Promise<void>;
+  }
+
   export type CliToolState = 'registered';
 
-  export interface CliTool extends Disposable {
+  export interface CliTool extends CliToolInfo, Disposable {
+    state: CliToolState;
+    updateVersion(version: CliToolUpdateOptions): void;
+    onDidUpdateVersion: Event<string>;
+
+    onDidUninstall: Event<void>;
+
+    // register cli update flow
+    registerUpdate(update: CliToolUpdate | CliToolSelectUpdate): Disposable;
+
+    // register cli installer
+    registerInstaller(installer: CliToolInstaller): Disposable;
+  }
+
+  export interface CliToolInfo {
     id: string;
     name: string;
     displayName: string;
     markdownDescription: string;
-    state: CliToolState;
     images: ProviderImages;
+    version?: string;
     extensionInfo: {
       id: string;
       label: string;
     };
-
-    updateVersion(version: CliToolUpdateOptions): void;
-    onDidUpdateVersion: Event<string>;
-
-    // register cli update flow
-    registerUpdate(update: CliToolUpdate): Disposable;
   }
 
   /**
@@ -2543,20 +4666,67 @@ declare module '@podman-desktop/api' {
      * @returns CliTool instance
      */
     export function createCliTool(options: CliToolOptions): CliTool;
+
+    /**
+     * given an id, return the corresponding CLI Tool
+     * @param id cli tool
+     */
+    export function getCliTool(id: string): CliToolInfo | undefined;
+
+    /**
+     * All cli tools currently known to the system.
+     */
+    export const all: readonly CliToolInfo[];
+
+    /**
+     * An event which fires when `cli.all` changes. This can happen when cli are
+     * installed, uninstalled, enabled or disabled.
+     */
+    export const onDidChange: Event<void>;
   }
 
+  /**
+   * a specific error/recommendation found during an image check
+   */
   export interface ImageCheck {
+    /**
+     * a short and descriptive name for the error/recommendation
+     */
     name: string;
+    /**
+     * either the feedback is positive or negative
+     */
     status: 'success' | 'failed';
+    /**
+     * severity of the error/recommendation, when the status is `failed`
+     */
     severity?: 'low' | 'medium' | 'high' | 'critical';
+    /**
+     * full description of the error/recommendation
+     */
     markdownDescription?: string;
   }
 
+  /**
+   * the complete result of an image check
+   */
   export interface ImageChecks {
+    /**
+     * the list of errors/recommendations found during the image check
+     */
     checks: ImageCheck[];
   }
 
+  /**
+   * Interface to be implemented by image checker providers
+   */
   export interface ImageCheckerProvider {
+    /**
+     *
+     * @param image Info about the image to analyze
+     * @param token a cancellation token the function can use to be informed when the caller asks for the operation to be cancelled
+     * @return the complete result of the analyze, either synchronously of through a Promise
+     */
     check(image: ImageInfo, token?: CancellationToken): ProviderResult<ImageChecks>;
   }
 
@@ -2564,10 +4734,169 @@ declare module '@podman-desktop/api' {
     readonly label: string;
   }
 
+  /**
+   * Module providing to extensions a way to register as an image checker.
+   *
+   * An Image Checker is a program analyzing container images and
+   * returning errors and recommendations, related to security,
+   * optimization, best practices, etc.
+   */
   export namespace imageChecker {
+    /**
+     * Register the extension as an Image Checker.
+     *
+     * As an image checker, a provider needs to implement a specific interface, so the core
+     * application can call the provider with specific tasks when necessary.
+     *
+     * @param imageCheckerProvider an object implementing the `ImageCheckerProvider` interface
+     * @param metadata optional metadata attached to this provider
+     * @return A disposable that unregisters this provider when being disposed
+     */
     export function registerImageCheckerProvider(
       imageCheckerProvider: ImageCheckerProvider,
       metadata?: ImageCheckerProviderMetadata,
     ): Disposable;
+  }
+
+  export namespace navigation {
+    // Navigate to the Dashboard page
+    export function navigateToDashboard(): Promise<void>;
+    // Navigate to the Containers page
+    export function navigateToContainers(): Promise<void>;
+    // Navigate to the Container page
+    export function navigateToContainer(id: string): Promise<void>;
+    // Navigate to the Container logs tab
+    export function navigateToContainerLogs(id: string): Promise<void>;
+    // Navigate to the Container inspect tab
+    export function navigateToContainerInspect(id: string): Promise<void>;
+    // Navigate to the Container terminal tab
+    export function navigateToContainerTerminal(id: string): Promise<void>;
+
+    // Navigate to the Images page
+    export function navigateToImages(): Promise<void>;
+    // Navigate to a specific image referenced by id, engineId and tag
+    export function navigateToImage(id: string, engineId: string, tag: string): Promise<void>;
+
+    // Navigate to the Volumes page
+    export function navigateToVolumes(): Promise<void>;
+    // Navigate to a specific volume
+    export function navigateToVolume(name: string, engineId: string): Promise<void>;
+
+    // Navigate to the Pods page
+    export function navigateToPods(): Promise<void>;
+    // Navigate to a specific pod referenced by kind, name and engineId
+    export function navigateToPod(kind: string, name: string, engineId: string): Promise<void>;
+
+    // Navigate to the CliTools page
+    export function navigateToCliTools(): Promise<void>;
+
+    // Navigate to a specific contribution (aka extension page) referenced by name
+    export function navigateToContribution(name: string): Promise<void>;
+
+    /**
+     * Navigate to a specific Webview
+     * @param webviewId The id of the Webview to navigate to
+     * @see {@link window.listWebviews listWebviews} to get a list of Webviews and their ids
+     * @see {@link window.createWebviewPanel createWebviewPanel} for creating a Webview
+     */
+    export function navigateToWebview(webviewId: string): Promise<void>;
+
+    /**
+     * Navigate to Authentication settings page
+     */
+    export function navigateToAuthentication(): Promise<void>;
+
+    /**
+     * Navigate to Resources page
+     */
+    export function navigateToResources(): Promise<void>;
+    /**
+     * Navigate to the Edit Provider Container Connection page
+     */
+    export function navigateToEditProviderContainerConnection(connection: ProviderContainerConnection): Promise<void>;
+
+    /**
+     *  Navigate to a specific onboarding page referenced by its extensionId
+     * @param extensionId The id of the extension to navigate to or if missing, default to the extension calling the method
+     */
+    export function navigateToOnboarding(extensionId?: string): Promise<void>;
+
+    /**
+     * Allow to define custom route for an extension.
+     *
+     * @remarks
+     * The commandId used must have been registered through {@link commands.registerCommand}
+     *
+     * @example
+     * ```ts
+     * import { navigation, commands } from '@podman-desktop/api';
+     *
+     * commands.registerCommand('redirect-download-command', (trackingId: string) => {
+     *   // todo: do something with the trackingId
+     * });
+     *
+     * // register the route
+     * navigation.register('download-page', 'redirect-download-command');
+     *
+     * // when needed call the navigate with the route id registered to
+     * // trigger the command
+     * navigation.navigate('download-page', 'dummy-tracking-id');
+     * ```
+     *
+     * @param routeId a unique string value that could be used in {@link navigation.navigate}
+     * @param commandId the command that will be executed on navigate
+     */
+    export function register(routeId: string, commandId: string): Disposable;
+
+    /**
+     * Allow extension to navigate to a custom route.
+     * The route needs to have been registered using {@link navigation.register}
+     *
+     * @param routeId the identifier of the route to use
+     * @param args the arguments to provide to the command linked to the routeId
+     */
+    export function navigate(routeId: string, ...args: unknown[]): Promise<void>;
+  }
+
+  /**
+   * The event data that is fired when a secret is added or removed.
+   */
+  export interface SecretStorageChangeEvent {
+    /**
+     * The key of the secret that has changed.
+     */
+    readonly key: string;
+  }
+
+  /**
+   * Represents a storage utility for secrets, information that is
+   * sensitive.
+   */
+  export interface SecretStorage {
+    /**
+     * Retrieve a secret that was stored with key. Returns undefined if there
+     * is no secret matching that key.
+     * @param key The key the secret was stored under.
+     * @returns The stored value or `undefined`.
+     */
+    get(key: string): Promise<string | undefined>;
+
+    /**
+     * Store a secret under a given key.
+     * @param key The key to store the secret under.
+     * @param value The secret.
+     */
+    store(key: string, value: string): Promise<void>;
+
+    /**
+     * Remove a secret from storage.
+     * @param key The key the secret was stored under.
+     */
+    delete(key: string): Promise<void>;
+
+    /**
+     * Fires when a secret is stored or deleted.
+     */
+    onDidChange: Event<SecretStorageChangeEvent>;
   }
 }

@@ -1,18 +1,34 @@
 <script lang="ts">
 import { router } from 'tinro';
+
+import Badge from '../ui/Badge.svelte';
 import type { ImageInfoUI } from './ImageInfoUI';
 
 export let object: ImageInfoUI;
 
-function openDetailsImage(image: ImageInfoUI) {
-  router.goto(`/images/${image.id}/${image.engineId}/${image.base64RepoTag}/summary`);
+function openDetails(image: ImageInfoUI): void {
+  if (image.isManifest) {
+    router.goto(`/manifests/${image.id}/${image.engineId}/${image.base64RepoTag}/summary`);
+  } else {
+    router.goto(`/images/${image.id}/${image.engineId}/${image.base64RepoTag}/summary`);
+  }
 }
 </script>
 
-<button class="flex flex-col" on:click="{() => openDetailsImage(object)}">
-  <div class="text-sm text-gray-300">{object.name}</div>
-  <div class="flex flex-row text-xs gap-1">
-    <div class="text-violet-400">{object.shortId}</div>
-    <div class="font-extra-light text-gray-400">{object.tag}</div>
+<button class="flex flex-col max-w-full" on:click={(): void => openDetails(object)}>
+  <div class="flex flex-row gap-1 items-center max-w-full">
+    <div class="text-[var(--pd-table-body-text-highlight)] overflow-hidden text-ellipsis">
+      {object.name}
+      {object.isManifest ? ' (manifest)' : ''}
+    </div>
+    {#if object.badges.length}
+      {#each object.badges as badge}
+        <Badge color={badge.color} label={badge.label} />
+      {/each}
+    {/if}
+  </div>
+  <div class="flex flex-row text-sm gap-1 w-full">
+    <div class="text-[var(--pd-table-body-text-sub-secondary)]">{object.shortId}</div>
+    <div class="font-extra-light text-[var(--pd-table-body-text)] overflow-hidden text-ellipsis">{object.tag}</div>
   </div>
 </button>

@@ -16,12 +16,9 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
-import { createConnectionsInfo } from '/@/stores/create-connections';
-import { router } from 'tinro';
-
 import type { Logger as LoggerType } from '@podman-desktop/api';
-import { createTask, isStatefulTask, removeTask } from '/@/stores/tasks';
-import type { Task } from '../../../../main/src/plugin/api/task';
+
+import { operationConnectionsInfo } from '/@/stores/operation-connections';
 
 export interface ConnectionCallback extends LoggerType {
   // when build is finished, this function is called
@@ -60,22 +57,10 @@ export interface TaskHold {
 const taskLogCallbacks = new Map<symbol, ConnectionCallback>();
 const taskLogOnHolds = new Map<symbol, TaskHold>();
 const taskLogReplays = new Map<symbol, TaskReplay>();
-const allTasks = new Map<symbol, Task>();
 
-export function startTask(name: string, goToUrl: string, createCallback: ConnectionCallback): symbol {
+export function registerConnectionCallback(createCallback: ConnectionCallback): symbol {
   const key = getKey();
   taskLogCallbacks.set(key, createCallback);
-
-  // start a task
-  const task = createTask(name);
-
-  // go to the images build
-  task.gotoTask = () => {
-    router.goto(goToUrl);
-  };
-
-  // store the task
-  allTasks.set(key, task);
 
   // create a new replay value
   taskLogReplays.set(key, { log: [], warn: [], error: [], end: false });
@@ -88,14 +73,7 @@ export function clearCreateTask(key: symbol): void {
   taskLogOnHolds.delete(key);
   taskLogReplays.delete(key);
   // remove current create
-  createConnectionsInfo.set(new Map());
-
-  // remove the task
-  const task = allTasks.get(key);
-  if (task) {
-    removeTask(task.id);
-  }
-  allTasks.delete(key);
+  operationConnectionsInfo.set(new Map());
 }
 
 // client is leaving the page, disconnect the UI
@@ -151,7 +129,7 @@ export function reconnectUI(key: symbol, connectionCallback: ConnectionCallback)
   taskLogOnHolds.delete(key);
 
   // check if it was ended in the replay
-  if (!ended && replay && replay.end) {
+  if (!ended && replay?.end) {
     connectionCallback.onEnd();
   }
 }
@@ -162,20 +140,6 @@ function getKey(): symbol {
 }
 
 export function eventCollect(key: symbol, eventName: 'log' | 'warn' | 'error' | 'finish', args: string[]): void {
-  const task = allTasks.get(key);
-  if (task && isStatefulTask(task)) {
-    if (eventName === 'error') {
-      task.status = 'failure';
-      task.error = args.join('\n');
-      task.state = 'completed';
-    } else if (eventName === 'finish') {
-      if (task.status !== 'failure') {
-        task.status = 'success';
-      }
-      task.state = 'completed';
-    }
-  }
-
   // keep values for replay
   const replay = taskLogReplays.get(key);
   if (replay) {

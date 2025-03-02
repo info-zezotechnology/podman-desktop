@@ -1,5 +1,5 @@
 /**********************************************************************
- * Copyright (C) 2023 Red Hat, Inc.
+ * Copyright (C) 2023-2024 Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,29 +16,43 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
-import moment from 'moment';
-import humanizeDuration from 'humanize-duration';
-import type { DeploymentUI } from './DeploymentUI';
 import type { V1Deployment } from '@kubernetes/client-node';
 
-export class DeploymentUtils {
-  humanizeAge(started: string): string {
-    // get start time in ms
-    const uptimeInMs = moment().diff(started);
-    // make it human friendly
-    return humanizeDuration(uptimeInMs, { round: true, largest: 1 });
-  }
+import type { DeploymentUI } from './DeploymentUI';
 
+export class DeploymentUtils {
   getDeploymentUI(deployment: V1Deployment): DeploymentUI {
+    // Conditions (retrieving and sorting)
+    const conditions = (deployment.status?.conditions ?? []).map(c => {
+      return { type: c.type, message: c.message, reason: c.reason };
+    });
+
+    // Sort the conditions by type so that they are always in the same order
+    conditions.sort((a, b) => a.type.localeCompare(b.type));
+
+    // Status
+    let status = 'STOPPED';
+    if (deployment.status?.readyReplicas && deployment.status?.readyReplicas > 0) {
+      if (deployment.status?.replicas === deployment.status?.readyReplicas) {
+        status = 'RUNNING';
+      } else {
+        status = 'DEGRADED';
+      }
+    }
+
     return {
-      name: deployment.metadata?.name || '',
-      namespace: deployment.metadata?.namespace || '',
-      age: this.humanizeAge((deployment.metadata?.creationTimestamp || '').toString()),
+      kind: 'Deployment',
+      uid: deployment.metadata?.uid ?? '',
+      name: deployment.metadata?.name ?? '',
+      status: status,
+      namespace: deployment.metadata?.namespace ?? '',
+      created: deployment.metadata?.creationTimestamp,
       // number of replicas
-      replicas: deployment.status?.replicas || 0,
+      replicas: deployment.status?.replicas ?? 0,
       // ready pods
-      ready: deployment.status?.readyReplicas || 0,
+      ready: deployment.status?.readyReplicas ?? 0,
       selected: false,
+      conditions: conditions,
     };
   }
 }

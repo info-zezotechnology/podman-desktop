@@ -1,17 +1,18 @@
 <script lang="ts">
-import type { IConfigurationPropertyRecordedSchema } from '../../../../../main/src/plugin/configuration-registry';
-import Tooltip from '/@/lib/ui/Tooltip.svelte';
-import { uncertainStringToNumber } from '../Util';
+import { Tooltip } from '@podman-desktop/ui-svelte';
 import { onMount } from 'svelte';
+
+import type { IConfigurationPropertyRecordedSchema } from '../../../../../main/src/plugin/configuration-registry';
+import { uncertainStringToNumber } from '../Util';
 import { checkNumericValueValid } from './NumberItemUtils';
 
 export let record: IConfigurationPropertyRecordedSchema;
 export let value: number | undefined;
-export let onChange = (_id: string, _value: number) => {};
-export let invalidRecord = (_error: string) => {};
+export let onChange = (_id: string, _value: number): void => {};
+export let invalidRecord = (_error: string): void => {};
 
 let recordValue: string;
-$: recordValue = value?.toString() || '0';
+$: recordValue = value?.toString() ?? '0';
 
 let numberInputErrorMessage = '';
 let numberInputInvalid = false;
@@ -22,7 +23,7 @@ onMount(() => {
   }
 });
 
-function onInput(event: Event) {
+function onInput(event: Event): void {
   const target = event.currentTarget as HTMLInputElement;
   // if last char is a dot, user is probably adding a decimal point
   if (target.value.endsWith('.')) {
@@ -48,7 +49,7 @@ function onInput(event: Event) {
   }
 }
 
-function onNumberInputKeyPress(event: any) {
+function onNumberInputKeyPress(event: KeyboardEvent): void {
   if (event.key === '.' && (recordValue.length === 0 || recordValue.includes('.'))) {
     event.preventDefault();
   }
@@ -61,23 +62,23 @@ function onNumberInputKeyPress(event: any) {
 function assertNumericValueIsValid(value: number): boolean {
   const numericValue = checkNumericValueValid(record, value);
   numberInputInvalid = !numericValue.valid;
-  numberInputErrorMessage = numericValue.error || '';
+  numberInputErrorMessage = numericValue.error ?? '';
   return numericValue.valid;
 }
 </script>
 
 <div
-  class="flex flex-row rounded-sm bg-zinc-700 text-sm divide-x divide-charcoal-800 w-24 border-b"
-  class:border-violet-500="{!numberInputInvalid}"
-  class:border-red-500="{numberInputInvalid}">
-  <Tooltip topRight tip="{numberInputErrorMessage}">
+  class="flex flex-row rounded-xs bg-[var(--pd-input-field-bg)] text-sm divide-x divide-[var(--pd-dropdown-divider)] w-24 border-b"
+  class:border-[var(--pd-state-info)]={!numberInputInvalid}
+  class:border-[var(--pd-state-error)]={numberInputInvalid}>
+  <Tooltip topRight tip={numberInputErrorMessage}>
     <input
       type="text"
-      class="w-full px-2 outline-none focus:outline-none text-white text-sm py-0.5"
-      name="{record.id}"
-      bind:value="{recordValue}"
-      on:keypress="{event => onNumberInputKeyPress(event)}"
-      on:input="{onInput}"
-      aria-label="{record.description}" />
+      class="w-full px-2 outline-hidden focus:outline-hidden text-[var(--pd-input-field-focused-text)] text-sm py-0.5"
+      name={record.id}
+      bind:value={recordValue}
+      on:keypress={onNumberInputKeyPress}
+      on:input={onInput}
+      aria-label={record.description} />
   </Tooltip>
 </div>

@@ -1,5 +1,5 @@
 /**********************************************************************
- * Copyright (C) 2023 Red Hat, Inc.
+ * Copyright (C) 2023-2025 Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,20 +17,18 @@
  ***********************************************************************/
 
 import '@testing-library/jest-dom/vitest';
-import { test, expect, vi, beforeAll, beforeEach } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/svelte';
+
+import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
+import { get } from 'svelte/store';
+import { router } from 'tinro';
+import { beforeEach, expect, test, vi } from 'vitest';
+
+import { lastPage } from '/@/stores/breadcrumb';
+import { containersInfos } from '/@/stores/containers';
+import type { ContainerInfo } from '/@api/container-info';
+import type { ContainerInspectInfo } from '/@api/container-inspect-info';
 
 import ContainerDetails from './ContainerDetails.svelte';
-import { get } from 'svelte/store';
-import { containersInfos } from '/@/stores/containers';
-import type { ContainerInfo } from '../../../../main/src/plugin/api/container-info';
-
-import { router } from 'tinro';
-import { lastPage } from '/@/stores/breadcrumb';
-
-const listContainersMock = vi.fn();
-
-const getContainerInspectMock = vi.fn();
 
 const myContainer: ContainerInfo = {
   Id: 'myContainer',
@@ -47,35 +45,19 @@ const myContainer: ContainerInfo = {
   Created: 0,
   Ports: [],
   State: '',
+  ImageBase64RepoTag: '',
 };
 
-const deleteContainerMock = vi.fn();
-const getContributedMenusMock = vi.fn();
+vi.mock('@xterm/xterm');
+vi.mock('@xterm/addon-search');
 
-vi.mock('xterm', () => {
-  return {
-    Terminal: vi.fn().mockReturnValue({ loadAddon: vi.fn(), open: vi.fn(), write: vi.fn(), clear: vi.fn() }),
-  };
+const getConfigurationValueMock = vi.fn().mockReturnValue(12);
+
+beforeEach(() => {
+  vi.restoreAllMocks();
+  vi.resetAllMocks();
+  vi.mocked(window.getContributedMenus).mockResolvedValue([]);
 });
-
-beforeAll(() => {
-  (window as any).listContainers = listContainersMock;
-  (window as any).deleteContainer = deleteContainerMock;
-  (window as any).getContainerInspect = getContainerInspectMock;
-
-  (window as any).getConfigurationValue = vi.fn().mockReturnValue(12);
-
-  (window as any).logsContainer = vi.fn();
-  (window as any).matchMedia = vi.fn().mockReturnValue({
-    addListener: vi.fn(),
-  });
-  (window as any).ResizeObserver = vi.fn().mockReturnValue({ observe: vi.fn(), unobserve: vi.fn() });
-
-  (window as any).getContributedMenus = getContributedMenusMock;
-  getContributedMenusMock.mockImplementation(() => Promise.resolve([]));
-});
-
-beforeEach(() => {});
 
 test('Expect logs when tty is not enabled', async () => {
   router.goto('/');
@@ -85,11 +67,11 @@ test('Expect logs when tty is not enabled', async () => {
   // spy router.goto
   const routerGotoSpy = vi.spyOn(router, 'goto');
 
-  getContainerInspectMock.mockResolvedValue({
+  vi.mocked(window.getContainerInspect).mockResolvedValue({
     Config: {
       Tty: false,
     },
-  });
+  } as unknown as ContainerInspectInfo);
 
   // render the component
   render(ContainerDetails, { containerID: 'myContainer' });
@@ -114,20 +96,17 @@ test('Expect show tty if container has tty enabled', async () => {
   // spy router.goto
   const routerGotoSpy = vi.spyOn(router, 'goto');
 
-  getContainerInspectMock.mockResolvedValue({
+  vi.mocked(window.getContainerInspect).mockResolvedValue({
     Config: {
       Tty: true,
       OpenStdin: true,
     },
-  });
+  } as unknown as ContainerInspectInfo);
 
   // render the component
   render(ContainerDetails, { containerID: 'myContainer' });
 
-  // wait router.goto is called
-  while (routerGotoSpy.mock.calls.length === 0) {
-    await new Promise(resolve => setTimeout(resolve, 100));
-  }
+  await vi.waitFor(() => expect(routerGotoSpy.mock.calls.length > 0));
 
   // grab current route and check we have been redirected to tty
   const currentRoute = window.location;
@@ -137,13 +116,16 @@ test('Expect show tty if container has tty enabled', async () => {
 });
 
 test('Expect redirect to previous page if container is deleted', async () => {
+  getConfigurationValueMock.mockResolvedValue(undefined);
+  // Mock the showMessageBox to return 0 (yes)
+  vi.mocked(window.showMessageBox).mockResolvedValue({ response: 0 });
   router.goto('/');
 
-  getContainerInspectMock.mockResolvedValue({
+  vi.mocked(window.getContainerInspect).mockResolvedValue({
     Config: {},
-  });
+  } as unknown as ContainerInspectInfo);
   const routerGotoSpy = vi.spyOn(router, 'goto');
-  listContainersMock.mockResolvedValue([myContainer]);
+  vi.mocked(window.listContainers).mockResolvedValue([myContainer]);
   window.dispatchEvent(new CustomEvent('extensions-already-started'));
   while (get(containersInfos).length !== 1) {
     await new Promise(resolve => setTimeout(resolve, 500));
@@ -151,7 +133,7 @@ test('Expect redirect to previous page if container is deleted', async () => {
 
   // remove myContainer from the store when we call 'deleteContainer'
   // it will then refresh the store and update ContainerDetails page
-  deleteContainerMock.mockImplementation(() => {
+  vi.mocked(window.deleteContainer).mockImplementation(async (): Promise<void> => {
     containersInfos.update(containers => containers.filter(container => container.Id !== myContainer.Id));
   });
 
@@ -174,8 +156,11 @@ test('Expect redirect to previous page if container is deleted', async () => {
   const deleteButton = screen.getByRole('button', { name: 'Delete Container' });
   await fireEvent.click(deleteButton);
 
+  // Wait for confirmation modal to disappear after clicking on delete
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+
   // check that delete method has been called
-  expect(deleteContainerMock).toHaveBeenCalled();
+  expect(vi.mocked(window.deleteContainer)).toHaveBeenCalled();
 
   // expect that we have called the router when page has been removed
   // to jump to the previous page

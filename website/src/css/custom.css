@@ -1,60 +1,22 @@
 /**
- * Any CSS included here will be global. The classic template
- * bundles Infima by default. Infima is a CSS framework designed to
- * work well for content-centric websites.
+ * docusaurus uses Infima for CSS but here we load tailwind with
+ * 'important' configuration so default style will be Tailwind css
  */
 
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import 'tailwindcss';
+@config '../../tailwind.config.js';
 
-/* montserrat-regular - latin */
+/* manrope variable font */
 @font-face {
-  font-family: 'Montserrat';
+  font-family: 'Manrope';
   font-style: normal;
   font-weight: normal;
-  src:
-    url('../../static/fonts/montserrat-v25-latin-regular.woff2') format('woff2'),
-    url('../../static/fonts/montserrat-v25-latin-regular.woff') format('woff'),
-    url('../../static/fonts/montserrat-v25-latin-regular.ttf') format('truetype');
-}
-
-/* Apply default style for markdown*/
-@layer base {
-  h1,
-  h2,
-  h3,
-  h4,
-  h5,
-  h6 {
-    font-size: revert;
-    font-weight: revert;
-  }
-  ol,
-  ul {
-    list-style: revert;
-    margin: revert;
-    padding: revert;
-  }
-  a {
-    color: revert;
-  }
-}
-
-/*
-Apply style on documentation
-*/
-[data-theme='dark'].docs-doc-page .main-wrapper a {
-  @apply text-purple-200;
-}
-
-.docs-doc-page .main-wrapper a {
-  @apply text-purple-600;
+  src: url('../../static/fonts/manrope.ttf') format('truetype');
 }
 
 /* You can override the default Infima variables here. */
 :root {
-  --ifm-font-family-base: 'Montserrat', sans-serif;
+  --ifm-font-family-base: 'Manrope', sans-serif;
   --ifm-color-primary: #6d28d9;
   --ifm-color-primary-dark: #7c3aed;
   --ifm-color-primary-darker: #5c21ba;
@@ -66,6 +28,7 @@ Apply style on documentation
   --ifm-navbar-background-color: #fff;
   --ifm-navbar-height: 85px;
   --ifm-navbar-shadow: none;
+  --ifm-divider: #e2e2e3;
 }
 
 /* For readability concerns, you should choose a lighter palette in dark mode. */
@@ -78,6 +41,7 @@ Apply style on documentation
   --ifm-color-primary-lighter: #8349df;
   --ifm-color-primary-lightest: #996ae5;
   --ifm-navbar-background-color: #1b1b1d;
+  --ifm-divider: #2e2e32;
 }
 
 .docusaurus-highlight-code-line {
@@ -142,19 +106,110 @@ li.footer__item a svg {
 }
 
 .navbar__item {
-  font-size: 1em;
+  font-size: 0.9em;
 }
 
 .pagination-nav {
   display: none;
 }
 
-@media (min-width: 1200px) {
+/**
+  Using base font color for all links
+ */
+.menu__link {
+  color: var(--ifm-font-color-base) !important;
+}
+
+/**
+  The first level of collapsable should have a left bar
+ */
+.theme-doc-sidebar-item-category-level-1 > .menu__list {
+  border-left: 1px solid var(--ifm-divider);
+  margin-left: var(--ifm-menu-link-padding-horizontal);
+  padding-left: 0px;
+}
+
+/**
+  Decrease the size of the chevron icon from 2rem to 1.5
+ */
+.menu__caret:before {
+  background: var(--ifm-menu-link-sublist-icon) 50% / 1.5rem 1.5rem;
+}
+
+/**
+  Hovering an item should change its color and not create a gray bg
+ */
+.menu__link:hover,
+.menu__list-item-collapsible {
+  color: var(--ifm-color-primary) !important;
+  background-color: transparent !important;
+}
+
+/**
+  We should highlight the active item (only last child)
+ */
+.menu__link--active:not(.menu__link--sublist) {
+  color: var(--ifm-color-primary) !important;
+  background-color: transparent !important;
+}
+
+@media (min-width: 1230px) {
   .navbar__title {
-    font-size: 2em;
+    font-size: 1.7em;
   }
 
   .navbar__item {
-    font-size: 1.2em;
+    font-size: 1em;
   }
+}
+
+.breadcrumbs {
+  display: flex;
+}
+
+.breadcrumbs__item {
+  display: flex;
+  align-items: center;
+}
+
+a {
+  color: var(--ifm-link-color);
+}
+
+/* headings */
+
+article .markdown h1 {
+  font-size: 1.5rem;
+  font-weight: bolder;
+}
+
+nav h2,
+article .markdown h2 {
+  font-size: 1.2rem;
+  font-weight: bolder;
+}
+
+nav h3,
+article .markdown h3 {
+  font-size: 1.1rem;
+  font-weight: bolder;
+}
+
+/* lists */
+article .markdown ul,
+article .markdown ol {
+  margin-block-start: 1em;
+  margin-block-end: 1em;
+  margin-inline-start: 0px;
+  margin-inline-end: 0px;
+  padding-inline-start: 40px;
+}
+article .markdown ul {
+  list-style-type: disc;
+}
+article .markdown ol {
+  list-style-type: decimal;
+}
+article .markdown ol ol {
+  list-style-type: lower-roman;
 }

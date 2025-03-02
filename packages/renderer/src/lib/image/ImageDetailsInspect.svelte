@@ -1,8 +1,10 @@
 <script lang="ts">
-import type { ImageInfoUI } from './ImageInfoUI';
 import { onMount } from 'svelte';
+
+import type { ImageInspectInfo } from '/@api/image-inspect-info';
+
 import MonacoEditor from '../editor/MonacoEditor.svelte';
-import type { ImageInspectInfo } from '../../../../main/src/plugin/api/image-inspect-info';
+import type { ImageInfoUI } from './ImageInfoUI';
 
 export let image: ImageInfoUI;
 
@@ -21,5 +23,5 @@ onMount(async () => {
 </script>
 
 {#if inspectDetails}
-  <MonacoEditor content="{inspectDetails}" language="json" />
+  <MonacoEditor content={inspectDetails} language="json" />
 {/if}

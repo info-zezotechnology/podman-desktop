@@ -1,5 +1,7 @@
 ---
 sidebar_position: 30
+title: Podman on MacOS
+description: How to investigate when Podman does not work as expected.
 ---
 
 # Troubleshooting Podman on macOS
@@ -160,3 +162,137 @@ Keep your brew-based installation and apply one of these workarounds:
 
 - [Homebrew issue #140244](https://github.com/Homebrew/homebrew-core/issues/140244).
 - [Podman issue #19708](https://github.com/containers/podman/issues/19708).
+
+## On Apple Silicon, the Podman Machine does not start
+
+On Apple Silicon, when Podman Machine starts, it stays indefinitely blocked with a _Waiting for VM_ message.
+
+#### Solution
+
+For M1 and M2 processors:
+
+- Update to Podman 4.9.
+
+#### Workaround
+
+For M3 processors:
+
+1. To get a clean environment, remove all Podman and qemu artifacts:
+
+   1. Remove eventual installation from podman/podman desktop installer:
+
+      ```shell-session
+      $ sudo rm -rf opt/podman
+      ```
+
+   1. Remove brew installations:
+
+      ```shell-session
+      $ brew uninstall podman-desktop
+      $ brew uninstall podman
+      $ brew uninstall qemu
+      ```
+
+   1. Remove Podman files:
+
+      ```shell-session
+      $ rm -rf ~/.ssh/podman-machine-default
+      $ rm -rf ~/.ssh/podman-machine-default.pub
+      $ rm -rf ~/.local/share/containers
+      $ rm -rf ~/.config/containers
+      ```
+
+1. Reinstall Podman using brew:
+
+   ```shell-session
+   $ brew install podman
+   ```
+
+1. Install bunzip2:
+
+   ```shell-session
+   $ brew install bzip2
+   ```
+
+1. Install QEMU 8.2.0 to `/opt/homebrew/Cellar/qemu/8.2.0`:
+
+   ```shell-session
+   $ curl -sL https://github.com/AkihiroSuda/qemu/raw/704f7cad5105246822686f65765ab92045f71a3b/pc-bios/edk2-aarch64-code.fd.bz2 | bunzip2 > /opt/homebrew/Cellar/qemu/8.2.0/share/qemu/edk2-aarch64-code.fd
+   ```
+
+1. Install patched EDK2.
+   Download [EDK2](https://github.com/lima-vm/edk2-patched.tmp/releases/download/edk2-stable202311%2Blima.0/edk2-aarch64-code.fd.gz) from [lima-vm/edk2-patched.tmp/releases](https://github.com/lima-vm/edk2-patched.tmp/releases).
+
+1. Init podman machine.
+
+1. Find QEMU configuration directory to define _`qemu-config-directory`_ in next step:
+
+   ```shell-session
+   $ podman machine info | grep MachineConfigDir
+
+   ```
+
+1. Update podman machine config json:
+
+   ```shell-session
+   $ sed -i 's@file=.\*edk2-aarch64-code.fd@file=/path/to/downloaded/edk2-aarch64-code.fd@g' qemu-config-directory/podman-machine-default.json
+   ```
+
+1. Start Podman machine.
+
+#### Additional resources
+
+- [Issue #20776](https://github.com/containers/podman/issues/20776)
+
+## `podman machine` CLI commands do not work with `libkrun` provider type without manual configuration
+
+When you create a Podman machine with the `GPU enabled (LibKrun)` provider type, all the `podman machine` CLI commands stop working.
+
+**_Podman machine is not listed_**
+
+```shell-session
+$ podman machine list
+NAME        VM TYPE     CREATED     LAST UP     CPUS        MEMORY      DISK SIZE
+```
+
+**_Error: interacting with the default Podman machine_**
+
+```shell-session
+$ podman machine ssh
+Error: vm podman-machine-default not found: podman-machine-default: VM does not exist
+```
+
+#### Workaround
+
+- Prefix each `podman machine` command with
+  `CONTAINERS_MACHINE_PROVIDER=libkrun`. For example, `CONTAINERS_MACHINE_PROVIDER=libkrun podman machine ls`.
+- Manually configure the `containers.conf` file or the `CONTAINERS_MACHINE_PROVIDER` environment variable. See [Using `libkrun` as machine provider](/docs/installation/macos-install#using-libkrun-as-machine-provider).
+
+#### Additional resources
+
+- [Issue #9860](https://github.com/podman-desktop/podman-desktop/issues/9860)
+
+## Running out of disk space on macOS
+
+On macOS, `.plist` files append Podman Desktop data to the previous log files, increasing their size.
+
+With Podman Desktop 1.16, the log files are automatically cleaned at the restart of the application. This ensures the log files do not increase indefinitely in size. However, you can check the size of the log files to manually troubleshoot disk space issues at any time.
+
+#### Solution
+
+Check the size of the Podman Desktop log files to troubleshoot:
+
+```sh
+$ ls -la ~/Library/Logs/Podman\ Desktop/*.log
+```
+
+With Podman Desktop 1.16.0 or later versions, your computer might require a restart to truncate the Podman Desktop log files.
+To avoid restarting your computer, run these commands one by one:
+
+```shell-session
+$ launchctl unload  ~/Library/LaunchAgents/io.podman_desktop.PodmanDesktop.plist
+```
+
+```shell-session
+$ launchctl load  ~/Library/LaunchAgents/io.podman_desktop.PodmanDesktop.plist
+```

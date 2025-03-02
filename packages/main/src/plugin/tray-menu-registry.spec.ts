@@ -18,8 +18,10 @@
 
 import { ipcMain } from 'electron';
 import { beforeAll, beforeEach, expect, test, vi } from 'vitest';
+
+import type { ProviderInfo } from '/@api/provider-info.js';
+
 import type { TrayMenu } from '../tray-menu.js';
-import type { ProviderInfo } from './api/provider-info.js';
 import type { CommandRegistry } from './command-registry.js';
 import type { ProviderRegistry } from './provider-registry.js';
 import type { Telemetry } from './telemetry/telemetry.js';
@@ -67,7 +69,7 @@ test('Should pass proper providerId field', () => {
   menuRegistry.registerProviderMenuItem('testId', menuItem);
   // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
   const lastIpcArguments = ipcEmit.mock.lastCall!;
-  expect(lastIpcArguments).is.not.undefined;
+  expect(lastIpcArguments).not.toBeUndefined();
   expect(lastIpcArguments[0]).eqls('tray:add-provider-menu-item');
   expect(lastIpcArguments[1]).eqls('');
   expect(lastIpcArguments[2]).eqls({ providerId: 'testId', menuItem: menuItem });

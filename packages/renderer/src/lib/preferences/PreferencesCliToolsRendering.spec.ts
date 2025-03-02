@@ -19,11 +19,14 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import '@testing-library/jest-dom/vitest';
+
 import { within } from '@testing-library/dom';
-import { afterEach, beforeAll, expect, suite, test, vi } from 'vitest';
 import { render, screen } from '@testing-library/svelte';
+import { afterEach, beforeAll, expect, suite, test, vi } from 'vitest';
+
 import { cliToolInfos } from '/@/stores/cli-tools';
-import type { CliToolInfo } from '../../../../main/src/plugin/api/cli-tool-info';
+import type { CliToolInfo } from '/@api/cli-tool-info';
+
 import PreferencesCliToolsRendering from './PreferencesCliToolsRendering.svelte';
 
 afterEach(() => {
@@ -42,6 +45,8 @@ const cliToolInfoItem1: CliToolInfo = {
   },
   version: '1.0.1',
   path: 'path/to/tool-name-1',
+  canUpdate: false,
+  canInstall: false,
 };
 
 const cliToolInfoItem2: CliToolInfo = {
@@ -57,6 +62,8 @@ const cliToolInfoItem2: CliToolInfo = {
   images: {},
   version: '1.0.2',
   path: 'path/to/tool-name-2',
+  canUpdate: false,
+  canInstall: false,
 };
 
 const cliToolInfoItem3: CliToolInfo = {
@@ -74,6 +81,8 @@ const cliToolInfoItem3: CliToolInfo = {
   },
   version: '1.0.3',
   path: 'path/to/tool-name-3',
+  canUpdate: false,
+  canInstall: false,
 };
 
 const cliToolInfoItem4: CliToolInfo = {
@@ -89,13 +98,15 @@ const cliToolInfoItem4: CliToolInfo = {
   images: {},
   version: '', // version is empty, so it should be showing the error
   path: '',
+  canUpdate: false,
+  canInstall: false,
 };
 
 suite('CLI Tool Prefernces page shows', () => {
   const cliTools = [cliToolInfoItem1, cliToolInfoItem2, cliToolInfoItem3, cliToolInfoItem4];
   let cliToolRows: HTMLElement[] = [];
 
-  function validatePropertyPresentation(labelName: string, getExpectedContent: (info: CliToolInfo) => string) {
+  function validatePropertyPresentation(labelName: string, getExpectedContent: (info: CliToolInfo) => string): void {
     cliTools.forEach((tool, index) => {
       const nameElement = within(cliToolRows[index]).getByLabelText(labelName);
       expect(nameElement.textContent?.trim()).equals(getExpectedContent(tool));

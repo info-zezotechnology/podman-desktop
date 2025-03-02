@@ -1,5 +1,23 @@
 #!/usr/bin/env node
 
+/**********************************************************************
+ * Copyright (C) 2022-2024 Red Hat, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ ***********************************************************************/
+
 import { createServer, build, createLogger } from 'vite';
 import electronPath from 'electron';
 import { spawn } from 'child_process';
@@ -7,7 +25,7 @@ import { generateAsync } from 'dts-for-context-bridge';
 import { dirname, resolve } from 'path';
 import { fileURLToPath } from 'url';
 import { readdirSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { delimiter, join } from 'node:path';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -82,8 +100,10 @@ const setupMainPackageWatcher = ({ config: { server, extensions } }) => {
       extensions.forEach(extension => {
         extensionArgs.push(EXTENSION_OPTION);
         extensionArgs.push(extension);
-      })
-      spawnProcess = spawn(String(electronPath), [ '--remote-debugging-port=9223', '.', ...extensionArgs], { env: { ...process.env, ELECTRON_IS_DEV: 1 } });
+      });
+      spawnProcess = spawn(String(electronPath), ['--remote-debugging-port=9223', '.', ...extensionArgs], {
+        env: { ...process.env, ELECTRON_IS_DEV: 1 },
+      });
 
       spawnProcess.stdout.on('data', d => d.toString().trim() && logger.warn(d.toString(), { timestamp: true }));
       spawnProcess.stderr.on('data', d => {
@@ -98,6 +118,42 @@ const setupMainPackageWatcher = ({ config: { server, extensions } }) => {
       spawnProcess.on('exit', process.exit);
     },
   });
+};
+
+const setupUiPackageWatcher = () => {
+  const logger = createLogger(LOG_LEVEL, {
+    prefix: '[ui]',
+  });
+
+  /** @type {ChildProcessWithoutNullStreams | null} */
+  let spawnProcess = null;
+
+  if (spawnProcess !== null) {
+    spawnProcess.off('exit', process.exit);
+    spawnProcess.kill('SIGINT');
+    spawnProcess = null;
+  }
+
+  const dirname = join(__dirname, '..', 'node_modules', '.bin');
+  const exe = 'svelte-package'.concat(process.platform === 'win32' ? '.cmd' : '');
+  const newPath = `${process.env.PATH}${delimiter}${dirname}`;
+  spawnProcess = spawn(exe, ['-w'], {
+    cwd: './packages/ui/',
+    env: { PATH: newPath, ...process.env },
+    shell: process.platform === 'win32',
+  });
+
+  spawnProcess.stdout.on('data', d => d.toString().trim() && logger.warn(d.toString(), { timestamp: true }));
+  spawnProcess.stderr.on('data', d => {
+    const data = d.toString().trim();
+    if (!data) return;
+    const mayIgnore = stderrFilterPatterns.some(r => r.test(data));
+    if (mayIgnore) return;
+    logger.error(data, { timestamp: true });
+  });
+
+  // Stops the watch script when the application has been quit
+  spawnProcess.on('exit', process.exit);
 };
 
 /**
@@ -141,6 +197,25 @@ const setupPreloadDockerExtensionPackageWatcher = ({ ws }) =>
     },
   });
 
+const setupPreloadWebviewPackageWatcher = ({ ws }) =>
+  getWatcher({
+    name: 'reload-page-on-preload-webview-package-change',
+    configFile: 'packages/preload-webview/vite.config.js',
+    writeBundle() {
+      // Generating exposedInWebview.d.ts when preload package is changed.
+      generateAsync({
+        input: 'packages/preload-webview/tsconfig.json',
+        output: 'packages/preload-webview/exposedInWebview.d.ts',
+      });
+
+      if (ws) {
+        ws.send({
+          type: 'full-reload',
+        });
+      }
+    },
+  });
+
 /**
  * Start or restart App when source files are changed
  * @param {{ws: import('vite').WebSocketServer}} WebSocketServer
@@ -150,7 +225,7 @@ const setupExtensionApiWatcher = name => {
   const folderName = resolve(name);
 
   console.log('dirname is', folderName);
-  spawnProcess = spawn('yarn', ['--cwd', folderName, 'watch'], { shell: process.platform === 'win32' });
+  spawnProcess = spawn('pnpm', ['watch'], { cwd: folderName, shell: process.platform === 'win32' });
 
   spawnProcess.stdout.on('data', d => d.toString().trim() && console.warn(d.toString(), { timestamp: true }));
   spawnProcess.stderr.on('data', d => {
@@ -165,8 +240,8 @@ const setupExtensionApiWatcher = name => {
 
 (async () => {
   try {
-    const extensions = []
-    for(let index=0; index < process.argv.length;index++) {
+    const extensions = [];
+    for (let index = 0; index < process.argv.length; index++) {
       if (process.argv[index] === EXTENSION_OPTION && index < process.argv.length - 1) {
         extensions.push(resolve(process.argv[++index]));
       }
@@ -174,7 +249,7 @@ const setupExtensionApiWatcher = name => {
     const viteDevServer = await createServer({
       ...sharedConfig,
       configFile: 'packages/renderer/vite.config.js',
-      extensions: extensions
+      extensions: extensions,
     });
 
     await viteDevServer.listen();
@@ -182,16 +257,33 @@ const setupExtensionApiWatcher = name => {
     // get extensions folder
     const extensionsFolder = resolve(__dirname, '../extensions/');
 
-    // loop on all subfolders from the extensions folder
+    // Loop on all subfolders from the extensions folder.
+    // If package.json is present it is an extension without API.
+    // If package.json is missing look into packages/extension folder
+    // and if package.json is present it is na extension with API.
     readdirSync(extensionsFolder, { withFileTypes: true })
-      .filter(dirent => dirent.isDirectory() && existsSync(join(extensionsFolder, dirent.name, 'package.json')))
-      .forEach(dirent => setupExtensionApiWatcher(join(extensionsFolder, dirent.name)));
+      .filter(
+        dirent =>
+          dirent.isDirectory() &&
+          (existsSync(join(extensionsFolder, dirent.name, 'package.json')) ||
+            existsSync(extensionsFolder, dirent.name, 'packages', 'extension', 'package.json')),
+      )
+      .forEach(dirent => {
+        const apiExtPath = join(extensionsFolder, dirent.name, 'packages', 'extension');
+        if (existsSync(join(apiExtPath, 'package.json'))) {
+          setupExtensionApiWatcher(apiExtPath);
+        } else if (existsSync(join(extensionsFolder, dirent.name, 'package.json'))) {
+          setupExtensionApiWatcher(join(extensionsFolder, dirent.name));
+        }
+      });
 
     for (const extension of extensions) {
       setupExtensionApiWatcher(extension);
     }
     await setupPreloadPackageWatcher(viteDevServer);
     await setupPreloadDockerExtensionPackageWatcher(viteDevServer);
+    await setupPreloadWebviewPackageWatcher(viteDevServer);
+    await setupUiPackageWatcher();
     await setupMainPackageWatcher(viteDevServer);
   } catch (e) {
     console.error(e);

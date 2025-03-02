@@ -1,5 +1,5 @@
 /**********************************************************************
- * Copyright (C) 2023 Red Hat, Inc.
+ * Copyright (C) 2023-2024 Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,20 +18,42 @@
 
 import type { Writable } from 'svelte/store';
 import { writable } from 'svelte/store';
+
 import { ContextUI } from '../lib/context/context';
 
-export const context: Writable<ContextUI> = writable(new ContextUI());
+export const context: Writable<ContextUI> = setup();
 
-window.events?.receive('context-value-updated', async (value: { key: string; value: string }) => {
-  context.update(ctx => {
-    ctx.setValue(value.key, value.value);
-    return ctx;
-  });
-});
+export function setup(): Writable<ContextUI> {
+  const store = writable(new ContextUI());
 
-window.events?.receive('context-key-removed', async (value: { key: string; value: string }) => {
-  context.update(ctx => {
-    ctx.removeValue(value.key);
-    return ctx;
+  window.events?.receive('context-value-updated', (value: unknown) => {
+    const typedValue = value as { key: string; value: string };
+    store.update(ctx => {
+      ctx.setValue(typedValue.key, typedValue.value);
+      return ctx;
+    });
   });
-});
+
+  window.events?.receive('context-key-removed', (value: unknown) => {
+    const typedValue = value as { key: string; value: string };
+    store.update(ctx => {
+      ctx.removeValue(typedValue.key);
+      return ctx;
+    });
+  });
+
+  window.addEventListener('extensions-already-started', () => {
+    // this function can be undefined during tests
+    window
+      .contextCollectAllValues?.()
+      ?.then(values => {
+        const currentContext = Object.entries(values).reduce((result, [key, value]) => {
+          result.setValue(key, value);
+          return result;
+        }, new ContextUI());
+        store.set(currentContext);
+      })
+      .catch((err: unknown) => console.error('error getting current context', err));
+  });
+  return store;
+}

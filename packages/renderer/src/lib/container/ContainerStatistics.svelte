@@ -1,9 +1,11 @@
 <script lang="ts">
-import { onMount, onDestroy } from 'svelte';
-import type { ContainerStatsInfo } from '../../../../main/src/plugin/api/container-stats-info';
-import type { ContainerInfoUI } from './ContainerInfoUI';
-import { ContainerUtils } from './container-utils';
+import { onDestroy, onMount } from 'svelte';
+
+import type { ContainerStatsInfo } from '/@api/container-stats-info';
+
 import Donut from '../donut/Donut.svelte';
+import { ContainerUtils } from './container-utils';
+import type { ContainerInfoUI } from './ContainerInfoUI';
 
 export let container: ContainerInfoUI;
 
@@ -23,7 +25,7 @@ let firstIteration = true;
 let cpuUsage: string;
 let memoryUsage: string;
 
-export async function updateStatistics(containerStats: ContainerStatsInfo) {
+export async function updateStatistics(containerStats: ContainerStatsInfo): Promise<void> {
   // we need enough data to compute the CPU usage
   if (firstIteration) {
     firstIteration = false;
@@ -50,7 +52,9 @@ onMount(async () => {
   }
   // grab stats result from the container
   fetchStatsId = await window.getContainerStats(container.engineId, container.id, containerStats => {
-    updateStatistics(containerStats);
+    updateStatistics(containerStats).catch((err: unknown) =>
+      console.error(`Error getting container statistics for container ${container.id}`, err),
+    );
   });
 });
 
@@ -64,7 +68,7 @@ onDestroy(async () => {
 
 {#if container.state === 'RUNNING'}
   <div class="flex flex-row gap-1">
-    <Donut title="vCPUs" size="{45}" value="{cpuUsage}" percent="{cpuUsagePercentage}" />
-    <Donut title="MEM" size="{45}" value="{memoryUsage}" percent="{memoryUsagePercentage}" />
+    <Donut title="vCPUs" size={45} value={cpuUsage} percent={cpuUsagePercentage} />
+    <Donut title="MEM" size={45} value={memoryUsage} percent={memoryUsagePercentage} />
   </div>
 {/if}

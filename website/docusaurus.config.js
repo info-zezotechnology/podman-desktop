@@ -1,5 +1,8 @@
 // @ts-check
 // Note: type annotations allow type checking and IDEs autocompletion
+import { resolve } from 'node:path';
+import { createNotesFiles } from './release-notes-parser';
+import Storybook from './storybook';
 
 const lightCodeTheme = require('prism-react-renderer').themes.github;
 const darkCodeTheme = require('prism-react-renderer').themes.dracula;
@@ -22,6 +25,9 @@ const config = {
   trailingSlash: false,
   markdown: {
     mermaid: true,
+    parseFrontMatter: async params => {
+      return createNotesFiles(params);
+    },
   },
   themes: ['@docusaurus/theme-mermaid'],
   plugins: [
@@ -29,8 +35,7 @@ const config = {
       return {
         name: 'docusaurus-tailwindcss',
         configurePostCss(postcssOptions) {
-          postcssOptions.plugins.push(require('tailwindcss'));
-          postcssOptions.plugins.push(require('autoprefixer'));
+          postcssOptions.plugins.push(require('@tailwindcss/postcss'));
           return postcssOptions;
         },
       };
@@ -62,43 +67,33 @@ const config = {
           },
           {
             to: '/docs/installation/windows-install',
-            from: '/docs/Installation/windows-install',
+            from: [
+              '/docs/installation/windows-install/installing-podman-desktop-silently-with-the-windows-installer',
+              '/docs/installation/windows-install/installing-podman-desktop-with-chocolatey',
+              '/docs/installation/windows-install/installing-podman-desktop-with-scoop',
+              '/docs/installation/windows-install/installing-podman-desktop-with-winget',
+              '/docs/installation/windows-install/installing-podman-with-openshift-local',
+              '/docs/installation/windows-install/installing-podman-with-podman-desktop',
+              '/docs/onboarding-for-containers/installing-podman-with-openshift-local-on-windows',
+              '/docs/onboarding-for-containers/installing-podman',
+              '/docs/onboarding/containers/installing-podman-with-openshift-local-on-windows',
+              '/docs/onboarding/containers/installing-podman-with-podman-desktop-on-windows',
+              '/docs/onboarding/containers/installing-podman',
+              '/docs/podman/installing-podman-with-openshift-local-on-windows',
+              '/docs/podman/installing',
+            ],
           },
           {
-            to: '/docs/installation/windows-install/installing-podman-desktop-silently-with-the-windows-installer',
-            from: '/docs/Installation/windows-install/installing-podman-desktop-silently-with-the-windows-installer',
-          },
-          {
-            to: '/docs/installation/windows-install/installing-podman-desktop-with-chocolatey',
-            from: '/docs/Installation/windows-install/installing-podman-desktop-with-chocolatey',
-          },
-          {
-            to: '/docs/installation/windows-install/installing-podman-desktop-with-scoop',
-            from: '/docs/Installation/windows-install/installing-podman-desktop-with-scoop',
-          },
-          {
-            to: '/docs/installation/windows-install/installing-podman-desktop-and-podman-in-a-restricted-environment',
-            from: '/docs/Installation/windows-install/installing-podman-desktop-and-podman-in-a-restricted-environment',
-          },
-          {
-            to: '/docs/installation/windows-install/installing-podman-desktop-with-winget',
-            from: '/docs/Installation/windows-install/installing-podman-desktop-with-winget',
-          },
-          {
-            to: '/docs/installation/macos-install',
-            from: '/docs/Installation/macos-install',
-          },
-          {
-            to: '/docs/installation/linux-install',
-            from: '/docs/Installation/linux-install',
-          },
-          {
-            to: '/docs/installation/linux-install/installing-podman-desktop-from-a-flatpak-bundle',
-            from: '/docs/Installation/linux-install/installing-podman-desktop-from-a-flatpak-bundle',
-          },
-          {
-            to: '/docs/installation/linux-install/installing-podman-desktop-from-a-compressed-tar-file',
-            from: '/docs/Installation/linux-install/installing-podman-desktop-from-a-compressed-tar-file',
+            to: '/docs/proxy',
+            from: [
+              '/docs/installation/windows-install/installing-podman-desktop-and-podman-in-a-restricted-environment',
+              '/docs/installation/linux-install/installing-podman-desktop-from-a-compressed-tar-file',
+              '/docs/proxy/using-a-proxy-in-your-containers',
+              '/docs/proxy/using-a-proxy-on-linux',
+              '/docs/proxy/using-a-proxy-requiring-a-custom-ca',
+              '/docs/proxy/using-a-proxy',
+              '/docs/proxy/using-a-vpn-on-windows',
+            ],
           },
           {
             to: '/docs/compose',
@@ -109,25 +104,24 @@ const config = {
             from: '/docs/onboarding-for-kubernetes',
           },
           {
+            to: '/docs/kind/pushing-an-image-to-kind',
+            from: '/docs/kubernetes/kind/pushing-an-image-to-kind',
+          },
+          {
+            to: '/docs/minikube/pushing-an-image-to-minikube',
+            from: '/docs/kubernetes/minikube/pushing-an-image-to-minikube',
+          },
+          {
+            to: '/docs/lima/pushing-an-image-to-lima',
+            from: '/docs/kubernetes/lima/pushing-an-image-to-lima',
+          },
+          {
+            to: '/docs/kubernetes/deploying-a-pod-to-kubernetes',
+            from: '/docs/kubernetes/deploying-a-container-to-kubernetes',
+          },
+          {
             to: '/docs/containers/onboarding',
             from: ['/docs/onboarding-for-containers', '/docs/onboarding', '/docs/onboarding/containers'],
-          },
-          {
-            to: '/docs/podman/installing',
-            from: [
-              '/docs/onboarding-for-containers/installing-podman',
-              '/docs/onboarding/containers/installing-podman',
-              '/docs/Installation/windows-install/installing-podman-with-podman-desktop',
-              '/docs/onboarding/containers/installing-podman-with-podman-desktop-on-windows',
-            ],
-          },
-          {
-            to: '/docs/podman/installing-podman-with-openshift-local-on-windows',
-            from: [
-              '/docs/onboarding-for-containers/installing-podman-with-openshift-local-on-windows',
-              '/docs/Installation/windows-install/installing-podman-with-openshift-local',
-              '/docs/onboarding/containers/installing-podman-with-openshift-local-on-windows',
-            ],
           },
           {
             to: '/docs/lima/creating-a-lima-instance',
@@ -143,6 +137,14 @@ const config = {
               '/docs/onboarding-for-containers/creating-a-podman-machine-with-podman-desktop',
               '/docs/Installation/creating-a-podman-machine-with-podman-desktop',
               '/docs/onboarding/containers/creating-a-podman-machine-with-podman-desktop',
+            ],
+          },
+          {
+            to: '/docs/migrating-from-docker/managing-docker-compatibility',
+            from: [
+              '/docs/migrating-from-docker/using-podman-mac-helper',
+              '/docs/migrating-from-docker/emulating-docker-cli-with-podman',
+              '/docs/migrating-from-docker/verifying-your-tools-are-using-podman',
             ],
           },
           {
@@ -262,17 +264,14 @@ const config = {
             from: ['/docs/working-with-containers', '/docs/getting-started/getting-started', '/docs/getting-started'],
           },
           {
-            to: '/docs/containers/registries/authenticating-to-a-preconfigured-registry',
+            to: '/docs/containers/registries',
             from: [
-              '/docs/working-with-containers/registries/authenticating-to-a-preconfigured-registry',
+              '/docs/containers/registries/authenticating-to-a-preconfigured-registry',
+              '/docs/containers/registries/insecure-registry',
               '/docs/getting-started/authenticating-to-a-preconfigured-registry',
-            ],
-          },
-          {
-            to: '/docs/containers/registries/insecure-registry',
-            from: [
-              '/docs/working-with-containers/registries/insecure-registry',
               '/docs/getting-started/insecure-registry',
+              '/docs/working-with-containers/registries/authenticating-to-a-preconfigured-registry',
+              '/docs/working-with-containers/registries/insecure-registry',
             ],
           },
           {
@@ -309,7 +308,59 @@ const config = {
             to: '/docs/openshift',
             from: '/docs/kubernetes/openshift',
           },
+          {
+            to: '/docs/extensions/developing',
+            from: [
+              '/docs/extensions/write/',
+              '/docs/extensions/write/onboarding-workflow',
+              '/docs/extensions/write/when-clause-context',
+              '/docs/extensions/write/adding-icons',
+            ],
+          },
+          {
+            to: '/',
+            from: '/core-values',
+          },
         ],
+      },
+    ],
+    [
+      '@docusaurus/plugin-content-docs',
+      {
+        id: 'api',
+        path: 'api',
+        routeBasePath: 'api',
+        sidebarPath: resolve('./sidebars-api.js'),
+      },
+    ],
+    [
+      '@docusaurus/plugin-content-docs',
+      {
+        id: 'tutorial',
+        path: 'tutorial',
+        routeBasePath: 'tutorial',
+      },
+    ],
+    [
+      'docusaurus-plugin-typedoc',
+      {
+        id: 'api',
+        plugin: ['typedoc-plugin-markdown'],
+        entryPoints: [resolve('../packages/extension-api/src/extension-api.d.ts')],
+        out: 'api',
+        hideBreadcrumbs: true,
+        readme: 'none',
+        tsconfig: resolve('../packages/extension-api/tsconfig.json'),
+        hideGenerator: true,
+      },
+    ],
+    // Custom Storybook integration
+    [
+      Storybook,
+      {
+        id: 'storybook-docusaurus-integration',
+        output: 'src/pages/storybook',
+        storybookStatic: '../storybook/storybook-static',
       },
     ],
   ],
@@ -319,13 +370,16 @@ const config = {
       /** @type {import('@docusaurus/preset-classic').Options} */
       ({
         docs: {
+          sidebarCollapsed: false,
           sidebarPath: require.resolve('./sidebars.js'),
-          editUrl: 'https://github.com/containers/podman-desktop/tree/main/website',
+          editUrl: 'https://github.com/podman-desktop/podman-desktop/tree/main/website',
         },
         blog: {
           blogTitle: 'Podman Desktop blog!',
           blogDescription: 'Discover articles about Podman Desktop',
           postsPerPage: 'ALL',
+          blogSidebarTitle: 'All blog posts',
+          blogSidebarCount: 'ALL',
           feedOptions: {
             type: 'all',
             copyright: `Copyright © ${new Date().getFullYear()} Podman Desktop`,
@@ -348,7 +402,6 @@ const config = {
       },
       docs: {
         sidebar: {
-          autoCollapseCategories: true,
           hideable: true,
         },
       },
@@ -366,13 +419,19 @@ const config = {
             position: 'left',
             label: 'Documentation',
           },
-          { to: '/core-values', label: 'Core Values', position: 'left' },
           { to: '/features', label: 'Features', position: 'left' },
-          { to: '/downloads', label: 'Downloads', position: 'left' },
+          {
+            type: 'custom-telemetryLink',
+            position: 'left',
+            to: '/downloads',
+            eventPath: '/download',
+            eventTitle: 'navigation-download',
+          },
           { to: '/extend', label: 'Extend', position: 'left' },
           { to: '/blog', label: 'Blog', position: 'left' },
+          { to: '/tutorial', label: 'Tutorials', position: 'left' },
           {
-            href: 'https://github.com/containers/podman-desktop',
+            href: 'https://github.com/podman-desktop/podman-desktop',
             className: 'header-github-link',
             position: 'right',
           },
@@ -406,7 +465,7 @@ const config = {
             items: [
               {
                 label: 'GitHub',
-                href: 'https://github.com/containers/podman-desktop',
+                href: 'https://github.com/podman-desktop/podman-desktop',
               },
               {
                 label: 'Chat (bridged): #podman-desktop on Discord',
@@ -414,7 +473,7 @@ const config = {
               },
               {
                 label: 'Other ways to Communicate',
-                href: 'https://github.com/containers/podman-desktop#communication',
+                href: 'https://github.com/podman-desktop/podman-desktop#communication',
               },
               {
                 label: 'Current Sprint',
@@ -423,7 +482,15 @@ const config = {
             ],
           },
         ],
-        copyright: `Copyright © ${new Date().getFullYear()} ${title} - Apache License 2.0 License`,
+        copyright: `<div class="flex flex-col items-center divide-y-4 divide-none">
+        <div class="w-80"><img class="dark:hidden" alt="Cloud Native Computing Foundation" src="/img/cncf-logo.svg"><img class="hidden dark:inline" alt="Cloud Native Computing Foundation" src="/img/cncf-logo-dark.svg"></div>
+        <div>We are a <a href="https://cncf.io/">Cloud Native Computing Foundation</a> sandbox project.</div>
+        <div class="text-sm">
+        © Copyright ${title} Contributors ${new Date().getFullYear()}. © ${new Date().getFullYear()} The Linux Foundation. All rights reserved.
+        </div>
+        <div class="text-xs">The Linux Foundation has registered trademarks and uses trademarks. For a list of trademarks of The Linux Foundation, please see our <a href="https://www.linuxfoundation.org/trademark-usage/"> Trademark Usage</a> page.
+        </div>
+      `,
       },
       prism: {
         theme: lightCodeTheme,

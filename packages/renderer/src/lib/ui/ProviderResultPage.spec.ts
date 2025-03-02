@@ -1,15 +1,36 @@
-import '@testing-library/jest-dom/vitest';
-import { fireEvent, render, screen, within } from '@testing-library/svelte';
-import { describe, expect, test } from 'vitest';
-import ProviderResultPage from './ProviderResultPage.svelte';
-import type { CheckUI, ProviderUI } from './ProviderResultPage';
+/**********************************************************************
+ * Copyright (C) 2023-2024 Red Hat, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ ***********************************************************************/
 
-function checkResultDisplayed(result: CheckUI) {
+import '@testing-library/jest-dom/vitest';
+
+import { fireEvent, render, screen, within } from '@testing-library/svelte';
+import { createRawSnippet, type Snippet } from 'svelte';
+import { describe, expect, test } from 'vitest';
+
+import type { CheckUI, ProviderUI } from './ProviderResultPage';
+import ProviderResultPage from './ProviderResultPage.svelte';
+
+function checkResultDisplayed(result: CheckUI): void {
   const res = screen.getByRole('row', { name: result.check.name + ' Reported by ' + result.provider.label });
   expect(res).toBeInTheDocument();
 }
 
-function checkResultNotDisplayed(result: CheckUI) {
+function checkResultNotDisplayed(result: CheckUI): void {
   const res = screen.queryByRole('row', { name: result.check.name + ' Reported by ' + result.provider.label });
   expect(res).not.toBeInTheDocument();
 }
@@ -89,8 +110,18 @@ describe('test ProviderResultPage', async () => {
     },
   ];
 
-  test('all providers are displayed as running', () => {
-    const checkProviderRunning = (text: string) => {
+  const HEADER_INFO_SNIPPET_TEXT = 'Header Info Snippet';
+
+  const snippet: Snippet<[]> = createRawSnippet(() => {
+    return {
+      render: () => `
+			<h1>${HEADER_INFO_SNIPPET_TEXT}</h1>
+		`,
+    };
+  });
+
+  test('all providers are displayed as running', async () => {
+    const checkProviderRunning = (text: string): void => {
       const providerEntry = screen.getByRole('row', { name: text });
       expect(providerEntry).toBeInTheDocument();
       const cb = within(providerEntry).queryByRole('checkbox');
@@ -102,15 +133,20 @@ describe('test ProviderResultPage', async () => {
     providers[0].state = 'running';
     providers[1].state = 'running';
     render(ProviderResultPage, {
-      providers: providers,
+      providers: JSON.parse(JSON.stringify(providers)),
+      headerInfo: snippet,
     });
 
     checkProviderRunning('Provider 1');
     checkProviderRunning('Provider 2');
+
+    // expect to see the snippet
+    const snippetElement = screen.getByRole('heading', { name: HEADER_INFO_SNIPPET_TEXT });
+    expect(snippetElement).toBeInTheDocument();
   });
 
   test('all providers are displayed as successful', () => {
-    const checkProviderSuccess = (text: string) => {
+    const checkProviderSuccess = (text: string): void => {
       const providerEntry = screen.getByRole('row', { name: text });
       expect(providerEntry).toBeInTheDocument();
       const cb = within(providerEntry).queryByRole('checkbox');
@@ -122,19 +158,25 @@ describe('test ProviderResultPage', async () => {
     providers[0].state = 'success';
     providers[1].state = 'success';
     render(ProviderResultPage, {
-      providers: providers,
+      providers: JSON.parse(JSON.stringify(providers)),
+      headerInfo: snippet,
     });
 
     checkProviderSuccess('Provider 1');
     checkProviderSuccess('Provider 2');
+
+    // expect to see the snippet
+    const snippetElement = screen.getByRole('heading', { name: HEADER_INFO_SNIPPET_TEXT });
+    expect(snippetElement).toBeInTheDocument();
   });
 
   test('all results are displayed', () => {
     providers[0].state = 'success';
     providers[1].state = 'success';
     render(ProviderResultPage, {
-      providers: providers,
-      results: results,
+      providers: JSON.parse(JSON.stringify(providers)),
+      results: JSON.parse(JSON.stringify(results)),
+      headerInfo: snippet,
     });
     results.forEach(result => checkResultDisplayed(result));
   });
@@ -143,8 +185,9 @@ describe('test ProviderResultPage', async () => {
     providers[0].state = 'success';
     providers[1].state = 'success';
     render(ProviderResultPage, {
-      providers: providers,
-      results: results,
+      providers: JSON.parse(JSON.stringify(providers)),
+      results: JSON.parse(JSON.stringify(results)),
+      headerInfo: snippet,
     });
 
     const providerEntry = screen.getByRole('row', { name: 'Provider 1' });
@@ -152,19 +195,25 @@ describe('test ProviderResultPage', async () => {
     await fireEvent.click(cb);
     results.filter(r => r.provider.id === 'provider1').forEach(result => checkResultNotDisplayed(result));
     results.filter(r => r.provider.id === 'provider2').forEach(result => checkResultDisplayed(result));
+
+    // expect to see the snippet
+    const snippetElement = screen.getByRole('heading', { name: HEADER_INFO_SNIPPET_TEXT });
+    expect(snippetElement).toBeInTheDocument();
   });
 
   test('results from selected providers -1st- only are displayed', async () => {
     providers[0].state = 'success';
     providers[1].state = 'success';
     render(ProviderResultPage, {
-      providers: providers,
-      results: results,
+      providers: JSON.parse(JSON.stringify(providers)),
+      results: JSON.parse(JSON.stringify(results)),
+      headerInfo: snippet,
     });
 
     const providerEntry = screen.getByRole('row', { name: 'Provider 2' });
     const cb = within(providerEntry).getByRole('checkbox');
     await fireEvent.click(cb);
+
     results.filter(r => r.provider.id === 'provider1').forEach(result => checkResultDisplayed(result));
     results.filter(r => r.provider.id === 'provider2').forEach(result => checkResultNotDisplayed(result));
   });
@@ -173,8 +222,9 @@ describe('test ProviderResultPage', async () => {
     providers[0].state = 'success';
     providers[1].state = 'success';
     render(ProviderResultPage, {
-      providers: providers,
-      results: results,
+      providers: JSON.parse(JSON.stringify(providers)),
+      results: JSON.parse(JSON.stringify(results)),
+      headerInfo: snippet,
     });
 
     const criticalButton = screen.getByRole('button', { name: 'Critical (2)' });

@@ -32,9 +32,7 @@ export type UpdateAction = {
   update(value: string): void;
 };
 
-export type ActivateFunction = {
-  (_node: unknown, binding: unknown): UpdateAction;
-};
+export type ActivateFunction = (_node: unknown, binding: unknown) => UpdateAction;
 
 export function createFieldValidator(
   ...validators: ((value: string) => [boolean, string])[]
@@ -43,13 +41,13 @@ export function createFieldValidator(
   const writableObject = writable<Validation>(validation);
   const validator = buildValidator(validators);
 
-  function action(_node: any, binding: any): UpdateAction {
-    function validate(value: string, dirty: boolean) {
+  function action(_node: unknown, binding: unknown): UpdateAction {
+    function validate(value: string, dirty: boolean): void {
       const result = validator(value, dirty);
       writableObject.set(result);
     }
 
-    validate(binding, false);
+    validate(String(binding), false);
 
     return {
       update(value: string): void {

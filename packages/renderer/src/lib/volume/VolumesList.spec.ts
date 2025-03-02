@@ -1,5 +1,5 @@
 /**********************************************************************
- * Copyright (C) 2023 Red Hat, Inc.
+ * Copyright (C) 2023-2024 Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,14 +19,20 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import '@testing-library/jest-dom/vitest';
-import { beforeAll, test, expect, vi, beforeEach, describe } from 'vitest';
-import { render, screen } from '@testing-library/svelte';
-import VolumesList from './VolumesList.svelte';
+
+import { fireEvent, render, screen } from '@testing-library/svelte';
+import userEvent from '@testing-library/user-event';
+/* eslint-disable import/no-duplicates */
+import { tick } from 'svelte';
 import { get } from 'svelte/store';
+/* eslint-enable import/no-duplicates */
+import { beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
+
 import { providerInfos } from '/@/stores/providers';
 import { volumeListInfos, volumesEventStore } from '/@/stores/volumes';
-import type { ProviderInfo } from '../../../../main/src/plugin/api/provider-info';
-import userEvent from '@testing-library/user-event';
+import type { ProviderInfo } from '/@api/provider-info';
+
+import VolumesList from './VolumesList.svelte';
 
 const listVolumesMock = vi.fn();
 const getProviderInfosMock = vi.fn();
@@ -45,7 +51,7 @@ beforeAll(() => {
   (window as any).getProviderInfos = getProviderInfosMock;
 
   (window.events as unknown) = {
-    receive: (_channel: string, func: any) => {
+    receive: (_channel: string, func: any): void => {
       func();
     },
   };
@@ -56,14 +62,15 @@ beforeEach(() => {
   vi.clearAllMocks();
   onDidUpdateProviderStatusMock.mockImplementation(() => Promise.resolve());
   getProviderInfosMock.mockResolvedValue([]);
+  (window as any).removeVolume = vi.fn();
+  vi.mocked(window.removeVolume);
+  (window as any).getConfigurationValue = vi.fn();
+  vi.mocked(window.getConfigurationValue).mockResolvedValue(false);
 });
 
 async function waitRender(customProperties: object): Promise<void> {
-  const result = render(VolumesList, { ...customProperties });
-  // wait that result.component.$$.ctx[2] is set
-  while (result.component.$$.ctx[2] === undefined) {
-    await new Promise(resolve => setTimeout(resolve, 100));
-  }
+  render(VolumesList, { ...customProperties });
+  await tick();
 }
 
 test('Expect No Container Engine being displayed', async () => {
@@ -315,4 +322,77 @@ test('Expect filter empty screen', async () => {
 
   const filterButton = screen.getByRole('button', { name: 'Clear filter' });
   expect(filterButton).toBeInTheDocument();
+});
+
+test('Expect user confirmation to pop up when preferences require', async () => {
+  getProviderInfosMock.mockResolvedValue([
+    {
+      name: 'podman',
+      status: 'started',
+      internalId: 'podman-internal-id',
+      containerConnections: [
+        {
+          name: 'podman-machine-default',
+          status: 'started',
+        },
+      ],
+    },
+  ]);
+
+  listVolumesMock.mockResolvedValue([
+    {
+      Volumes: [
+        {
+          Driver: 'local',
+          Labels: {},
+          Mountpoint: '/var/lib/containers/storage/volumes/fedora/_data',
+          Name: '0052074a2ade930338c00aea982a90e4243e6cf58ba920eb411c388630b8c967',
+          Options: {},
+          Scope: 'local',
+          engineName: 'Podman',
+          engineId: 'podman.Podman Machine',
+          UsageData: { RefCount: 0, Size: -1 },
+          containersUsage: [],
+        },
+      ],
+    },
+  ]);
+
+  window.dispatchEvent(new CustomEvent('extensions-already-started'));
+  window.dispatchEvent(new CustomEvent('provider-lifecycle-change'));
+
+  // ask to fetch the volumes
+  const volumesEventStoreInfo = volumesEventStore.setup();
+
+  await volumesEventStoreInfo.fetch();
+
+  // first call is with listing without details
+  expect(listVolumesMock).toHaveBeenNthCalledWith(1, false);
+
+  // wait store are populated
+  while (get(volumeListInfos).length === 0) {
+    await new Promise(resolve => setTimeout(resolve, 500));
+  }
+  while (get(providerInfos).length === 0) {
+    await new Promise(resolve => setTimeout(resolve, 500));
+  }
+
+  await waitRender({});
+
+  const checkboxes = screen.getAllByRole('checkbox', { name: 'Toggle volume' });
+  await fireEvent.click(checkboxes[0]);
+
+  vi.mocked(window.getConfigurationValue).mockResolvedValue(true);
+  (window as any).showMessageBox = vi.fn();
+  vi.mocked(window.showMessageBox).mockResolvedValue({ response: 1 });
+
+  const deleteButton = screen.getByRole('button', { name: 'Delete 1 selected items' });
+  await fireEvent.click(deleteButton);
+
+  expect(window.showMessageBox).toHaveBeenCalledOnce();
+
+  vi.mocked(window.showMessageBox).mockResolvedValue({ response: 0 });
+  await fireEvent.click(deleteButton);
+  expect(window.showMessageBox).toHaveBeenCalledTimes(2);
+  await vi.waitFor(() => expect(window.removeVolume).toHaveBeenCalled());
 });

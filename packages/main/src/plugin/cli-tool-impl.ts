@@ -18,28 +18,32 @@
 
 import type {
   CliTool,
+  CliToolInstallationSource,
+  CliToolInstaller,
   CliToolOptions,
+  CliToolSelectUpdate,
   CliToolState,
   CliToolUpdate,
   CliToolUpdateOptions,
   Disposable,
   Event,
+  ProviderImages,
 } from '@podman-desktop/api';
-import type { CliToolExtensionInfo } from './api/cli-tool-info.js';
-import type { ApiSenderType } from './api.js';
-import type { Exec } from './util/exec.js';
-import { Emitter } from './events/emitter.js';
+
+import type { CliToolExtensionInfo } from '/@api/cli-tool-info.js';
+
 import type { CliToolRegistry } from './cli-tool-registry.js';
+import { Emitter } from './events/emitter.js';
 
 export class CliToolImpl implements CliTool, Disposable {
   readonly id: string;
   private _state: CliToolState = 'registered';
   private readonly _onDidUpdateVersion = new Emitter<string>();
   readonly onDidUpdateVersion: Event<string> = this._onDidUpdateVersion.event;
+  private readonly _onDidUninstall = new Emitter<void>();
+  readonly onDidUninstall: Event<void> = this._onDidUninstall.event;
 
   constructor(
-    private _apiSender: ApiSenderType,
-    private _exec: Exec,
     readonly extensionInfo: CliToolExtensionInfo,
     readonly registry: CliToolRegistry,
     private _options: CliToolOptions,
@@ -47,32 +51,37 @@ export class CliToolImpl implements CliTool, Disposable {
     this.id = `${extensionInfo.id}.${_options.name}`;
   }
 
-  get state() {
+  get state(): 'registered' {
     return this._state;
   }
 
-  get name() {
+  get name(): string {
     return this._options.name;
   }
 
-  get displayName() {
+  get displayName(): string {
     return this._options.displayName;
   }
 
-  get markdownDescription() {
+  get markdownDescription(): string {
     return this._options.markdownDescription;
   }
 
-  get version() {
+  get version(): string | undefined {
     return this._options.version;
   }
 
-  get path() {
+  get path(): string | undefined {
     return this._options.path;
   }
 
-  get images() {
+  get images(): ProviderImages {
     return Object.freeze(this._options.images);
+  }
+
+  // it returns the installation source of the cli tool. If not specified, there is no tool installed
+  get installationSource(): CliToolInstallationSource | undefined {
+    return this._options.installationSource;
   }
 
   dispose(): void {
@@ -87,11 +96,25 @@ export class CliToolImpl implements CliTool, Disposable {
       markdownDescription: options.markdownDescription ?? this._options.markdownDescription,
       path: options.path ?? this._options.path,
       version: options.version,
+      installationSource: 'extension',
     };
     this._onDidUpdateVersion.fire(options.version);
   }
 
-  registerUpdate(update: CliToolUpdate): Disposable {
+  uninstall(): void {
+    this._options = {
+      ...this._options,
+      path: undefined,
+      version: undefined,
+    };
+    this._onDidUninstall.fire();
+  }
+
+  registerUpdate(update: CliToolUpdate | CliToolSelectUpdate): Disposable {
     return this.registry.registerUpdate(this, update);
+  }
+
+  registerInstaller(installer: CliToolInstaller): Disposable {
+    return this.registry.registerInstaller(this, installer);
   }
 }

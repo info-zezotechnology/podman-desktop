@@ -2,7 +2,7 @@
   "name": "kind",
   "displayName": "Kind",
   "description": "Integration for Kind: run local Kubernetes clusters using container “nodes”",
-  "version": "0.0.1",
+  "version": "1.18.0-next",
   "icon": "icon.png",
   "publisher": "podman-desktop",
   "license": "Apache-2.0",
@@ -14,6 +14,13 @@
     "configuration": {
       "title": "Kind",
       "properties": {
+        "kind.cluster.creation.configFile": {
+          "type": "string",
+          "format": "file",
+          "default": "",
+          "scope": "KubernetesProviderConnectionFactory",
+          "description": "Custom path to Kind config file (Default is blank)"
+        },
         "kind.cluster.creation.name": {
           "type": "string",
           "default": "kind-cluster",
@@ -23,10 +30,7 @@
         "kind.cluster.creation.provider": {
           "type": "string",
           "default": "podman",
-          "enum": [
-            "podman",
-            "docker"
-          ],
+          "enum": ["podman", "docker"],
           "scope": "KubernetesProviderConnectionFactory",
           "description": "Provider Type"
         },
@@ -95,23 +99,24 @@
     ]
   },
   "scripts": {
-    "install:contour": "npx ts-node ./scripts/download.ts",
+    "install:contour": "tsx ./scripts/download.ts",
     "build": "vite build && node ./scripts/build.js",
     "test": "vitest run --coverage",
     "test:watch": "vitest watch --coverage",
     "watch": "vite build -w"
   },
   "dependencies": {
-    "@octokit/rest": "^20.0.2",
-    "@podman-desktop/api": "^0.0.1",
+    "@octokit/rest": "^21.1.1",
+    "@podman-desktop/api": "workspace:*",
     "mustache": "^4.2.0",
-    "yaml": "^2.3.4"
+    "yaml": "^2.7.0"
   },
   "devDependencies": {
-    "adm-zip": "^0.5.10",
+    "adm-zip": "^0.5.16",
     "mkdirp": "^3.0.1",
     "tmp-promise": "^3.0.3",
-    "vite": "^5.0.4",
-    "vitest": "^0.34.6"
+    "tsx": "^4.19.3",
+    "vite": "^6.2.0",
+    "vitest": "^3.0.6"
   }
 }

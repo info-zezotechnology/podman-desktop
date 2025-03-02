@@ -16,9 +16,10 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
-import { WelcomeSettings } from '../../../../main/src/plugin/welcome/welcome-settings';
+import { CONFIGURATION_DEFAULT_SCOPE } from '/@api/configuration/constants.js';
+
 import { TelemetrySettings } from '../../../../main/src/plugin/telemetry/telemetry-settings';
-import { CONFIGURATION_DEFAULT_SCOPE } from '../../../../main/src/plugin/configuration-registry-constants';
+import { WelcomeSettings } from '../../../../main/src/plugin/welcome/welcome-settings';
 
 export class WelcomeUtils {
   async getVersion(): Promise<string | undefined> {
@@ -37,7 +38,7 @@ export class WelcomeUtils {
     return window.getConfigurationValue<boolean>(TelemetrySettings.SectionName + '.' + TelemetrySettings.Check);
   }
 
-  async setTelemetry(telemetry: boolean) {
+  async setTelemetry(telemetry: boolean): Promise<void> {
     console.log('Telemetry enablement: ' + telemetry);
 
     // store if the user said yes or no to telemetry
