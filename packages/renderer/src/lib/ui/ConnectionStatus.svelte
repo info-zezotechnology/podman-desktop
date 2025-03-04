@@ -1,62 +1,62 @@
 <script lang="ts">
 export let status: string;
 
-interface connectionStatusStyle {
+interface ConnectionStatusStyle {
   bgColor: string;
   txtColor: string;
   label: string;
 }
 
 const roundIconStyle = 'my-auto w-3 h-3 rounded-full';
-const labelStyle = 'my-auto ml-1 font-bold text-[9px]';
-const statusesStyle = new Map<string, connectionStatusStyle>([
+const labelStyle = 'my-auto ml-1 text-xs';
+const statusesStyle = new Map<string, ConnectionStatusStyle>([
   [
     'started',
     {
-      bgColor: 'bg-green-500',
-      txtColor: 'text-green-500',
+      bgColor: 'bg-[var(--pd-status-running)]',
+      txtColor: 'text-[var(--pd-status-running)]',
       label: 'RUNNING',
     },
   ],
   [
     'starting',
     {
-      bgColor: 'bg-green-500',
-      txtColor: 'text-green-500',
+      bgColor: 'bg-[var(--pd-status-starting)]',
+      txtColor: 'text-[var(--pd-status-starting)]',
       label: 'STARTING',
     },
   ],
   [
     'stopped',
     {
-      bgColor: 'bg-gray-900',
-      txtColor: 'text-gray-900',
+      bgColor: 'bg-[var(--pd-status-stopped)]',
+      txtColor: 'text-[var(--pd-status-stopped)]',
       label: 'OFF',
     },
   ],
   [
     'stopping',
     {
-      bgColor: 'bg-red-500',
-      txtColor: 'text-red-500',
+      bgColor: 'bg-[var(--pd-status-terminated)]',
+      txtColor: 'text-[var(--pd-status-terminated)]',
       label: 'STOPPING',
     },
   ],
   [
     'failed',
     {
-      bgColor: 'bg-red-500',
-      txtColor: 'text-red-500',
+      bgColor: 'bg-[var(--pd-status-terminated)]',
+      txtColor: 'text-[var(--pd-status-terminated)]',
       label: 'FAILED',
     },
   ],
 ]);
-$: statusStyle = statusesStyle.get(status) || {
-  bgColor: 'bg-gray-900',
-  txtColor: 'text-gray-900',
+$: statusStyle = statusesStyle.get(status) ?? {
+  bgColor: 'bg-[var(--pd-status-unknown)]',
+  txtColor: 'text-[var(--pd-status-unknown)]',
   label: status.toUpperCase(),
 };
 </script>
 
-<div aria-label="connection-status-icon" class="{roundIconStyle} {statusStyle.bgColor}"></div>
-<span aria-label="connection-status-label" class="{labelStyle} {statusStyle.txtColor}">{statusStyle.label}</span>
+<div aria-label="Connection Status Icon" class="{roundIconStyle} {statusStyle.bgColor}"></div>
+<span aria-label="Connection Status Label" class="{labelStyle} {statusStyle.txtColor}">{statusStyle.label}</span>

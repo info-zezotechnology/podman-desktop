@@ -24,8 +24,10 @@ on:
       - main
     paths:
       - 'package.json'
-      - 'yarn.lock'
+      - 'pnpm-lock.yaml'
+      - 'storybook/**'
       - 'website/**'
+      - 'packages/extension-api/src/**'
 
 env:
   GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
@@ -33,33 +35,31 @@ env:
 jobs:
   deploy:
     name: Build and deploy website
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ needs.tag.outputs.githubTag}}
+      - uses: pnpm/action-setup@v4
+        name: Install pnpm
+        with:
+          run_install: false
+
       - uses: actions/setup-node@v4
         with:
-          node-version: 18
-      - name: Get yarn cache directory path
-        id: yarn-cache-dir-path
-        run: echo "dir=$(yarn cache dir)" >> ${GITHUB_OUTPUT}
-      - uses: actions/cache@v3
-        id: yarn-cache
-        with:
-          path: ${{ steps.yarn-cache-dir-path.outputs.dir }}
-          key: ${{ runner.os }}-yarn-${{ hashFiles('**/yarn.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-yarn-
-      - name: yarn
-        run: |
-          yarn --frozen-lockfile --network-timeout 180000
+          node-version: 20
+          cache: 'pnpm'
+
+      - name: Execute pnpm
+        run: pnpm install
+
       - name: Run Build
         timeout-minutes: 20
-        run: yarn website:build
+        run: pnpm website:build
+
       - name: Deploy to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v3
+        uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           # Build output to publish to the `gh-pages` branch:

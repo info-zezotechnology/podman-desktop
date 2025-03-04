@@ -1,8 +1,8 @@
-import React, { useEffect } from 'react';
 import ExecutionEnvironment from '@docusaurus/ExecutionEnvironment';
+import React, { useEffect } from 'react';
 
 function TailWindThemeSelector(): JSX.Element {
-  function updadeTailwindDarkTheme() {
+  function updadeTailwindDarkTheme(): void {
     if (!document?.documentElement) {
       return;
     }
@@ -47,7 +47,7 @@ function TailWindThemeSelector(): JSX.Element {
       childList: false,
       subtree: false,
     });
-    return () => {
+    return (): void => {
       mutationObserver.disconnect();
     };
   }, [ExecutionEnvironment.canUseDOM]);

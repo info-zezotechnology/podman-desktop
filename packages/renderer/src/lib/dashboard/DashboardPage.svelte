@@ -1,17 +1,21 @@
 <script lang="ts">
+import { NavPage } from '@podman-desktop/ui-svelte';
+
+import ProviderConfiguring from '/@/lib/dashboard/ProviderConfiguring.svelte';
+import ExtensionBanners from '/@/lib/recommendation/ExtensionBanners.svelte';
+
 import { providerInfos } from '../../stores/providers';
-import ProviderNotInstalled from './ProviderNotInstalled.svelte';
-import ProviderReady from './ProviderReady.svelte';
-import ProviderInstalled from './ProviderInstalled.svelte';
+import LearningCenter from '../learning-center/LearningCenter.svelte';
+import NotificationsBox from './NotificationsBox.svelte';
 import ProviderConfigured from './ProviderConfigured.svelte';
-import ProviderStopped from './ProviderStopped.svelte';
-import ProviderStarting from './ProviderStarting.svelte';
-import NavPage from '../ui/NavPage.svelte';
 import type { InitializationContext } from './ProviderInitUtils';
 import { DoNothingMode } from './ProviderInitUtils';
-import FeaturedExtensions from '/@/lib/featured/FeaturedExtensions.svelte';
-import ProviderConfiguring from '/@/lib/dashboard/ProviderConfiguring.svelte';
-import NotificationsBox from './NotificationsBox.svelte';
+import ProviderInstalled from './ProviderInstalled.svelte';
+import ProviderNotInstalled from './ProviderNotInstalled.svelte';
+import ProviderReady from './ProviderReady.svelte';
+import ProviderStarting from './ProviderStarting.svelte';
+import ProviderStopped from './ProviderStopped.svelte';
+import ReleaseNotesBox from './ReleaseNotesBox.svelte';
 
 const providerInitContexts = new Map<string, InitializationContext>();
 
@@ -34,22 +38,25 @@ function getInitializationContext(id: string): InitializationContext {
 }
 </script>
 
-<NavPage searchEnabled="{false}" title="Dashboard">
-  <div slot="content" class="flex flex-col min-w-full h-fit bg-charcoal-700 shadow-nav py-5">
+<NavPage searchEnabled={false} title="Dashboard">
+  <div slot="content" class="flex flex-col min-w-full h-full bg-[var(--pd-content-bg)] py-5">
     <div class="min-w-full flex-1">
       <NotificationsBox />
       <div class="px-5 space-y-5 h-full">
+        <ReleaseNotesBox />
+        <ExtensionBanners />
+        <LearningCenter />
         <!-- Provider is ready display a box to indicate some information -->
         {#if providersReady.length > 0}
           {#each providersReady as providerReady (providerReady.internalId)}
-            <ProviderReady provider="{providerReady}" />
+            <ProviderReady provider={providerReady} />
           {/each}
         {/if}
 
         <!-- Provider is starting -->
         {#if providersStarting.length > 0}
           {#each providersStarting as providerStarting (providerStarting.internalId)}
-            <ProviderStarting provider="{providerStarting}" />
+            <ProviderStarting provider={providerStarting} />
           {/each}
         {/if}
 
@@ -58,8 +65,8 @@ function getInitializationContext(id: string): InitializationContext {
         {#if providersInstalled.length > 0}
           {#each providersInstalled as providerInstalled (providerInstalled.internalId)}
             <ProviderInstalled
-              provider="{providerInstalled}"
-              initializationContext="{getInitializationContext(providerInstalled.internalId)}" />
+              provider={providerInstalled}
+              initializationContext={getInitializationContext(providerInstalled.internalId)} />
           {/each}
         {/if}
 
@@ -67,8 +74,8 @@ function getInitializationContext(id: string): InitializationContext {
         {#if providersConfiguring.length > 0}
           {#each providersConfiguring as providerConfiguring (providerConfiguring.internalId)}
             <ProviderConfiguring
-              provider="{providerConfiguring}"
-              initializationContext="{getInitializationContext(providerConfiguring.internalId)}" />
+              provider={providerConfiguring}
+              initializationContext={getInitializationContext(providerConfiguring.internalId)} />
           {/each}
         {/if}
 
@@ -77,26 +84,24 @@ function getInitializationContext(id: string): InitializationContext {
         {#if providersConfigured.length > 0}
           {#each providersConfigured as providerConfigured (providerConfigured.internalId)}
             <ProviderConfigured
-              provider="{providerConfigured}"
-              initializationContext="{getInitializationContext(providerConfigured.internalId)}" />
+              provider={providerConfigured}
+              initializationContext={getInitializationContext(providerConfigured.internalId)} />
           {/each}
         {/if}
 
         <!-- Provider is not installed, display a box to indicate how to install from the tool if possible -->
         {#if providersNotInstalled.length > 0}
           {#each providersNotInstalled as providerNotInstalled (providerNotInstalled.internalId)}
-            <ProviderNotInstalled provider="{providerNotInstalled}" />
+            <ProviderNotInstalled provider={providerNotInstalled} />
           {/each}
         {/if}
 
         <!-- Provider is stopped -->
         {#if providersStopped.length > 0}
           {#each providersStopped as providerStopped (providerStopped.internalId)}
-            <ProviderStopped provider="{providerStopped}" />
+            <ProviderStopped provider={providerStopped} />
           {/each}
         {/if}
-
-        <FeaturedExtensions />
       </div>
     </div>
   </div>

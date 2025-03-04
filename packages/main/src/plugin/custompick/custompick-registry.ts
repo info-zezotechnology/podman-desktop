@@ -16,6 +16,7 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 import type { CustomPick, CustomPickItem } from '@podman-desktop/api';
+
 import type { ApiSenderType } from '../api.js';
 import type { IDisposable } from '../types/disposable.js';
 import { CustomPickImpl } from './custompick-impl.js';
@@ -45,7 +46,7 @@ export class CustomPickRegistry implements IDisposable {
     customPick?.confirmSelection(indexes);
   }
 
-  removeEntry(id: number) {
+  removeEntry(id: number): void {
     const entry = this.entries.get(id);
     if (entry) {
       entry.dispose();

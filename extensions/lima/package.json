@@ -1,8 +1,8 @@
 {
   "name": "lima",
   "displayName": "Lima",
-  "description": "Integration for Lima: Linux virtual machines (typically macOS)",
-  "version": "0.0.1",
+  "description": "Integration for Lima: Linux Machines (typically macOS)",
+  "version": "1.18.0-next",
   "icon": "icon.png",
   "publisher": "podman-desktop",
   "license": "Apache-2.0",
@@ -14,35 +14,64 @@
     "configuration": {
       "title": "Lima",
       "properties": {
+        "lima.binary.path": {
+          "type": "string",
+          "format": "file",
+          "default": "",
+          "description": "Custom path to limactl binary (Default is blank)"
+        },
+        "lima.home": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Lima home directory. See [documentation](https://lima-vm.io/docs/dev/internals/#lima-home-directory-lima_home)"
+        },
         "lima.type": {
           "type": "string",
           "default": "podman",
-          "enum": [
-            "podman",
-            "docker",
-            "kubernetes"
-          ],
+          "enum": ["podman", "docker", "kubernetes"],
           "description": "Engine type (requires restart of extension)"
         },
         "lima.name": {
           "type": "string",
           "default": "",
           "description": "Instance name (default is same name as type)"
+        },
+        "lima.socket": {
+          "type": "string",
+          "default": "",
+          "description": "Socket name (default is equal to type.sock)"
         }
       }
-    }
+    },
+    "menus": {
+      "dashboard/image": [
+        {
+          "command": "lima.image.move",
+          "title": "Push image to Lima cluster"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "lima.image.move",
+        "title": "Lima: Move image to cluster..."
+      }
+    ]
   },
   "scripts": {
-    "build": "tsc && node ./scripts/build.js",
+    "build": "vite build && node ./scripts/build.js",
     "test": "vitest run --coverage --passWithNoTests",
     "test:watch": "vitest watch --coverage --passWithNoTests",
-    "watch": "tsc -w"
+    "watch": "vite build --watch"
   },
   "dependencies": {
-    "@podman-desktop/api": "^0.0.1"
+    "@podman-desktop/api": "workspace:*"
   },
   "devDependencies": {
-    "adm-zip": "^0.5.10",
-    "mkdirp": "^3.0.1"
+    "adm-zip": "^0.5.16",
+    "mkdirp": "^3.0.1",
+    "vite": "^6.2.0",
+    "vitest": "^3.0.6",
+    "tmp-promise": "^3.0.3"
   }
 }

@@ -17,11 +17,28 @@
  ***********************************************************************/
 
 import '@testing-library/jest-dom/vitest';
-import { test, expect } from 'vitest';
-import { capitalize } from './Util';
+
+import { expect, test } from 'vitest';
+
+import { capitalize, getTabUrl, isTabSelected } from './Util';
 
 test('test capitalize function', () => {
   expect(capitalize('test')).toBe('Test');
   expect(capitalize('Test')).toBe('Test');
   expect(capitalize('TEST')).toBe('TEST');
+});
+
+test('test getTabUrl', () => {
+  expect(getTabUrl('/images', 'images')).toBe('/images');
+  expect(getTabUrl('/images/summary', 'summary')).toBe('/images/summary');
+  expect(getTabUrl('/images/summary', 'logs')).toBe('/images/logs');
+  expect(getTabUrl('/images/image-id/summary', 'logs')).toBe('/images/image-id/logs');
+  expect(getTabUrl('/images/image-id/logs', 'logs')).toBe('/images/image-id/logs');
+});
+
+test('test isTabSelected', () => {
+  expect(isTabSelected('/images/details/summary', 'summary')).toBe(true);
+  expect(isTabSelected('/images/details/logs', 'summary')).toBe(false);
+  expect(isTabSelected('/images/details/', 'images')).toBe(false);
+  expect(isTabSelected('/images/image-id/details/summary', 'summary')).toBe(true);
 });

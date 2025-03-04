@@ -1,5 +1,5 @@
 /**********************************************************************
- * Copyright (C) 2022 Red Hat, Inc.
+ * Copyright (C) 2022-2024 Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,14 +16,15 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
+import { get, type Writable, writable } from 'svelte/store';
 import { beforeEach, expect, test, vi } from 'vitest';
+
 import { EventStore, type EventStoreInfo } from './event-store';
-import { get, writable, type Writable } from 'svelte/store';
 
 // first, path window object
-const callbacks = new Map<string, any>();
+const callbacks = new Map<string, (arg?: unknown) => Promise<void>>();
 const eventEmitter = {
-  receive: (message: string, callback: any) => {
+  receive: (message: string, callback: (arg?: unknown) => Promise<void>): void => {
     callbacks.set(message, callback);
   },
 };
@@ -88,16 +89,17 @@ test('should call fetch method using window event', async () => {
   };
   updater.mockResolvedValue([myCustomTypeInfo]);
 
-  await callback();
+  await callback?.();
 
   // check the updater is called
-  expect(updater).toHaveBeenCalled();
+  await vi.waitFor(() => {
+    expect(updater).toHaveBeenCalled();
+  });
 
   // check the store is updated
-  expect(get(myStoreInfo)).toStrictEqual([myCustomTypeInfo]);
-
-  // check the store is updated
-  expect(get(myStoreInfo)).toStrictEqual([myCustomTypeInfo]);
+  await vi.waitFor(() => {
+    expect(get(myStoreInfo)).toStrictEqual([myCustomTypeInfo]);
+  });
 
   // check buffer events
   expect(eventStoreInfo.bufferEvents.length).toBe(1);
@@ -146,18 +148,17 @@ test('should call fetch method using listener event', async () => {
   };
   updater.mockResolvedValue([myCustomTypeInfo]);
 
-  await callback();
-
-  // wait updater being called
-  while (updater.mock.calls.length === 0) {
-    await new Promise(resolve => setTimeout(resolve, 100));
-  }
+  await callback?.();
 
   // check the updater is called
-  expect(updater).toHaveBeenCalled();
+  await vi.waitFor(() => {
+    expect(updater).toHaveBeenCalled();
+  });
 
   // check the store is updated
-  expect(get(myStoreInfo)).toStrictEqual([myCustomTypeInfo]);
+  await vi.waitFor(() => {
+    expect(get(myStoreInfo)).toStrictEqual([myCustomTypeInfo]);
+  });
 
   // check buffer events
   expect(eventStoreInfo.bufferEvents.length).toBe(1);
@@ -226,7 +227,12 @@ test('should call fetch method using window event and object argument', async ()
   };
   updater.mockResolvedValue([myCustomTypeInfo]);
 
-  await callback({});
+  await callback?.({});
+
+  // wait updater method being called
+  while (updater.mock.calls.length === 0) {
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
 
   // check the updater is called
   expect(updater).toHaveBeenCalledWith({});
@@ -267,7 +273,7 @@ test('Check debounce', async () => {
 
   // now, perform 20 calls every 50ms
   for (let i = 0; i < 20; i++) {
-    await callback();
+    await callback?.();
     await new Promise(resolve => setTimeout(resolve, 50));
   }
 
@@ -324,7 +330,7 @@ test('Check debounce+delay', async () => {
 
   // now, perform 40 calls every 50ms
   for (let i = 0; i < 20; i++) {
-    await callback();
+    await callback?.();
     await new Promise(resolve => setTimeout(resolve, 50));
   }
 

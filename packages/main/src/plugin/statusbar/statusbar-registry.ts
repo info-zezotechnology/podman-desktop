@@ -28,8 +28,8 @@ export interface StatusBarEntry {
   inactiveIconClass?: string;
   enabled: boolean;
   command?: string;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  commandArgs?: any[];
+  commandArgs?: unknown[];
+  highlight?: boolean;
 }
 
 export interface StatusBarEntryDescriptor {
@@ -43,7 +43,7 @@ export class StatusBarRegistry implements IDisposable {
 
   constructor(private apiSender: ApiSenderType) {}
 
-  removeEntry(id: string) {
+  removeEntry(id: string): void {
     const entry = this.entries.get(id);
     if (entry) {
       this.entries.delete(id);
@@ -60,9 +60,9 @@ export class StatusBarRegistry implements IDisposable {
     iconClass: string | { active: string; inactive: string } | undefined,
     enabled: boolean,
     command: string | undefined,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    commandArgs: any[] | undefined,
-  ) {
+    commandArgs?: unknown[],
+    highlight?: boolean,
+  ): void {
     const existingEntry = this.entries.get(entryId);
     if (existingEntry && (existingEntry.alignLeft !== alignLeft || existingEntry.priority !== priority)) {
       this.entries.delete(entryId);
@@ -80,6 +80,7 @@ export class StatusBarRegistry implements IDisposable {
         enabled: enabled,
         command: command,
         commandArgs: commandArgs,
+        highlight: highlight,
       };
 
       const entryDescriptor: StatusBarEntryDescriptor = {
@@ -97,6 +98,7 @@ export class StatusBarRegistry implements IDisposable {
       entryToUpdate.enabled = enabled;
       entryToUpdate.command = command;
       entryToUpdate.commandArgs = commandArgs;
+      entryToUpdate.highlight = highlight;
     }
 
     this.apiSender.send(STATUS_BAR_UPDATED_EVENT_NAME, undefined);

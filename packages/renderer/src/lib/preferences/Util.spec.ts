@@ -1,5 +1,5 @@
 /**********************************************************************
- * Copyright (C) 2023 Red Hat, Inc.
+ * Copyright (C) 2023-2024 Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,8 +16,13 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
-import { test, expect, vi, afterEach, describe } from 'vitest';
+import type { Terminal } from '@xterm/xterm';
+import { afterEach, describe, expect, test, vi } from 'vitest';
+
+import type { IConfigurationPropertyRecordedSchema } from '../../../../main/src/plugin/configuration-registry';
+import { ContextUI } from '../context/context';
 import {
+  calcHalfCpuCores,
   getNormalizedDefaultNumberValue,
   isPropertyValidInContext,
   isTargetScope,
@@ -25,12 +30,10 @@ import {
   validateProxyAddress,
   writeToTerminal,
 } from './Util';
-import type { IConfigurationPropertyRecordedSchema } from '../../../../main/src/plugin/configuration-registry';
-import { ContextUI } from '../context/context';
 
 const xtermMock = {
   write: vi.fn(),
-};
+} as unknown as Terminal;
 
 afterEach(() => {
   vi.resetAllMocks();
@@ -68,7 +71,7 @@ test('write array with mixed values', () => {
   expect(xtermMock.write).toBeCalledWith(expect.stringContaining('ok'));
 });
 
-test('write array of array object', () => {
+test('write empty array of array object should not call write', () => {
   writeToTerminal(xtermMock, [], 'test');
   // no error reported
   expect(xtermMock.write).not.toBeCalled();
@@ -82,13 +85,13 @@ test('write multiline string', () => {
 });
 
 test('write invalid object', () => {
-  writeToTerminal(xtermMock, {} as unknown as any[], 'test');
+  writeToTerminal(xtermMock, {} as unknown, 'test');
   // it should not write as xterm.write is called with a valid string
   expect(xtermMock.write).not.toBeCalled();
 });
 
 test('write undefined object', () => {
-  writeToTerminal(xtermMock, undefined as unknown as any[], 'test');
+  writeToTerminal(xtermMock, undefined, 'test');
   // it should not write as xterm.write is called with a valid string
   expect(xtermMock.write).not.toBeCalled();
 });
@@ -132,7 +135,7 @@ test('return default number value if less than maximum number value', () => {
 });
 
 test('return false if scope is undefined and targetScope is defined', () => {
-  const result = isTargetScope('DEFAULT', undefined);
+  const result = isTargetScope('DEFAULT');
   expect(result).toBe(false);
 });
 
@@ -228,5 +231,28 @@ describe.each([
 ])('Test rejected proxy addresses', address => {
   test(`Test address ${address}`, () => {
     expect(validateProxyAddress(address)).toBeDefined();
+  });
+});
+
+describe('calcHalfCpuCores', () => {
+  test('should return half of the provided CPU cores as a number', () => {
+    expect(calcHalfCpuCores('4')).toBe(2);
+    expect(calcHalfCpuCores('10')).toBe(5);
+  });
+
+  test('should return 1 if provided CPU cores are 0', () => {
+    expect(calcHalfCpuCores('0')).toBe(1);
+  });
+
+  test('should handle same integer value if CPU has one core', () => {
+    expect(calcHalfCpuCores('1')).toBe(1);
+  });
+
+  test('should return 1 for non-numeric strings', () => {
+    expect(calcHalfCpuCores('not-a-number')).toBe(1);
+  });
+
+  test('should return 1 for negative numbers', () => {
+    expect(calcHalfCpuCores('-4')).toBe(1);
   });
 });

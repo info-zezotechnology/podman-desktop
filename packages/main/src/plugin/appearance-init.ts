@@ -1,5 +1,5 @@
 /**********************************************************************
- * Copyright (C) 2023 Red Hat, Inc.
+ * Copyright (C) 2023, 2024 Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,28 +16,63 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
-import type { IConfigurationNode, IConfigurationRegistry } from './configuration-registry.js';
+import { nativeTheme } from 'electron';
+
 import { AppearanceSettings } from './appearance-settings.js';
+import type { IConfigurationNode, IConfigurationRegistry } from './configuration-registry.js';
+
+const APPEARANCE_FULL_KEY = `${AppearanceSettings.SectionName}.${AppearanceSettings.Appearance}`;
 
 export class AppearanceInit {
   constructor(private configurationRegistry: IConfigurationRegistry) {}
 
-  init() {
+  init(): void {
     const appearanceConfiguration: IConfigurationNode = {
       id: 'preferences.appearance',
       title: 'Appearance',
       type: 'object',
       properties: {
-        [AppearanceSettings.SectionName + '.' + AppearanceSettings.Appearance]: {
-          description: 'Appearance',
+        [APPEARANCE_FULL_KEY]: {
+          description: 'Select between light or dark mode, or use your system setting.',
           type: 'string',
           enum: ['system', 'dark', 'light'],
           default: 'system',
-          hidden: true,
+        },
+        [`${AppearanceSettings.SectionName}.${AppearanceSettings.ZoomLevel}`]: {
+          markdownDescription:
+            'Select the zoom level. To **Zoom In**, set a positive value like `1` for a 20% zoom. To **Zoom Out**, use a negative value, like `-1`. Use decimals for more fine-grained zoom control.',
+          type: 'number',
+          minimum: -3,
+          maximum: 3,
+          default: 0,
+          step: 0.1,
+        },
+        [`${AppearanceSettings.SectionName}.${AppearanceSettings.NavigationAppearance}`]: {
+          description: 'Select icon and title or just icon for navigation icons',
+          type: 'string',
+          enum: [AppearanceSettings.IconAndTitle, AppearanceSettings.Icon],
+          default: import.meta.env.DEV ? AppearanceSettings.IconAndTitle : AppearanceSettings.Icon,
         },
       },
     };
 
     this.configurationRegistry.registerConfigurations([appearanceConfiguration]);
+
+    this.configurationRegistry.onDidChangeConfiguration(async e => {
+      if (e.key === APPEARANCE_FULL_KEY) {
+        this.updateNativeTheme(e.value);
+      }
+    });
+  }
+
+  updateNativeTheme(appearance: string): void {
+    // appearance config values match the enum values for themeSource, but lets be expicit
+    if (appearance === AppearanceSettings.LightEnumValue) {
+      nativeTheme.themeSource = 'light';
+    } else if (appearance === AppearanceSettings.DarkEnumValue) {
+      nativeTheme.themeSource = 'dark';
+    } else {
+      nativeTheme.themeSource = 'system';
+    }
   }
 }

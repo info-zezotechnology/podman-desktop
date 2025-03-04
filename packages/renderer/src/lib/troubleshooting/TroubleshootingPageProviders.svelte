@@ -1,10 +1,12 @@
 <script lang="ts">
-import { onMount, onDestroy } from 'svelte';
-import { providerInfos } from '/@/stores/providers';
-
+import { onDestroy, onMount } from 'svelte';
 import { type Unsubscriber } from 'svelte/store';
-import type { ProviderInfo } from '../../../../main/src/plugin/api/provider-info';
+
+import { providerInfos } from '/@/stores/providers';
+import type { ProviderInfo } from '/@api/provider-info';
+
 import TroubleshootingContainerEngines from './TroubleshootingContainerEngines.svelte';
+import TroubleshootingRepair from './TroubleshootingRepair.svelte';
 
 let providers: ProviderInfo[] = [];
 
@@ -21,4 +23,8 @@ onDestroy(() => {
 });
 </script>
 
-<TroubleshootingContainerEngines providers="{providers}" />
+<div class="flex flex-col w-full m-4 space-y-4">
+  <TroubleshootingRepair providers={providers} />
+
+  <TroubleshootingContainerEngines providers={providers} />
+</div>

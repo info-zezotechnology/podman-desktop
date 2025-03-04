@@ -1,21 +1,22 @@
 <script lang="ts">
+import { filesize } from 'filesize';
+
 import type { IConfigurationPropertyRecordedSchema } from '../../../../../main/src/plugin/configuration-registry';
 import { getNormalizedDefaultNumberValue } from '../Util';
-import { filesize } from 'filesize';
 import EditableItem from './EditableItem.svelte';
 
 export let record: IConfigurationPropertyRecordedSchema;
 export let value: number | undefined = undefined;
-export let onSave = (_recordId: string, _value: number) => {};
+export let onSave = (_recordId: string, _value: number): void => {};
 
 let recordValue: DisplayConfigurationValue | undefined;
 $: recordValue = getDisplayConfigurationValue(record, value);
 
-function onChangeInput(_recordId: string, _value: number) {
+function onChangeInput(_recordId: string, _value: number): void {
   innerOnSave(_recordId, _value);
 }
 
-function onCancel(_recordId: string, originalValue: number) {
+function onCancel(_recordId: string, originalValue: number): void {
   innerOnSave(_recordId, originalValue);
 }
 
@@ -53,7 +54,7 @@ function getFileSizeValue(fileSizeItem: string): number {
 function normalizeDiskAndMemoryConfigurationKey(
   configurationKey: IConfigurationPropertyRecordedSchema,
 ): IConfigurationPropertyRecordedSchema {
-  const configurationKeyClone = Object.assign({}, configurationKey);
+  const configurationKeyClone = { ...configurationKey };
   // if configurationKey is memory or diskSize let's convert the values in bytes to GB so, in case of errors, the message is displayed correctly to the user
   // instad of having "the value must be less than 16000000000" will be ".... less than 16"
   if (configurationKey.format === 'memory' || configurationKey.format === 'diskSize') {
@@ -73,7 +74,7 @@ function normalizeDiskAndMemoryConfigurationKey(
   return configurationKey;
 }
 
-function innerOnSave(_recordId: string, _value: number) {
+function innerOnSave(_recordId: string, _value: number): void {
   // convert value to byte to be saved
   const displayConfigurationValue = getDisplayConfigurationValue(record, value);
   if (displayConfigurationValue) {
@@ -94,9 +95,9 @@ function innerOnSave(_recordId: string, _value: number) {
 
 {#if record && recordValue}
   <EditableItem
-    record="{normalizeDiskAndMemoryConfigurationKey(record)}"
-    value="{recordValue.value}"
-    description="{recordValue.format}"
-    onCancel="{onCancel}"
-    onChange="{onChangeInput}" />
+    record={normalizeDiskAndMemoryConfigurationKey(record)}
+    value={recordValue.value}
+    description={recordValue.format}
+    onCancel={onCancel}
+    onChange={onChangeInput} />
 {/if}

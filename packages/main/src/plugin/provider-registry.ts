@@ -1,5 +1,5 @@
 /**********************************************************************
- * Copyright (C) 2022-2023 Red Hat, Inc.
+ * Copyright (C) 2022-2024 Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,38 +17,49 @@
  ***********************************************************************/
 
 import type {
+  AuditRequestItems,
+  AuditResult,
+  CancellationToken,
   ContainerProviderConnection,
+  KubernetesProviderConnection,
+  Logger,
   Provider,
   ProviderAutostart,
+  ProviderCleanup,
+  ProviderCleanupAction,
+  ProviderCleanupExecuteOptions,
+  ProviderConnectionShellAccess,
+  ProviderConnectionShellAccessSession,
+  ProviderConnectionShellDimensions,
+  ProviderConnectionStatus,
+  ProviderContainerConnection,
   ProviderDetectionCheck,
+  ProviderEvent,
+  ProviderInformation,
   ProviderInstallation,
   ProviderLifecycle,
   ProviderOptions,
   ProviderStatus,
   ProviderUpdate,
-  ProviderEvent,
-  UnregisterContainerConnectionEvent,
   RegisterContainerConnectionEvent,
-  KubernetesProviderConnection,
-  UnregisterKubernetesConnectionEvent,
   RegisterKubernetesConnectionEvent,
-  Logger,
-  ProviderInformation,
-  ProviderContainerConnection,
-  CancellationToken,
+  UnregisterContainerConnectionEvent,
+  UnregisterKubernetesConnectionEvent,
   UpdateContainerConnectionEvent,
   UpdateKubernetesConnectionEvent,
-  ProviderConnectionStatus,
-  AuditResult,
-  AuditRequestItems,
 } from '@podman-desktop/api';
+
 import type {
+  LifecycleMethod,
+  PreflightChecksCallback,
+  ProviderCleanupActionInfo,
   ProviderContainerConnectionInfo,
   ProviderInfo,
   ProviderKubernetesConnectionInfo,
-  LifecycleMethod,
-  PreflightChecksCallback,
-} from './api/provider-info.js';
+} from '/@api/provider-info.js';
+
+import type { ApiSenderType } from './api.js';
+import type { AutostartEngine } from './autostart-engine.js';
 import type { ContainerProviderRegistry } from './container-registry.js';
 import type { Event } from './events/emitter.js';
 import { Emitter } from './events/emitter.js';
@@ -56,8 +67,6 @@ import { LifecycleContextImpl, LoggerImpl } from './lifecycle-context.js';
 import { ProviderImpl } from './provider-impl.js';
 import type { Telemetry } from './telemetry/telemetry.js';
 import { Disposable } from './types/disposable.js';
-import type { ApiSenderType } from './api.js';
-import type { AutostartEngine } from './autostart-engine.js';
 
 export type ProviderEventListener = (name: string, providerInfo: ProviderInfo) => void;
 export type ProviderLifecycleListener = (
@@ -86,6 +95,7 @@ export class ProviderRegistry {
   private providerInstallations: Map<string, ProviderInstallation> = new Map();
   private providerUpdates: Map<string, ProviderUpdate> = new Map();
   private providerAutostarts: Map<string, ProviderAutostart> = new Map();
+  private providerCleanup: Map<string, ProviderCleanup> = new Map();
   private autostartEngine: AutostartEngine | undefined = undefined;
 
   private connectionLifecycleContexts: Map<
@@ -159,7 +169,7 @@ export class ProviderRegistry {
           // If the status does not match the current one, we will send a listener event and update the status
           if (status !== this.providerStatuses.get(providerKey)) {
             provider.updateStatus(status);
-            this.listeners.forEach(listener => listener('provider:update-status', this.getProviderInfo(provider)));
+            this.listeners.forEach(listener => listener('provider:update-status', this.toProviderInfo(provider)));
             this.providerStatuses.set(providerKey, status);
           }
         }
@@ -187,7 +197,7 @@ export class ProviderRegistry {
     );
     this.count++;
     this.providers.set(id, providerImpl);
-    this.listeners.forEach(listener => listener('provider:create', this.getProviderInfo(providerImpl)));
+    this.listeners.forEach(listener => listener('provider:create', this.toProviderInfo(providerImpl)));
     const trackOpts: { name: string; status: string; version?: string } = {
       name: providerOptions.name,
       status: providerOptions.status.toString(),
@@ -203,7 +213,7 @@ export class ProviderRegistry {
 
   disposeProvider(providerImpl: ProviderImpl): void {
     this.providers.delete(providerImpl.internalId);
-    this.listeners.forEach(listener => listener('provider:delete', this.getProviderInfo(providerImpl)));
+    this.listeners.forEach(listener => listener('provider:delete', this.toProviderInfo(providerImpl)));
     this.apiSender.send('provider-delete', providerImpl.id);
   }
 
@@ -213,14 +223,14 @@ export class ProviderRegistry {
     this.providerLifecycleContexts.set(providerImpl.internalId, new LifecycleContextImpl());
 
     this.lifecycleListeners.forEach(listener =>
-      listener('provider:register-lifecycle', this.getProviderInfo(providerImpl), lifecycle),
+      listener('provider:register-lifecycle', this.toProviderInfo(providerImpl), lifecycle),
     );
 
     return Disposable.create(() => {
       this.providerLifecycles.delete(providerImpl.internalId);
       this.providerLifecycleContexts.delete(providerImpl.internalId);
       this.lifecycleListeners.forEach(listener =>
-        listener('provider:removal-lifecycle', this.getProviderInfo(providerImpl), lifecycle),
+        listener('provider:removal-lifecycle', this.toProviderInfo(providerImpl), lifecycle),
       );
     });
   }
@@ -228,20 +238,28 @@ export class ProviderRegistry {
   registerInstallation(providerImpl: ProviderImpl, installation: ProviderInstallation): Disposable {
     this.providerInstallations.set(providerImpl.internalId, installation);
 
+    this.apiSender.send('provider-change', {});
     return Disposable.create(() => {
       this.providerInstallations.delete(providerImpl.internalId);
+      // need to refresh the provider
+      this.apiSender.send('provider-change', {});
     });
   }
 
   registerUpdate(providerImpl: ProviderImpl, update: ProviderUpdate): Disposable {
     this.providerUpdates.set(providerImpl.internalId, update);
 
+    // need to refresh the provider
+    this.apiSender.send('provider-change', {});
+
     return Disposable.create(() => {
       this.providerUpdates.delete(providerImpl.internalId);
+      // need to refresh the provider
+      this.apiSender.send('provider-change', {});
     });
   }
 
-  registerAutostartEngine(engine: AutostartEngine) {
+  registerAutostartEngine(engine: AutostartEngine): void {
     this.autostartEngine = engine;
   }
 
@@ -259,6 +277,14 @@ export class ProviderRegistry {
     return Disposable.create(() => {
       this.providerAutostarts.delete(providerImpl.internalId);
       disposable.dispose();
+    });
+  }
+
+  registerCleanup(providerImpl: ProviderImpl, cleanup: ProviderCleanup): Disposable {
+    this.providerCleanup.set(providerImpl.internalId, cleanup);
+
+    return Disposable.create(() => {
+      this.providerCleanup.delete(providerImpl.internalId);
     });
   }
 
@@ -309,12 +335,12 @@ export class ProviderRegistry {
     }
 
     this.lifecycleListeners.forEach(listener =>
-      listener('provider:before-initialize-lifecycle', this.getProviderInfo(provider), providerLifecycle),
+      listener('provider:before-initialize-lifecycle', this.toProviderInfo(provider), providerLifecycle),
     );
 
     await providerLifecycle.initialize(context);
     this.lifecycleListeners.forEach(listener =>
-      listener('provider:after-initialize-lifecycle', this.getProviderInfo(provider), providerLifecycle),
+      listener('provider:after-initialize-lifecycle', this.toProviderInfo(provider), providerLifecycle),
     );
   }
 
@@ -324,12 +350,12 @@ export class ProviderRegistry {
     const context = this.getMatchingLifecycleContext(providerId);
 
     this.lifecycleListeners.forEach(listener =>
-      listener('provider:before-start-lifecycle', this.getProviderInfo(provider), providerLifecycle),
+      listener('provider:before-start-lifecycle', this.toProviderInfo(provider), providerLifecycle),
     );
 
     await providerLifecycle.start(context);
     this.lifecycleListeners.forEach(listener =>
-      listener('provider:after-start-lifecycle', this.getProviderInfo(provider), providerLifecycle),
+      listener('provider:after-start-lifecycle', this.toProviderInfo(provider), providerLifecycle),
     );
     this._onDidUpdateProvider.fire({
       id: providerId,
@@ -344,11 +370,11 @@ export class ProviderRegistry {
     const context = this.getMatchingLifecycleContext(providerId);
 
     this.lifecycleListeners.forEach(listener =>
-      listener('provider:before-stop-lifecycle', this.getProviderInfo(provider), providerLifecycle),
+      listener('provider:before-stop-lifecycle', this.toProviderInfo(provider), providerLifecycle),
     );
     await providerLifecycle.stop(context);
     this.lifecycleListeners.forEach(listener =>
-      listener('provider:after-stop-lifecycle', this.getProviderInfo(provider), providerLifecycle),
+      listener('provider:after-stop-lifecycle', this.toProviderInfo(provider), providerLifecycle),
     );
     this._onDidUpdateProvider.fire({
       id: providerId,
@@ -373,8 +399,20 @@ export class ProviderRegistry {
     // grab the provider
     const provider = this.getMatchingProvider(internalId);
 
-    await autoStart.start(new LoggerImpl());
-
+    const context = Object.freeze({
+      updateContainerConnection: (containerProviderConnection: ContainerProviderConnection): void => {
+        if (!this.isContainerProviderConnectionRegistered(provider, containerProviderConnection)) {
+          throw new Error(
+            `container connection ${containerProviderConnection.name} is not registered by provider ${provider.name}`,
+          );
+        }
+        const providerConnectionInfo = this.getProviderConnectionInfo(containerProviderConnection);
+        if (this.isProviderContainerConnection(providerConnectionInfo)) {
+          this.fireUpdateContainerConnectionEvents(provider.id, providerConnectionInfo);
+        }
+      },
+    });
+    await autoStart.start(new LoggerImpl(), context);
     // send the event
     this._onDidUpdateProvider.fire({
       id: provider.id,
@@ -410,6 +448,7 @@ export class ProviderRegistry {
           name: check.title,
           successful: checkResult.successful,
           description: checkResult.description,
+          docLinksDescription: checkResult.docLinksDescription,
           docLinks: checkResult.docLinks,
         });
 
@@ -442,6 +481,80 @@ export class ProviderRegistry {
     return providerInstall.install(new LoggerImpl());
   }
 
+  async executeCleanupActions(logger: Logger, providerIds: string[], token?: CancellationToken): Promise<void> {
+    // first, grab all matching actions
+    const actions = await this.getCleanupActions(providerIds);
+
+    const cleanupErrors: string[] = [];
+    // now, execute them
+    for (const action of actions) {
+      // get all actions
+      const providerActions = await action.actions;
+
+      // execute them
+      for (const providerAction of providerActions) {
+        try {
+          const options: ProviderCleanupExecuteOptions = {
+            logger,
+            token,
+          };
+          logger.log('executing action ', providerAction.name);
+          await providerAction.execute.apply(action.instance, [options]);
+        } catch (err) {
+          cleanupErrors.push(String(err));
+          logger.error(`Error while executing cleanup action ${providerAction.name}: ${err}`);
+        }
+      }
+    }
+    const telemetryOptions: { error?: string[]; success?: boolean } = {};
+    if (cleanupErrors.length > 0) {
+      telemetryOptions.error = cleanupErrors;
+      telemetryOptions.success = false;
+    } else {
+      telemetryOptions.success = true;
+    }
+    this.telemetryService.track('executeCleanupActions', telemetryOptions);
+  }
+
+  async getCleanupActions(providerIds?: string[]): Promise<ProviderCleanupActionInfo[]> {
+    if (!providerIds || providerIds.length === 0) {
+      // grab from all providers
+      return Array.from(this.providerCleanup.entries()).map(([providerInternalId, providerCleanup]) => {
+        const provider = this.getMatchingProvider(providerInternalId);
+        return {
+          providerId: providerInternalId,
+          providerName: provider.name,
+          actions: providerCleanup.getActions(),
+          instance: providerCleanup,
+        };
+      });
+    } else {
+      // grab from the list of providers
+      return providerIds.map(providerInternalId => {
+        const provider = this.getMatchingProvider(providerInternalId);
+        const providerCleanup = this.providerCleanup.get(providerInternalId);
+        if (!providerCleanup) {
+          throw new Error(`No matching cleanup for provider ${provider.internalId}`);
+        }
+        return {
+          providerId: providerInternalId,
+          providerName: provider.name,
+          instance: providerCleanup,
+          actions: providerCleanup.getActions(),
+        };
+      });
+    }
+  }
+
+  async getCleanupActionsFromProvider(providerInternalId: string): Promise<ProviderCleanupAction[]> {
+    const providerCleanup = this.providerCleanup.get(providerInternalId);
+    // empty if not defined
+    if (!providerCleanup) {
+      return [];
+    }
+    return providerCleanup.getActions();
+  }
+
   async updateProvider(providerInternalId: string): Promise<void> {
     const provider = this.getMatchingProvider(providerInternalId);
 
@@ -458,29 +571,35 @@ export class ProviderRegistry {
 
   // start anything from the provider
   async startProvider(providerInternalId: string): Promise<void> {
-    const provider = this.getMatchingProvider(providerInternalId);
-
     // do we have a lifecycle attached to the provider ?
     if (this.providerLifecycles.has(providerInternalId)) {
       return this.startProviderLifecycle(providerInternalId);
     }
 
+    const provider = this.getMatchingProvider(providerInternalId);
+    let connection: ContainerProviderConnection | KubernetesProviderConnection | undefined;
+
     if (provider.containerConnections && provider.containerConnections.length > 0) {
-      const connection = provider.containerConnections[0];
-      const lifecycle = connection.lifecycle;
-      if (!lifecycle?.start) {
-        throw new Error('The container connection does not support start lifecycle');
-      }
-
-      const context = this.connectionLifecycleContexts.get(connection);
-      if (!context) {
-        throw new Error('The connection does not have context to start');
-      }
-
-      return lifecycle.start(context);
-    } else {
-      throw new Error('No container connection found for provider');
+      connection = provider.containerConnections[0];
+    } else if (provider.kubernetesConnections && provider.kubernetesConnections.length > 0) {
+      connection = provider.kubernetesConnections[0];
     }
+
+    if (!connection) {
+      throw new Error('The provider does not have any connection to start');
+    }
+
+    const lifecycle = connection.lifecycle;
+    if (!lifecycle?.start) {
+      throw new Error(`The connection ${connection.name} does not support start lifecycle`);
+    }
+
+    const context = this.connectionLifecycleContexts.get(connection);
+    if (!context) {
+      throw new Error(`The connection ${connection.name} does not have context to start`);
+    }
+
+    return lifecycle.start(context);
   }
 
   // Initialize the provider (if there is something to initialize)
@@ -536,11 +655,18 @@ export class ProviderRegistry {
     if (this.isContainerConnection(connection)) {
       providerConnection = {
         name: connection.name,
+        displayName: connection.displayName ?? connection.name,
         status: connection.status(),
         type: connection.type,
         endpoint: {
           socketPath: connection.endpoint.socketPath,
         },
+        vmType: connection.vmType
+          ? {
+              id: connection.vmType,
+              name: connection.vmTypeDisplayName ?? connection.vmType,
+            }
+          : undefined,
       };
     } else {
       providerConnection = {
@@ -562,12 +688,15 @@ export class ProviderRegistry {
       if (connection.lifecycle.stop) {
         lifecycleMethods.push('stop');
       }
+      if (connection.lifecycle.edit) {
+        lifecycleMethods.push('edit');
+      }
       providerConnection.lifecycleMethods = lifecycleMethods;
     }
     return providerConnection;
   }
 
-  protected getProviderInfo(provider: ProviderImpl): ProviderInfo {
+  protected toProviderInfo(provider: ProviderImpl): ProviderInfo {
     const containerConnections: ProviderContainerConnectionInfo[] = provider.containerConnections.map(connection => {
       return this.getProviderContainerConnectionInfo(connection);
     });
@@ -614,6 +743,12 @@ export class ProviderRegistry {
       installationSupport = true;
     }
 
+    // cleanup supported ?
+    let cleanupSupport = false;
+    if (this.providerCleanup.has(provider.internalId)) {
+      cleanupSupport = true;
+    }
+
     const providerInfo: ProviderInfo = {
       id: provider.id,
       internalId: provider.internalId,
@@ -637,6 +772,7 @@ export class ProviderRegistry {
       version: provider.version,
       warnings: provider.warnings,
       installationSupport,
+      cleanupSupport,
     };
 
     // handle update
@@ -656,7 +792,7 @@ export class ProviderRegistry {
   getProviderInfos(): ProviderInfo[] {
     return Array.from(this.providers.values())
       .map(provider => {
-        return this.getProviderInfo(provider);
+        return this.toProviderInfo(provider);
       })
       .sort((provider1, provider2) => provider2.name.localeCompare(provider1.name));
   }
@@ -692,7 +828,10 @@ export class ProviderRegistry {
 
   getMatchingConnectionLifecycleContext(
     internalId: string,
-    providerContainerConnectionInfo: ProviderContainerConnectionInfo | ProviderKubernetesConnectionInfo,
+    providerContainerConnectionInfo:
+      | ProviderContainerConnectionInfo
+      | ProviderKubernetesConnectionInfo
+      | ContainerProviderConnection,
   ): LifecycleContextImpl {
     const connection = this.getMatchingConnectionFromProvider(internalId, providerContainerConnectionInfo);
 
@@ -715,7 +854,10 @@ export class ProviderRegistry {
 
   getMatchingProviderLifecycleContextByProviderId(
     providerId: string,
-    providerConnectionInfo: ProviderContainerConnectionInfo | ProviderKubernetesConnectionInfo,
+    providerConnectionInfo:
+      | ProviderContainerConnectionInfo
+      | ProviderKubernetesConnectionInfo
+      | ContainerProviderConnection,
   ): LifecycleContextImpl {
     const internalId = this.getMatchingProviderInternalId(providerId);
     return this.getMatchingConnectionLifecycleContext(internalId, providerConnectionInfo);
@@ -759,9 +901,10 @@ export class ProviderRegistry {
   ): Promise<AuditResult> {
     // grab the correct provider
     const provider = this.getMatchingProvider(internalProviderId);
+    const emptyAuditResult: AuditResult = { records: [] };
 
     if (!provider.connectionAuditor) {
-      throw new Error('The provider does not support audit for connection parameters');
+      return emptyAuditResult;
     }
 
     return provider.connectionAuditor.auditItems(params);
@@ -786,7 +929,7 @@ export class ProviderRegistry {
   // helper method
   protected getMatchingContainerConnectionFromProvider(
     internalProviderId: string,
-    providerContainerConnectionInfo: ProviderContainerConnectionInfo,
+    providerContainerConnectionInfo: ProviderContainerConnectionInfo | ContainerProviderConnection,
   ): ContainerProviderConnection {
     // grab the correct provider
     const provider = this.getMatchingProvider(internalProviderId);
@@ -824,7 +967,10 @@ export class ProviderRegistry {
 
   getMatchingConnectionFromProvider(
     internalProviderId: string,
-    providerContainerConnectionInfo: ProviderContainerConnectionInfo | ProviderKubernetesConnectionInfo,
+    providerContainerConnectionInfo:
+      | ProviderContainerConnectionInfo
+      | ProviderKubernetesConnectionInfo
+      | ContainerProviderConnection,
   ): ContainerProviderConnection | KubernetesProviderConnection {
     if (this.isProviderContainerConnection(providerContainerConnectionInfo)) {
       return this.getMatchingContainerConnectionFromProvider(internalProviderId, providerContainerConnectionInfo);
@@ -834,8 +980,8 @@ export class ProviderRegistry {
   }
 
   isProviderContainerConnection(
-    connection: ProviderContainerConnectionInfo | ProviderKubernetesConnectionInfo,
-  ): connection is ProviderContainerConnectionInfo {
+    connection: ProviderContainerConnectionInfo | ProviderKubernetesConnectionInfo | ContainerProviderConnection,
+  ): connection is ProviderContainerConnectionInfo | ContainerProviderConnection {
     return (connection as ProviderContainerConnectionInfo).endpoint.socketPath !== undefined;
   }
 
@@ -872,21 +1018,7 @@ export class ProviderRegistry {
       await lifecycle.start(context, logHandler);
     } finally {
       if (this.isProviderContainerConnection(providerConnectionInfo)) {
-        const event = {
-          providerId: provider.id,
-          connection: {
-            name: providerConnectionInfo.name,
-            type: providerConnectionInfo.type,
-            endpoint: providerConnectionInfo.endpoint,
-            status: (): ProviderConnectionStatus => {
-              return 'started';
-            },
-          },
-          status: 'started' as ProviderConnectionStatus,
-        };
-        this._onBeforeDidUpdateContainerConnection.fire(event);
-        this._onDidUpdateContainerConnection.fire(event);
-        this._onAfterDidUpdateContainerConnection.fire(event);
+        this.fireUpdateContainerConnectionEvents(provider.id, providerConnectionInfo);
       } else {
         this._onDidUpdateKubernetesConnection.fire({
           providerId: provider.id,
@@ -900,6 +1032,54 @@ export class ProviderRegistry {
           status: 'started',
         });
       }
+    }
+  }
+
+  // call callback after api is attached to the connection
+  public onProviderConnectionApiAttached(providerId: string, callback: () => void): void {
+    if (this.containerRegistry.isApiAttached(providerId)) {
+      callback();
+      return;
+    }
+    const disposable = this.containerRegistry.onApiAttached((id: string) => {
+      if (id === providerId) {
+        callback();
+        disposable.dispose();
+      }
+    });
+  }
+
+  async editProviderConnection(
+    internalProviderId: string,
+    providerConnectionInfo: ProviderContainerConnectionInfo | ProviderKubernetesConnectionInfo,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    params: { [key: string]: any },
+    logHandler?: Logger,
+    token?: CancellationToken,
+  ): Promise<void> {
+    // grab the correct provider
+    const connection = this.getMatchingConnectionFromProvider(internalProviderId, providerConnectionInfo);
+
+    const lifecycle = connection.lifecycle;
+    if (!lifecycle?.edit) {
+      throw new Error('The container connection does not support edit lifecycle');
+    }
+
+    const context = this.connectionLifecycleContexts.get(connection);
+    if (!context) {
+      throw new Error('The connection does not have context to edit');
+    }
+
+    const provider = this.providers.get(internalProviderId);
+    if (!provider) {
+      throw new Error('Cannot find provider');
+    }
+
+    try {
+      await lifecycle.edit(context, params, logHandler, token);
+    } catch (err) {
+      console.warn(`Can't edit connection ${provider.id}.${providerConnectionInfo.name}`, err);
+      throw err;
     }
   }
 
@@ -931,6 +1111,7 @@ export class ProviderRegistry {
         const event = {
           providerId: provider.id,
           connection: {
+            displayName: providerConnectionInfo.displayName,
             name: providerConnectionInfo.name,
             type: providerConnectionInfo.type,
             endpoint: providerConnectionInfo.endpoint,
@@ -981,13 +1162,13 @@ export class ProviderRegistry {
   onDidRegisterContainerConnectionCallback(
     provider: ProviderImpl,
     containerProviderConnection: ContainerProviderConnection,
-  ) {
+  ): void {
     this.connectionLifecycleContexts.set(containerProviderConnection, new LifecycleContextImpl());
     // notify listeners
     this.containerConnectionLifecycleListeners.forEach(listener => {
       listener(
         'provider-container-connection:register',
-        this.getProviderInfo(provider),
+        this.toProviderInfo(provider),
         this.getProviderContainerConnectionInfo(containerProviderConnection),
       );
     });
@@ -997,7 +1178,7 @@ export class ProviderRegistry {
   onDidRegisterKubernetesConnectionCallback(
     provider: ProviderImpl,
     kubernetesProviderConnection: KubernetesProviderConnection,
-  ) {
+  ): void {
     this.connectionLifecycleContexts.set(kubernetesProviderConnection, new LifecycleContextImpl());
     this.apiSender.send('provider-register-kubernetes-connection', { name: kubernetesProviderConnection.name });
     this._onDidRegisterKubernetesConnection.fire({ providerId: provider.id });
@@ -1006,23 +1187,26 @@ export class ProviderRegistry {
   onDidChangeContainerProviderConnectionStatus(
     provider: ProviderImpl,
     containerConnection: ContainerProviderConnection,
-  ) {
+  ): void {
     // notify listeners
     this.containerConnectionLifecycleListeners.forEach(listener => {
       listener(
         'provider-container-connection:update-status',
-        this.getProviderInfo(provider),
+        this.toProviderInfo(provider),
         this.getProviderContainerConnectionInfo(containerConnection),
       );
     });
   }
 
-  onDidUnregisterContainerConnectionCallback(provider: ProviderImpl, containerConnection: ContainerProviderConnection) {
+  onDidUnregisterContainerConnectionCallback(
+    provider: ProviderImpl,
+    containerConnection: ContainerProviderConnection,
+  ): void {
     // notify listeners
     this.containerConnectionLifecycleListeners.forEach(listener => {
       listener(
         'provider-container-connection:unregister',
-        this.getProviderInfo(provider),
+        this.toProviderInfo(provider),
         this.getProviderContainerConnectionInfo(containerConnection),
       );
     });
@@ -1032,17 +1216,17 @@ export class ProviderRegistry {
   onDidUnregisterKubernetesConnectionCallback(
     provider: ProviderImpl,
     kubernetesProviderConnection: KubernetesProviderConnection,
-  ) {
+  ): void {
     this.apiSender.send('provider-unregister-kubernetes-connection', { name: kubernetesProviderConnection.name });
     this._onDidUnregisterKubernetesConnection.fire({ providerId: provider.id });
   }
 
-  onDidUpdateProviderStatus(providerId: string, callback: (providerInfo: ProviderInfo) => void) {
+  onDidUpdateProviderStatus(providerId: string, callback: (providerInfo: ProviderInfo) => void): void {
     // add callback for the given providerId
     const provider = this.getMatchingProvider(providerId);
 
     provider.onDidUpdateStatus(() => {
-      callback(this.getProviderInfo(provider));
+      callback(this.toProviderInfo(provider));
     });
 
     this._onDidUpdateProvider.fire({
@@ -1093,5 +1277,110 @@ export class ProviderRegistry {
       clearInterval(timer);
       this.apiSender.send('provider-change', {});
     });
+  }
+
+  async shellInProviderConnection(
+    internalProviderId: string,
+    providerConnectionInfo: ProviderContainerConnectionInfo | ProviderKubernetesConnectionInfo,
+    onData: (data: string) => void,
+    onError: (error: string) => void,
+    onEnd: () => void,
+  ): Promise<{
+    write: (param: string) => void;
+    resize: (dimensions: ProviderConnectionShellDimensions) => void;
+    close: () => void;
+  }> {
+    try {
+      const containerConnection = this.getMatchingConnectionFromProvider(internalProviderId, providerConnectionInfo);
+      let shellAccess: ProviderConnectionShellAccess | undefined;
+      let connection: ProviderConnectionShellAccessSession | undefined;
+      const disposables: Disposable[] = [];
+      if (this.isContainerConnection(containerConnection) && providerConnectionInfo.status === 'started') {
+        shellAccess = containerConnection.shellAccess;
+        connection = shellAccess?.open();
+        connection?.onData(
+          data => {
+            onData(data.data);
+          },
+          {},
+          disposables,
+        );
+
+        connection?.onError(
+          error => {
+            onError(error.error);
+          },
+          {},
+          disposables,
+        );
+
+        connection?.onEnd(onEnd, {}, disposables);
+      }
+
+      return {
+        write: (data: string): void => {
+          connection?.write(data);
+        },
+        resize: (dimension: ProviderConnectionShellDimensions): void => {
+          connection?.resize(dimension);
+        },
+        close: (): void => {
+          disposables.forEach(dispose => {
+            dispose.dispose();
+          });
+          connection?.close();
+        },
+      };
+    } catch (error) {
+      this.telemetryService.track('shellInProviderConnection.error', error);
+      throw error;
+    }
+  }
+
+  getProviderInfo(internalProviderId: string): ProviderInfo | undefined {
+    const provider = this.providers.get(internalProviderId);
+    if (provider) {
+      return this.toProviderInfo(provider);
+    }
+    return undefined;
+  }
+
+  protected fireUpdateContainerConnectionEvents(
+    providerId: string,
+    providerConnectionInfo: ProviderContainerConnectionInfo,
+  ): void {
+    const sendEvents = (status: ProviderConnectionStatus): void => {
+      const event = {
+        providerId: providerId,
+        connection: {
+          displayName: providerConnectionInfo.displayName,
+          name: providerConnectionInfo.name,
+          type: providerConnectionInfo.type,
+          endpoint: providerConnectionInfo.endpoint,
+          status: (): ProviderConnectionStatus => {
+            return status;
+          },
+        },
+        status: status as ProviderConnectionStatus,
+      };
+      this._onBeforeDidUpdateContainerConnection.fire(event);
+      this._onDidUpdateContainerConnection.fire(event);
+      this._onAfterDidUpdateContainerConnection.fire(event);
+    };
+    sendEvents('starting');
+    this.onProviderConnectionApiAttached(`${providerId}.${providerConnectionInfo.name}`, () => sendEvents('started'));
+  }
+
+  isContainerProviderConnectionRegistered(
+    provider: ProviderImpl,
+    containerProviderConnection: ContainerProviderConnection,
+  ): boolean {
+    const connections = provider.containerConnections;
+    for (const connection of connections) {
+      if (connection.name === containerProviderConnection.name) {
+        return true;
+      }
+    }
+    return false;
   }
 }

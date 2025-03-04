@@ -16,12 +16,14 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
-import * as path from 'node:path';
 import { existsSync, promises } from 'node:fs';
+import { arch, platform } from 'node:os';
+import * as path from 'node:path';
+
 import * as extensionApi from '@podman-desktop/api';
-import type { ComposeGitHubReleases, ComposeGithubReleaseArtifactMetadata } from './compose-github-releases';
+
+import type { ComposeGithubReleaseArtifactMetadata, ComposeGitHubReleases } from './compose-github-releases';
 import type { OS } from './os';
-import { platform, arch } from 'node:os';
 import { makeExecutable } from './utils';
 
 export class ComposeDownload {
@@ -38,10 +40,20 @@ export class ComposeDownload {
     return latestReleases[0];
   }
 
+  // Get the latest versions of Compose from GitHub Releases
+  // and return the artifacts metadata
+  async getLatestReleases(): Promise<ComposeGithubReleaseArtifactMetadata[]> {
+    return this.composeGitHubReleases.grabLatestsReleasesMetadata();
+  }
+
   // Create a "quickpick" prompt to ask the user which version of Compose they want to download
-  async promptUserForVersion(): Promise<ComposeGithubReleaseArtifactMetadata> {
+  async promptUserForVersion(currentComposeTag?: string): Promise<ComposeGithubReleaseArtifactMetadata> {
     // Get the latest releases
-    const lastReleasesMetadata = await this.composeGitHubReleases.grabLatestsReleasesMetadata();
+    let lastReleasesMetadata = await this.composeGitHubReleases.grabLatestsReleasesMetadata();
+    // if the user already has an installed version, we remove it from the list
+    if (currentComposeTag) {
+      lastReleasesMetadata = lastReleasesMetadata.filter(release => release.tag.slice(1) !== currentComposeTag);
+    }
 
     // Show the quickpick
     const selectedRelease = await extensionApi.window.showQuickPick(lastReleasesMetadata, {

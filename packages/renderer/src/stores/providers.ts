@@ -16,8 +16,10 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
-import { writable, type Writable } from 'svelte/store';
-import type { ProviderInfo } from '../../../main/src/plugin/api/provider-info';
+import { type Writable, writable } from 'svelte/store';
+
+import type { ProviderInfo } from '/@api/provider-info';
+
 import { EventStore } from './event-store';
 
 const windowEvents = [

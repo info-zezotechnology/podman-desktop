@@ -1,5 +1,5 @@
 /**********************************************************************
- * Copyright (C) 2023 Red Hat, Inc.
+ * Copyright (C) 2023-2024 Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,9 +17,11 @@
  ***********************************************************************/
 
 import '@testing-library/jest-dom/vitest';
-import { test, expect } from 'vitest';
-import { render, screen } from '@testing-library/svelte';
 
+import { render, screen } from '@testing-library/svelte';
+import { expect, test } from 'vitest';
+
+import ImageIcon from '../images/ImageIcon.svelte';
 import ImageColumnStatus from './ImageColumnStatus.svelte';
 import type { ImageInfoUI } from './ImageInfoUI';
 
@@ -37,11 +39,14 @@ test('Expect simple column styling', async () => {
     humanSize: '',
     base64RepoTag: '',
     selected: false,
-    inUse: true,
+    status: 'USED',
+    icon: ImageIcon,
+    badges: [],
+    digest: 'sha256:1234567890',
   };
   render(ImageColumnStatus, { object: image });
 
   const text = screen.getByRole('status');
   expect(text).toBeInTheDocument();
-  expect(text).toHaveClass('bg-green-400');
+  expect(text).toHaveClass('bg-[var(--pd-status-running)]');
 });

@@ -1,5 +1,5 @@
 /**********************************************************************
- * Copyright (C) 2023 Red Hat, Inc.
+ * Copyright (C) 2023-2025 Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,23 +17,35 @@
  ***********************************************************************/
 
 import type { V1Ingress } from '@kubernetes/client-node';
+
+import type { V1Route } from '/@api/openshift-types';
+
 import type { IngressUI } from './IngressUI';
-import type { V1Route } from '../../../../main/src/plugin/api/openshift-types';
 import type { RouteUI } from './RouteUI';
+
+export interface HostPathObject {
+  label: string;
+  url?: string;
+}
 
 export class IngressRouteUtils {
   getIngressUI(ingress: V1Ingress): IngressUI {
     return {
-      name: ingress.metadata?.name || '',
-      namespace: ingress.metadata?.namespace || '',
+      kind: 'Ingress',
+      name: ingress.metadata?.name ?? '',
+      namespace: ingress.metadata?.namespace ?? '',
+      status: 'RUNNING',
       rules: ingress.spec?.rules,
       selected: false,
+      created: ingress.metadata?.creationTimestamp ? new Date(ingress.metadata.creationTimestamp) : undefined,
     };
   }
   getRouteUI(route: V1Route): RouteUI {
     return {
-      name: route.metadata?.name || '',
-      namespace: route.metadata?.namespace || '',
+      kind: 'Route',
+      name: route.metadata?.name ?? '',
+      namespace: route.metadata?.namespace ?? '',
+      status: 'RUNNING',
       host: route.spec.host,
       port: route.spec.port?.targetPort,
       path: route.spec.path,
@@ -42,6 +54,72 @@ export class IngressRouteUtils {
         name: route.spec.to.name,
       },
       selected: false,
+      // true if tls part is defined
+      tlsEnabled: !!route.spec.tls,
+      created: route.metadata?.creationTimestamp ? new Date(route.metadata.creationTimestamp) : undefined,
     };
+  }
+  isIngress(object: IngressUI | RouteUI): object is IngressUI {
+    return !('to' in object);
+  }
+  getHostPaths(ingressRoute: IngressUI | RouteUI): HostPathObject[] {
+    if (this.isIngress(ingressRoute)) {
+      return this.getIngressHostPaths(ingressRoute);
+    } else {
+      return this.getRouteHostPaths(ingressRoute);
+    }
+  }
+  getIngressHostPaths(ingressUI: IngressUI): HostPathObject[] {
+    const hostPaths: HostPathObject[] = [];
+    for (const rule of ingressUI.rules ?? []) {
+      for (const path of rule.http?.paths ?? []) {
+        if (path.path) {
+          if (rule.host) {
+            hostPaths.push({
+              label: `${rule.host}${path.path}`,
+              url: `https://${rule.host}${path.path}`,
+            });
+          } else {
+            hostPaths.push({
+              label: path.path,
+            });
+          }
+        }
+      }
+    }
+    return hostPaths;
+  }
+  getRouteHostPaths(routeUI: RouteUI): HostPathObject[] {
+    const protocol = routeUI.tlsEnabled ? 'https' : 'http';
+    return [
+      {
+        label: `${routeUI.host}${routeUI.path ?? ''}`,
+        url: `${protocol}://${routeUI.host}${routeUI.path ?? ''}`,
+      },
+    ];
+  }
+  getBackends(ingressRoute: IngressUI | RouteUI): string[] {
+    if (this.isIngress(ingressRoute)) {
+      return this.getIngressBackends(ingressRoute);
+    } else {
+      return [`${ingressRoute.to.kind} ${ingressRoute.to.name}`];
+    }
+  }
+  getIngressBackends(ingressUI: IngressUI): string[] {
+    const backends: string[] = [];
+    for (const rule of ingressUI.rules ?? []) {
+      for (const path of rule.http?.paths ?? []) {
+        if (path.backend.service) {
+          backends.push(
+            `${path.backend.service.name}${
+              path.backend.service.port?.number ? ':' + path.backend.service.port.number : ''
+            }`,
+          );
+        } else if (path.backend.resource) {
+          backends.push(`${path.backend.resource.kind} ${path.backend.resource.name}`);
+        }
+      }
+    }
+    return backends;
   }
 }

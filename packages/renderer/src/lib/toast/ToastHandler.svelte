@@ -1,8 +1,16 @@
 <style>
 .svelte-toast-wrapper {
   font-size: 0.8rem;
+  --toastPadding: '0';
+  --toastMsgPadding: '0';
   --toastMinHeight: 2rem;
-  --toastBorderRadius: 0.2rem;
+  --toastBorderRadius: 0.3rem;
+  --toastWidth: 16rem;
+  --toastContainerTop: auto;
+  --toastContainerRight: 0.8rem;
+  --toastContainerBottom: 1rem;
+  --toastContainerLeft: auto;
+  --toastBackground: var(--pd-modal-bg);
 }
 </style>
 
@@ -13,8 +21,10 @@ import { onDestroy, onMount } from 'svelte';
 let callback: (object: { type: string; message: string }) => void;
 
 onMount(() => {
-  callback = (object: { type: string; message: string }) => {
-    let theme: any = {};
+  callback = (object: { type: string; message: string }): void => {
+    let theme: {
+      [x: string]: string;
+    } = {};
     if (object.type === 'success') {
       theme = {
         '--toastBackground': '#16a34a',
@@ -43,13 +53,14 @@ onMount(() => {
     toast.push(object.message, { pausable: true, theme });
   };
 
-  window.events?.receive('toast:handler', (object: { type: string; message: string }) => {
-    callback(object);
+  window.events?.receive('toast:handler', (object: unknown) => {
+    const value = object as { type: string; message: string };
+    callback(value);
   });
 });
 
 onDestroy(() => {
-  callback = () => {};
+  callback = (): void => {};
 });
 </script>
 

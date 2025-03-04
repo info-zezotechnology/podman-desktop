@@ -17,9 +17,11 @@
  ***********************************************************************/
 
 import '@testing-library/jest-dom/vitest';
-import { test, expect } from 'vitest';
-import { getStatusColor, organizeContainers } from './Dots';
+
+import { expect, test } from 'vitest';
+
 import type { PodInfoContainerUI } from '../pod/PodInfoUI';
+import { getStatusColor, organizeContainers } from './Dots';
 
 // Mock a PodInfoContainerUI object that contains containers of all the different statuses
 // running, terminated, waiting, stopped, paused, exited, dead, created, degraded
@@ -72,16 +74,16 @@ const mockContainers: PodInfoContainerUI[] = [
 ];
 
 test('test getStatusColor returns the correct colors', () => {
-  expect(getStatusColor('running')).toBe('bg-status-running');
-  expect(getStatusColor('terminated')).toBe('bg-status-terminated');
-  expect(getStatusColor('waiting')).toBe('bg-status-waiting');
-  expect(getStatusColor('stopped')).toBe('outline-status-stopped');
-  expect(getStatusColor('paused')).toBe('bg-status-paused');
-  expect(getStatusColor('exited')).toBe('outline-status-exited');
-  expect(getStatusColor('dead')).toBe('bg-status-dead');
-  expect(getStatusColor('created')).toBe('outline-status-created');
-  expect(getStatusColor('degraded')).toBe('bg-status-degraded');
-  expect(getStatusColor('unknown')).toBe('bg-status-unknown');
+  expect(getStatusColor('running')).toBe('bg-[var(--pd-status-running)]');
+  expect(getStatusColor('terminated')).toBe('bg-[var(--pd-status-terminated)]');
+  expect(getStatusColor('waiting')).toBe('bg-[var(--pd-status-waiting)]');
+  expect(getStatusColor('stopped')).toBe('outline-[var(--pd-status-stopped)]');
+  expect(getStatusColor('paused')).toBe('bg-[var(--pd-status-paused)]');
+  expect(getStatusColor('exited')).toBe('outline-[var(--pd-status-exited)]');
+  expect(getStatusColor('dead')).toBe('bg-[var(--pd-status-dead)]');
+  expect(getStatusColor('created')).toBe('outline-[var(--pd-status-created)]');
+  expect(getStatusColor('degraded')).toBe('bg-[var(--pd-status-degraded)]');
+  expect(getStatusColor('unknown')).toBe('bg-[var(--pd-status-unknown)]');
 });
 
 test('test organizeContainers returns a record of containers organized by status', () => {
@@ -99,6 +101,7 @@ test('test organizeContainers returns a record of containers organized by status
 
 test('randomly re-order the containers and ensure they are still organized correctly after in the correct order', () => {
   // Copy mockContainers array and shuffle it
+  // eslint-disable-next-line sonarjs/pseudo-random
   const shuffledContainers = [...mockContainers].sort(() => Math.random() - 0.5);
 
   // Organize the shuffled containers

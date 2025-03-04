@@ -1,5 +1,5 @@
 /**********************************************************************
- * Copyright (C) 2023 Red Hat, Inc.
+ * Copyright (C) 2023-2024 Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,18 +21,20 @@
 import { get } from 'svelte/store';
 import type { Mock } from 'vitest';
 import { beforeAll, expect, test, vi } from 'vitest';
-import type { OnboardingInfo } from '../../../main/src/plugin/api/onboarding';
+
+import type { OnboardingInfo } from '/@api/onboarding';
+
 import { fetchOnboarding, onboardingEventStore, onboardingList } from './onboarding';
 
 // first, path window object
 const callbacks = new Map<string, any>();
 const eventEmitter = {
-  receive: (message: string, callback: any) => {
+  receive: (message: string, callback: any): void => {
     callbacks.set(message, callback);
   },
 };
 
-const listOnboardingMock: Mock<any, Promise<OnboardingInfo[]>> = vi.fn();
+const listOnboardingMock: Mock<() => Promise<OnboardingInfo[]>> = vi.fn();
 
 Object.defineProperty(global, 'window', {
   value: {
@@ -82,7 +84,51 @@ test('onboarding should be updated in case of an extension is stopped', async ()
   expect(extensionStoppedCallback).toBeDefined();
   await extensionStoppedCallback();
 
+  // wait a little
+  await new Promise(resolve => setTimeout(resolve, 100));
+
   // check if the onboardings are updated
   const onboardingList2 = get(onboardingList);
   expect(onboardingList2.length).toBe(0);
+});
+
+test('onboarding should be updated in case of an extension is started', async () => {
+  // mock the listOnboarding function to return an empty list
+  listOnboardingMock.mockResolvedValue([]);
+
+  onboardingEventStore.setup();
+
+  const callback = callbacks.get('extensions-already-started');
+  // send 'extensions-already-started' event
+  expect(callback).toBeDefined();
+  await callback();
+
+  // now ready to fetch volumes
+  await fetchOnboarding();
+
+  // now get list
+  const onboardingList1 = get(onboardingList);
+  expect(onboardingList1.length).toBe(0);
+
+  // now add a new thing
+  listOnboardingMock.mockResolvedValue([
+    {
+      extension: 'extension',
+      title: 'title',
+      decription: 'description',
+      steps: [],
+    } as unknown as OnboardingInfo,
+  ]);
+
+  // call 'extension-started' event
+  const extensionStartedCallback = callbacks.get('extension-started');
+  expect(extensionStartedCallback).toBeDefined();
+  await extensionStartedCallback();
+
+  // wait that the onboarding is updated
+  await vi.waitFor(() => {
+    // check if the onboardings are updated
+    const onboardingList2 = get(onboardingList);
+    expect(onboardingList2.length).toBe(1);
+  });
 });

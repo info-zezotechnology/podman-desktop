@@ -1,5 +1,5 @@
 /**********************************************************************
- * Copyright (C) 2023 Red Hat, Inc.
+ * Copyright (C) 2023-2024 Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,12 +17,14 @@
  ***********************************************************************/
 
 import '@testing-library/jest-dom/vitest';
-import { test, expect, vi, beforeAll } from 'vitest';
-import { render, screen } from '@testing-library/svelte';
 
-import ContainerStatistics from './ContainerStatistics.svelte';
-import type { ContainerStatsInfo } from '../../../../main/src/plugin/api/container-stats-info';
+import { render, screen } from '@testing-library/svelte';
+import { beforeAll, expect, test, vi } from 'vitest';
+
+import type { ContainerStatsInfo } from '/@api/container-stats-info';
+
 import { ContainerGroupInfoTypeUI, type ContainerInfoUI } from './ContainerInfoUI';
+import ContainerStatistics from './ContainerStatistics.svelte';
 
 const myContainer: ContainerInfoUI = {
   id: 'foobar',
@@ -48,6 +50,7 @@ const myContainer: ContainerInfoUI = {
   selected: false,
   created: 0,
   labels: {},
+  imageBase64RepoTag: '',
 };
 
 const stats: ContainerStatsInfo = {
@@ -131,8 +134,8 @@ beforeAll(() => {
   containerStatsMock.mockImplementation((engineId, id, stats) => {
     return stats;
   });
-  (window as any).getContainerStats = containerStatsMock;
-  (window as any).stopContainerStats = vi.fn();
+  Object.defineProperty(window, 'getContainerStats', { value: containerStatsMock });
+  Object.defineProperty(window, 'stopContainerStats', { value: vi.fn() });
 });
 
 test('Expect memory donut', async () => {
@@ -151,7 +154,7 @@ test('Expect memory donut', async () => {
   expect(memTooltip).toBeInTheDocument();
 
   const memArc = screen.getAllByTestId('arc')[1];
-  expect(memArc).toHaveClass('stroke-green-500');
+  expect(memArc).toHaveClass('stroke-[var(--pd-state-success)]');
 });
 
 test('Expect CPU donut', async () => {
@@ -170,5 +173,5 @@ test('Expect CPU donut', async () => {
   expect(cpuTooltip).toBeInTheDocument();
 
   const cpuArc = screen.getAllByTestId('arc')[0];
-  expect(cpuArc).toHaveClass('stroke-red-500');
+  expect(cpuArc).toHaveClass('stroke-[var(--pd-state-error)]');
 });

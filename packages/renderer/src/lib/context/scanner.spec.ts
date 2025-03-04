@@ -22,11 +22,13 @@
 // based on https://github.com/microsoft/vscode/blob/76415ef0b1f60e0479bdfee173c1a4f97e785b52/src/vs/platform/contextkey/test/common/scanner.test.ts
 /* eslint-disable no-useless-escape */
 
-import * as assert from 'assert';
-import { TokenType, type Token, Scanner } from './scanner';
+import * as assert from 'node:assert';
+
 import { test } from 'vitest';
 
-function tokenTypeToStr(token: Token) {
+import { Scanner, type Token, TokenType } from './scanner';
+
+function tokenTypeToStr(token: Token): string {
   switch (token.type) {
     case TokenType.LParen:
       return '(';
@@ -73,7 +75,7 @@ function tokenTypeToStr(token: Token) {
   }
 }
 
-function scan(input: string) {
+function scan(input: string): { type: string; offset: number; lexeme?: string }[] {
   return new Scanner()
     .reset(input)
     .scan()

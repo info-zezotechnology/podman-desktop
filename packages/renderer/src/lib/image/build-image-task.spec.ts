@@ -17,6 +17,7 @@
  ***********************************************************************/
 
 import { beforeEach, expect, test, vi } from 'vitest';
+
 import type { BuildImageCallback } from './build-image-task';
 import { disconnectUI, eventCollect, reconnectUI, startBuild } from './build-image-task';
 
@@ -31,7 +32,7 @@ test('check start build', async () => {
     onEnd: vi.fn(),
   };
 
-  const key = startBuild('foo', dummyCallback);
+  const key = startBuild(dummyCallback);
   expect(key).toBeDefined();
 });
 
@@ -48,7 +49,7 @@ test('check reconnect', async () => {
     onEnd: vi.fn(),
   };
 
-  const firstKey = startBuild('foo', dummyCallback);
+  const firstKey = startBuild(dummyCallback);
 
   // stream some stuff
   eventCollect(firstKey.buildImageKey, 'stream', 'hello');
@@ -75,7 +76,7 @@ test('check error', async () => {
     onEnd: vi.fn(),
   };
 
-  const key = startBuild('foo', dummyCallback);
+  const key = startBuild(dummyCallback);
 
   eventCollect(key.buildImageKey, 'stream', 'hello');
   eventCollect(key.buildImageKey, 'error', 'world');

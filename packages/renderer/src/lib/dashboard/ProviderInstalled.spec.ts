@@ -19,19 +19,45 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import '@testing-library/jest-dom/vitest';
-import { beforeAll, test, expect, vi } from 'vitest';
+
 import { render, screen } from '@testing-library/svelte';
-import ProviderInstalled from '/@/lib/dashboard/ProviderInstalled.svelte';
-import type { ProviderInfo } from '../../../../main/src/plugin/api/provider-info';
-import { InitializeAndStartMode, type InitializationContext } from '/@/lib/dashboard/ProviderInitUtils';
 import userEvent from '@testing-library/user-event';
+import { beforeAll, expect, test, vi } from 'vitest';
+
+import { type InitializationContext, InitializeAndStartMode } from '/@/lib/dashboard/ProviderInitUtils';
+import ProviderInstalled from '/@/lib/dashboard/ProviderInstalled.svelte';
+import type { ProviderInfo } from '/@api/provider-info';
+
 import { verifyStatus } from './ProviderStatusTestHelper.spec';
 
-vi.mock('xterm', () => {
+vi.mock('@xterm/xterm', () => {
   return {
     Terminal: vi.fn().mockReturnValue({ loadAddon: vi.fn(), open: vi.fn(), write: vi.fn(), clear: vi.fn() }),
   };
 });
+
+class InitializationContextImpl {
+  #promise: unknown;
+  #error: unknown;
+
+  constructor(public mode: string) {}
+
+  set promise(promise: unknown) {
+    this.#promise = promise;
+  }
+
+  get promise(): unknown {
+    return this.#promise;
+  }
+
+  set error(error: unknown) {
+    this.#error = error;
+  }
+
+  get error(): unknown {
+    return this.#error;
+  }
+}
 
 // fake the window.events object
 beforeAll(() => {
@@ -40,7 +66,7 @@ beforeAll(() => {
   (window as any).telemetryPage = vi.fn().mockResolvedValue(undefined);
   (window as any).initializeProvider = vi.fn().mockResolvedValue([]);
   (window.events as unknown) = {
-    receive: (_channel: string, func: any) => {
+    receive: (_channel: string, func: any): void => {
       func();
     },
   };
@@ -64,15 +90,19 @@ test('Expect installed provider shows button', async () => {
     status: 'installed',
     warnings: [],
     extensionId: '',
+    cleanupSupport: false,
   };
 
-  const initializationContext: InitializationContext = { mode: InitializeAndStartMode };
+  const initializationContext: InitializationContext = new InitializationContextImpl(
+    InitializeAndStartMode,
+  ) as unknown as InitializationContext;
   render(ProviderInstalled, { provider: provider, initializationContext: initializationContext });
 
-  const providerText = screen.getByText(
-    content => content.includes('MyProvider') && content.includes('is installed but not ready'),
-  );
+  const providerText = screen.getByText(content => content === 'MyProvider');
   expect(providerText).toBeInTheDocument();
+
+  const installedText = screen.getByText(content => content.toLowerCase().includes('installed but not ready'));
+  expect(installedText).toBeInTheDocument();
 
   const button = screen.getByRole('button', { name: 'Initialize and start' });
   expect(button).toBeInTheDocument();
@@ -110,15 +140,19 @@ test('Expect to see the initialize context error if provider installation fails'
     status: 'installed',
     warnings: [],
     extensionId: '',
+    cleanupSupport: false,
   };
 
-  const initializationContext: InitializationContext = { mode: InitializeAndStartMode };
+  const initializationContext: InitializationContext = new InitializationContextImpl(
+    InitializeAndStartMode,
+  ) as unknown as InitializationContext;
   render(ProviderInstalled, { provider: provider, initializationContext: initializationContext });
 
-  const providerText = screen.getByText(
-    content => content.includes('MyProvider') && content.includes('is installed but not ready'),
-  );
+  const providerText = screen.getByText(content => content === 'MyProvider');
   expect(providerText).toBeInTheDocument();
+
+  const installedText = screen.getByText(content => content.toLowerCase().includes('installed but not ready'));
+  expect(installedText).toBeInTheDocument();
 
   const button = screen.getByRole('button', { name: 'Initialize and start' });
   expect(button).toBeInTheDocument();

@@ -1,5 +1,5 @@
 /**********************************************************************
- * Copyright (C) 2023 Red Hat, Inc.
+ * Copyright (C) 2023-2024 Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,9 +16,10 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
-import { beforeEach, expect, test, vi } from 'vitest';
-import { DeploymentUtils } from './deployment-utils';
 import type { V1Deployment } from '@kubernetes/client-node';
+import { beforeEach, expect, test, vi } from 'vitest';
+
+import { DeploymentUtils } from './deployment-utils';
 
 let deploymentUtils: DeploymentUtils;
 
@@ -39,8 +40,25 @@ test('expect basic UI conversion', async () => {
     },
   } as V1Deployment;
   const deploymentUI = deploymentUtils.getDeploymentUI(deployment);
+  expect(deploymentUI.kind).toEqual('Deployment');
   expect(deploymentUI.name).toEqual('my-deployment');
   expect(deploymentUI.namespace).toEqual('test-namespace');
   expect(deploymentUI.replicas).toEqual(4);
   expect(deploymentUI.ready).toEqual(2);
+});
+
+test('expect conditions to be sorted even if they are not in order', async () => {
+  const deployment = {
+    status: {
+      conditions: [
+        { type: 'B', message: 'message B', reason: 'reason B' },
+        { type: 'A', message: 'message A', reason: 'reason A' },
+      ],
+    },
+  } as V1Deployment;
+  const deploymentUI = deploymentUtils.getDeploymentUI(deployment);
+  expect(deploymentUI.conditions).toEqual([
+    { type: 'A', message: 'message A', reason: 'reason A' },
+    { type: 'B', message: 'message B', reason: 'reason B' },
+  ]);
 });

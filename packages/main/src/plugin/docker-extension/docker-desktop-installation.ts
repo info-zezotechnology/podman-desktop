@@ -1,5 +1,5 @@
 /**********************************************************************
- * Copyright (C) 2022-2023 Red Hat, Inc.
+ * Copyright (C) 2022-2025 Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,22 +16,25 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
+import * as fs from 'node:fs';
+import { cp, readFile } from 'node:fs/promises';
+import * as os from 'node:os';
+import * as path from 'node:path';
+
+import type { RequestConfig } from '@docker/extension-api-client-types/dist/v1';
+import type Dockerode from 'dockerode';
 import type { IpcMainEvent, IpcMainInvokeEvent } from 'electron';
 import { ipcMain } from 'electron';
-import type { ContainerProviderRegistry } from '../container-registry.js';
-import * as fs from 'node:fs';
-import * as path from 'node:path';
-import * as os from 'node:os';
-import { readFile, cp } from 'node:fs/promises';
-import * as tarFs from 'tar-fs';
-import type Dockerode from 'dockerode';
-import type { PullEvent } from '../api/pull-event.js';
-import type { ContributionManager } from '../contribution-manager.js';
-import type { ApiSenderType } from '../api.js';
-import type { Directories } from '../directories.js';
 import type { Method, OptionsOfTextResponseBody } from 'got';
 import got, { RequestError } from 'got';
-import type { RequestConfig } from '@docker/extension-api-client-types/dist/v1';
+import * as tarFs from 'tar-fs';
+
+import type { PullEvent } from '/@api/pull-event.js';
+
+import type { ApiSenderType } from '../api.js';
+import type { ContainerProviderRegistry } from '../container-registry.js';
+import type { ContributionManager } from '../contribution-manager.js';
+import type { Directories } from '../directories.js';
 
 export class DockerDesktopInstallation {
   constructor(
@@ -45,7 +48,7 @@ export class DockerDesktopInstallation {
     tmpFolderPath: string,
     finalFolderPath: string,
     reportLog: (message: string) => void,
-  ) {
+  ): Promise<void> {
     // ok now, we need to copy files that we're interested in by looking at the metadata.json file
     const metadataFile = await readFile(`${tmpFolderPath}/metadata.json`, 'utf8');
     const metadata = JSON.parse(metadataFile);
@@ -81,12 +84,22 @@ export class DockerDesktopInstallation {
       }
       // do we have binaries ?
       if (metadata.host.binaries) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        metadata.host.binaries.forEach((binary: any) => {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          binary[platform].forEach((binaryPlatform: any) => {
-            hostFiles.push(binaryPlatform.path);
-          });
+        metadata.host.binaries.forEach((binary: { [x: string]: unknown[] }) => {
+          const platformBinaries = binary[platform];
+          if (platformBinaries !== undefined && Array.isArray(platformBinaries)) {
+            platformBinaries.forEach((binaryPlatform: unknown) => {
+              // check if object has path parameter
+              if (
+                typeof binaryPlatform === 'object' &&
+                binaryPlatform &&
+                'path' in binaryPlatform &&
+                typeof binaryPlatform.path === 'string'
+              ) {
+                hostFiles.push(binaryPlatform.path);
+              }
+            });
+          }
+          //}
         });
       }
     }
@@ -159,6 +172,29 @@ export class DockerDesktopInstallation {
       });
     });
   }
+  // encode the error to be sent over IPC
+  // this is needed because on the client it will display
+  // a generic error message 'Error invoking remote method' and
+  // it's not useful for end user
+  encodeIpcError(e: unknown): { name?: string; message: unknown; extra?: Record<string, unknown> } {
+    let builtError;
+    if (e instanceof Error) {
+      builtError = { name: e.name, message: e.message, extra: { ...e } };
+    } else {
+      builtError = { message: e };
+    }
+    return builtError;
+  }
+
+  ipcHandle(channel: string, listener: (event: IpcMainInvokeEvent, ...args: string[]) => Promise<void>): void {
+    ipcMain.handle(channel, async (...args) => {
+      try {
+        return { result: await Promise.resolve(listener(...args)) };
+      } catch (e) {
+        return { error: this.encodeIpcError(e) };
+      }
+    });
+  }
 
   async init(): Promise<void> {
     ipcMain.handle('docker-desktop-plugin:get-preload-script', async (): Promise<string> => {
@@ -175,10 +211,10 @@ export class DockerDesktopInstallation {
       },
     );
 
-    ipcMain.handle(
+    this.ipcHandle(
       'docker-desktop-plugin:delete',
-      async (event: IpcMainInvokeEvent, extensionName: string): Promise<void> => {
-        return this.contributionManager.deleteExtension(extensionName);
+      async (_event: IpcMainInvokeEvent, extensionId: string): Promise<void> => {
+        return this.contributionManager.deleteExtension(extensionId);
       },
     );
 
@@ -289,7 +325,7 @@ export class DockerDesktopInstallation {
 
     try {
       await this.containerRegistry.pullImage(providerConnectionInfo, imageName, (pullEvent: PullEvent) => {
-        if (pullEvent.progress || pullEvent.progressDetail) {
+        if (pullEvent.progress ?? pullEvent.progressDetail) {
           console.log(pullEvent.progress);
         } else if (pullEvent.status) {
           reportLog(pullEvent.status);
@@ -302,9 +338,9 @@ export class DockerDesktopInstallation {
 
     // ok search the image
     const images = await providerConnection.listImages();
-    // const foundMatchingImage = images.find(image => image.RepoTags?.find(tag => tag.includes('aquasec/trivy-docker-extension:0.4.3')));
-    const foundMatchingImage = images.find(
-      image => image.RepoTags?.find(tag => tag.includes(imageName) || imageName.includes(tag)),
+
+    const foundMatchingImage = images.find(image =>
+      image.RepoTags?.find(tag => tag.includes(imageName) || imageName.includes(tag)),
     );
 
     if (!foundMatchingImage) {
@@ -346,7 +382,16 @@ export class DockerDesktopInstallation {
     // strip the tag (ending with :something) from the image name if any
     let imageNameWithoutTag: string;
     if (imageName.includes(':')) {
-      imageNameWithoutTag = imageName.split(':')[0];
+      const splitVal = imageName.split(':')[0];
+      if (!splitVal) {
+        event.reply(
+          'docker-desktop-plugin:install-error',
+          logCallbackId,
+          `Invalid image name ${imageName}. Please provide a valid image name.`,
+        );
+        return;
+      }
+      imageNameWithoutTag = splitVal;
     } else {
       imageNameWithoutTag = imageName;
     }

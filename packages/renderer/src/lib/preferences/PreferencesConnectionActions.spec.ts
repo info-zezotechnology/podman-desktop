@@ -17,15 +17,18 @@
  ***********************************************************************/
 
 import '@testing-library/jest-dom/vitest';
-import { test, expect } from 'vitest';
+
 import { render, screen } from '@testing-library/svelte';
+import { expect, test } from 'vitest';
+
 import type {
   ProviderContainerConnectionInfo,
   ProviderInfo,
   ProviderKubernetesConnectionInfo,
-} from '../../../../main/src/plugin/api/provider-info';
-import type { IConnectionStatus } from './Util';
+} from '/@api/provider-info';
+
 import PreferencesConnectionActions from './PreferencesConnectionActions.svelte';
+import type { IConnectionStatus } from './Util';
 
 const containerProviderInfo: ProviderInfo = {
   id: 'provider',
@@ -46,10 +49,12 @@ const containerProviderInfo: ProviderInfo = {
   containerProviderConnectionInitialization: false,
   kubernetesProviderConnectionInitialization: false,
   extensionId: '',
+  cleanupSupport: false,
 };
 
 const containerConnection: ProviderContainerConnectionInfo = {
   name: 'machine',
+  displayName: 'machine',
   status: 'started',
   endpoint: {
     socketPath: 'socket',
@@ -67,11 +72,11 @@ const kubernetesConnection: ProviderKubernetesConnectionInfo = {
   lifecycleMethods: ['start', 'stop', 'delete'],
 };
 
-const updateConnectionStatus = () => {
+const updateConnectionStatus = (): void => {
   //nothing
 };
 
-const addConnectionToRestartingQueue = () => {
+const addConnectionToRestartingQueue = (): void => {
   //nothing
 };
 

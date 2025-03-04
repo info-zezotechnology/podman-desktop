@@ -19,21 +19,31 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import '@testing-library/jest-dom/vitest';
+
 import { beforeAll, test, vi } from 'vitest';
-import { verifyStatus } from './ProviderStatusTestHelper.spec';
+
 import ProviderConfigured from '/@/lib/dashboard/ProviderConfigured.svelte';
 
+import { verifyStatus } from './ProviderStatusTestHelper.spec';
+
+class ResizeObserver {
+  observe = vi.fn();
+  disconnect = vi.fn();
+  unobserve = vi.fn();
+}
+
 beforeAll(() => {
+  (window as any).ResizeObserver = ResizeObserver;
   (window as any).startProvider = vi.fn();
 
   // mock that autostart is configured as true
-  (window.getConfigurationValue as unknown) = (_key: string) => {
+  (window.getConfigurationValue as unknown) = (_key: string): boolean => {
     return true;
   };
 
   // fake the window.events object
   (window.events as unknown) = {
-    receive: (_channel: string, func: any) => {
+    receive: (_channel: string, func: any): void => {
       func();
     },
   };

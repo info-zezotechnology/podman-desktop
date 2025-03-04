@@ -16,15 +16,18 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 import '@testing-library/jest-dom/vitest';
-import { test, expect, vi, beforeAll } from 'vitest';
+
 import { fireEvent, render, screen } from '@testing-library/svelte';
-import type { NotificationCard } from '../../../../main/src/plugin/api/notification';
+import { beforeAll, expect, test, vi } from 'vitest';
+
+import type { NotificationCard } from '/@api/notification';
+
 import NotificationCardItem from './NotificationCardItem.svelte';
 
 const removeNotificationMock = vi.fn();
 
 beforeAll(() => {
-  (window as any).removeNotification = removeNotificationMock;
+  Object.defineProperty(window, 'removeNotification', { value: removeNotificationMock });
 });
 
 test('Expect notification card to show notification title, description and close button', async () => {

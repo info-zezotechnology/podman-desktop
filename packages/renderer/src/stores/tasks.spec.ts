@@ -1,5 +1,5 @@
 /**********************************************************************
- * Copyright (C) 2023 Red Hat, Inc.
+ * Copyright (C) 2024 Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,55 +16,121 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 import { get } from 'svelte/store';
-import { expect, test } from 'vitest';
-import type { NotificationTask, StatefulTask } from '../../../main/src/plugin/api/task';
-import { clearNotifications, isNotificationTask, isStatefulTask, tasksInfo } from './tasks';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
+
+import { type NotificationTaskInfo, TASK_STATUSES, type TaskInfo } from '/@api/taskInfo';
+
+import {
+  clearNotifications,
+  filtered,
+  getMatchingStatusFromSearchPattern,
+  isNotificationTask,
+  searchPattern,
+  type TaskInfoUI,
+  tasksInfo,
+} from './tasks';
 
 const started = new Date().getTime();
-const IN_PROGRESS_TASK: StatefulTask = {
+
+const SUCCEED_TASK: TaskInfo = {
   id: '1',
   name: 'Running Task 1',
-  state: 'running',
+  status: 'success',
+  state: 'completed',
   started,
-  status: 'in-progress',
+  cancellable: false,
 };
-const SUCCEED_TASK: StatefulTask = { id: '1', name: 'Running Task 1', state: 'completed', started, status: 'success' };
-const NOTIFICATION_TASK: NotificationTask = {
+
+const NOTIFICATION_TASK: NotificationTaskInfo = {
   id: '1',
   name: 'Notification Task 1',
-  description: ' description',
+  body: ' description',
+  state: 'completed',
+  status: 'success',
   started,
+  cancellable: false,
 };
 
-test('Expect clearNotification removes all completed tasks and notifications', async () => {
-  tasksInfo.set([SUCCEED_TASK, NOTIFICATION_TASK, IN_PROGRESS_TASK]);
-
-  clearNotifications();
-
-  const tasks = get(tasksInfo);
-  expect(tasks.length).equal(1);
-  expect(tasks[0].name).equal(IN_PROGRESS_TASK.name);
+beforeEach(() => {
+  tasksInfo.set([]);
+  vi.resetAllMocks();
 });
 
-test('return true if statefulTask', async () => {
-  const result = isStatefulTask(SUCCEED_TASK);
-  expect(result).toBeTruthy();
+test('Expect clearNotification to call window.clearTasks', async () => {
+  const clearTasksMock = vi.fn().mockResolvedValue(undefined);
+  (window as { clearTasks: () => void }).clearTasks = clearTasksMock;
+
+  await clearNotifications();
+
+  expect(clearTasksMock).toHaveBeenCalled();
 });
 
-test('return false if it is not a statefulTask', async () => {
-  const result = isStatefulTask(NOTIFICATION_TASK);
-  expect(result).toBeFalsy();
+describe('isNotificationTask', () => {
+  test('return true if notificationTask', async () => {
+    const result = isNotificationTask(NOTIFICATION_TASK);
+    expect(result).toBeTruthy();
+  });
+
+  test('return false if it is not a notificationTask', async () => {
+    const result = isNotificationTask(SUCCEED_TASK);
+    expect(result).toBeFalsy();
+  });
 });
 
-test('return true if notificationTask', async () => {
-  const result = isNotificationTask(NOTIFICATION_TASK);
-  expect(result).toBeTruthy();
+describe('getMatchingStatusFromSearchPattern', async () => {
+  test('works with success', () => {
+    const result = getMatchingStatusFromSearchPattern('this is an example is:success');
+
+    expect(result).toEqual('success');
+    expect(TASK_STATUSES).toContain(result);
+  });
+
+  test('return undefined without any status', () => {
+    const result = getMatchingStatusFromSearchPattern('this is an example');
+
+    expect(result).toBeUndefined();
+  });
 });
 
-test('return false if it is not a notificationTask', async () => {
-  const result = isNotificationTask(SUCCEED_TASK);
-  expect(result).toBeFalsy();
+describe('filtered', () => {
+  // set 3 tasks
+  const task1: TaskInfoUI = {
+    id: '1',
+    name: 'Completed Task 1',
+    state: 'completed',
+    status: 'failure',
+  } as unknown as TaskInfoUI;
+  const task2: TaskInfoUI = {
+    id: '2',
+    name: 'Completed Task 2',
+    state: 'completed',
+    status: 'canceled',
+  } as unknown as TaskInfoUI;
+  const task3: TaskInfoUI = {
+    id: '3',
+    name: 'Completed Task 3',
+    state: 'completed',
+    status: 'success',
+  } as unknown as TaskInfoUI;
+
+  test('find matching task name', () => {
+    searchPattern.set('Task 1');
+    tasksInfo.set([task1, task2, task3]);
+
+    const response = get(filtered);
+
+    // only task1 should be returned
+    expect(response).toEqual([task1]);
+  });
+
+  test('find a given status', () => {
+    searchPattern.set('is:canceled');
+    tasksInfo.set([task1, task2, task3]);
+
+    const response = get(filtered);
+
+    // only task2 should be returned
+    expect(response).toEqual([task2]);
+  });
 });

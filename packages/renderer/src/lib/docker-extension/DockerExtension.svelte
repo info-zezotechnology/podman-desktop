@@ -1,7 +1,8 @@
 <script lang="ts">
 import { afterUpdate, onMount } from 'svelte';
-import { contributions } from '../../stores/contribs';
+
 import Route from '../../Route.svelte';
+import { contributions } from '../../stores/contribs';
 
 export let name: string;
 let source: string | undefined;
@@ -28,21 +29,22 @@ onMount(async () => {
   source = currentContrib?.uiUri;
 });
 
-window.events?.receive('dev-tools:open-extension', (extensionId: any) => {
+window.events?.receive('dev-tools:open-extension', (extensionId: unknown) => {
   const extensionElement = document.getElementById(`dd-webview-${extensionId}`);
 
   if (extensionElement) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (extensionElement as any).openDevTools();
   }
 });
 </script>
 
 {#if source && preloadPath}
-  <Route path="/*" breadcrumb="{name}">
+  <Route path="/*" breadcrumb={name}>
     <webview
       id="dd-webview-{webviewId}"
       src="{source}?extensionName={currentContrib?.extensionId}&arch={arch}&hostname={hostname}&platform={platform}&vmServicePort={currentContrib?.vmServicePort}"
-      preload="{preloadPath}"
+      preload={preloadPath}
       style="height: 100%; width: 100%"></webview>
   </Route>
 {/if}

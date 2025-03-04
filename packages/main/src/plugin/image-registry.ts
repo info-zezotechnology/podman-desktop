@@ -1,5 +1,5 @@
 /**********************************************************************
- * Copyright (C) 2022 Red Hat, Inc.
+ * Copyright (C) 2022-2024 Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,27 +16,31 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
-import { Disposable } from './types/disposable.js';
-import type * as containerDesktopAPI from '@podman-desktop/api';
-import { Emitter } from './events/emitter.js';
-import type * as Dockerode from 'dockerode';
-import type { Telemetry } from './telemetry/telemetry.js';
 import * as crypto from 'node:crypto';
-import type { HttpsOptions, OptionsOfTextResponseBody } from 'got';
-import got, { HTTPError, RequestError } from 'got';
-import validator from 'validator';
-
-import { HttpProxyAgent, HttpsProxyAgent } from 'hpagent';
-import type { Certificates } from './certificates.js';
-import type { Proxy } from './proxy.js';
-import type { ApiSenderType } from './api.js';
+import * as fs from 'node:fs';
+import { createWriteStream } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import * as fs from 'node:fs';
-import * as nodeTar from 'tar';
-
 import { pipeline } from 'node:stream/promises';
-import { createWriteStream } from 'node:fs';
+
+import type * as containerDesktopAPI from '@podman-desktop/api';
+import type * as Dockerode from 'dockerode';
+import * as fzstd from 'fzstd';
+import type { HttpsOptions, OptionsOfTextResponseBody } from 'got';
+import got, { HTTPError, RequestError } from 'got';
+import { HttpProxyAgent, HttpsProxyAgent } from 'hpagent';
+import * as nodeTar from 'tar';
+import validator from 'validator';
+
+import type { ImageSearchOptions, ImageSearchResult, ImageTagsListOptions } from '/@api/image-registry.js';
+
+import { isMac, isWindows } from '../util.js';
+import type { ApiSenderType } from './api.js';
+import type { Certificates } from './certificates.js';
+import { Emitter } from './events/emitter.js';
+import type { Proxy } from './proxy.js';
+import type { Telemetry } from './telemetry/telemetry.js';
+import { Disposable } from './types/disposable.js';
 
 export interface RegistryAuthInfo {
   authUrl: string;
@@ -79,6 +83,9 @@ export class ImageRegistry {
     });
 
     this.proxyEnabled = this.proxy.isEnabled();
+    if (this.proxyEnabled) {
+      this.proxySettings = this.proxy.proxy;
+    }
   }
 
   extractRegistryServerFromImage(imageName: string): string | undefined {
@@ -86,7 +93,7 @@ export class ImageRegistry {
     const splitParts = imageName.split('/');
     if (
       splitParts.length === 1 ||
-      (!splitParts[0].includes('.') && !splitParts[0].includes(':') && splitParts[0] !== 'localhost')
+      (!splitParts[0]?.includes('.') && !splitParts[0]?.includes(':') && splitParts[0] !== 'localhost')
     ) {
       return 'docker.io';
     } else {
@@ -100,26 +107,33 @@ export class ImageRegistry {
    */
   getAuthconfigForImage(imageName: string): Dockerode.AuthConfig | undefined {
     const registryServer = this.extractRegistryServerFromImage(imageName);
-    let authconfig;
     if (registryServer) {
-      const matchingUrl = registryServer;
-      // grab authentication data for this server
-      const matchingRegistry = this.getRegistries().find(
-        registry => registry.serverUrl.toLowerCase() === matchingUrl.toLowerCase(),
-      );
-      if (matchingRegistry) {
-        let serveraddress = matchingRegistry.serverUrl.toLowerCase();
-        if (serveraddress === 'docker.io') {
-          serveraddress = 'https://index.docker.io/v2/';
-        }
-        authconfig = {
-          username: matchingRegistry.username,
-          password: matchingRegistry.secret,
-          serveraddress,
-        };
-      }
+      return this.getAuthconfigForServer(registryServer);
     }
-    return authconfig;
+    return undefined;
+  }
+
+  getAuthconfigForServer(registryServer: string): Dockerode.AuthConfig | undefined {
+    let matchingUrl = registryServer;
+    if (matchingUrl === 'index.docker.io') {
+      matchingUrl = 'docker.io';
+    }
+    // grab authentication data for this server
+    const matchingRegistry = this.getRegistries().find(
+      registry => registry.serverUrl.toLowerCase() === matchingUrl.toLowerCase(),
+    );
+    if (matchingRegistry) {
+      let serveraddress = matchingRegistry.serverUrl.toLowerCase();
+      if (serveraddress === 'docker.io') {
+        serveraddress = 'https://index.docker.io/v2/';
+      }
+      return {
+        username: matchingRegistry.username,
+        password: matchingRegistry.secret,
+        serveraddress,
+      };
+    }
+    return undefined;
   }
 
   /**
@@ -256,16 +270,11 @@ export class ImageRegistry {
       telemetryOptions = { error: error };
       throw error;
     } finally {
-      this.telemetryService.track(
-        'createRegistry',
-        Object.assign(
-          {
-            serverUrlHash: this.getRegistryHash(registryCreateOptions),
-            total: this.registries.length,
-          },
-          telemetryOptions,
-        ),
-      );
+      this.telemetryService.track('createRegistry', {
+        serverUrlHash: this.getRegistryHash(registryCreateOptions),
+        total: this.registries.length,
+        ...telemetryOptions,
+      });
     }
   }
 
@@ -302,7 +311,9 @@ export class ImageRegistry {
     const parsed = WWW_AUTH_REGEXP.exec(wwwAuthenticate);
     if (parsed?.groups) {
       const { realm, service, scope, scheme } = parsed.groups;
-      return { authUrl: realm, service, scope, scheme };
+      if (realm && scheme) {
+        return { authUrl: realm, service, scope, scheme };
+      }
     }
     return undefined;
   }
@@ -376,7 +387,7 @@ export class ImageRegistry {
 
     // check that there is no protocol prefix in the image name
     // like http:// or https://, etc.
-    if (imageName.match(/^[a-zA-Z0-9+.-]+:\/\//)) {
+    if (RegExp(/^[a-zA-Z0-9+.-]+:\/\//).exec(imageName)) {
       throw new Error(`Invalid image name: ${imageName}`);
     }
 
@@ -399,7 +410,7 @@ export class ImageRegistry {
       name = `library/${slashes[0]}`;
       valid = true;
     } else if (slashes.length === 2) {
-      if (slashes[0].startsWith('localhost')) {
+      if (slashes[0]?.startsWith('localhost') && slashes[1]) {
         registry = slashes[0];
         name = slashes[1];
       } else {
@@ -407,7 +418,7 @@ export class ImageRegistry {
         name = `${slashes[0]}/${slashes[1]}`;
       }
       valid = true;
-    } else if (slashes.length > 2) {
+    } else if (slashes.length > 2 && slashes[0]) {
       registry = slashes[0];
       name = `${slashes[1]}/${slashes[2]}`;
       valid = true;
@@ -479,12 +490,28 @@ export class ImageRegistry {
     const manifest = await this.getManifest(imageData, token);
 
     // now, get all layers 'application/vnd.oci.image.layer.v1.tar+gzip' and download and expand them
-    const layers = manifest.layers.filter(
+    const gzipLayers = manifest.layers.filter(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (layer: any) =>
         layer.mediaType === 'application/vnd.oci.image.layer.v1.tar+gzip' ||
         layer.mediaType === 'application/vnd.docker.image.rootfs.diff.tar.gzip',
     );
+
+    const zstdLayers = manifest.layers.filter(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (layer: any) => layer.mediaType === 'application/vnd.oci.image.layer.v1.tar+zstd',
+    );
+
+    let layers: { digest: string; size: number; mediaType: string }[] = [];
+    if (zstdLayers.length > 0) {
+      // using zstd layers
+      layers = zstdLayers;
+    } else if (gzipLayers.length > 0) {
+      // using gzip layers
+      layers = gzipLayers;
+    } else {
+      throw new Error(`No gzip or zstd layers found for the image ${imageName}`);
+    }
 
     // total size of all layers
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -494,7 +521,20 @@ export class ImageRegistry {
     let currentDownloaded = 0;
     for (const layer of layers) {
       const layerDigest = layer.digest;
-      await this.fetchAndExtractLayer(imageData, layerDigest, destFolder, token, currentDownloaded, totalSize, logger);
+      let compressionType: 'gzip' | 'zstd' = 'gzip';
+      if (layer.mediaType === 'application/vnd.oci.image.layer.v1.tar+zstd') {
+        compressionType = 'zstd';
+      }
+      await this.fetchAndExtractLayer(
+        imageData,
+        layerDigest,
+        compressionType,
+        destFolder,
+        token,
+        currentDownloaded,
+        totalSize,
+        logger,
+      );
       currentDownloaded += layer.size;
     }
   }
@@ -502,6 +542,7 @@ export class ImageRegistry {
   protected async fetchAndExtractLayer(
     imageData: ImageRegistryNameTag,
     digest: string,
+    compressionType: 'gzip' | 'zstd',
     destFolder: string,
     token: string,
     currentDownloaded: number,
@@ -509,10 +550,10 @@ export class ImageRegistry {
     logger: (message: string) => void,
   ): Promise<void> {
     const options = this.getOptions();
-    options.headers = options.headers || {};
+    options.headers = options.headers ?? {};
 
     // add the Bearer token
-    options.headers.Authorization = `Bearer ${token}`;
+    options.headers['Authorization'] = `Bearer ${token}`;
 
     // replace all special characters with _ in digest
     const digestWithoutSpecialChars = digest.replace(/[^a-zA-Z0-9]/g, '_');
@@ -521,7 +562,8 @@ export class ImageRegistry {
       await fs.promises.mkdir(destFolder, { recursive: true });
     }
 
-    const tmpFileName = path.resolve(os.tmpdir(), `${digestWithoutSpecialChars}.tar`);
+    const suffix = compressionType === 'gzip' ? '.tar' : '.zst';
+    const tmpFileName = path.resolve(os.tmpdir(), `${digestWithoutSpecialChars}${suffix}`);
 
     // ensure the folder exists
     const parentDir = path.dirname(tmpFileName);
@@ -535,18 +577,32 @@ export class ImageRegistry {
 
     readStream.on('downloadProgress', ({ transferred }) => {
       const globalPercentage = Math.round(((transferred + currentDownloaded) / totalSize) * 100);
-      logger(`Downloading ${digest}.tar - ${globalPercentage}% - (${transferred + currentDownloaded}/${totalSize})`);
+      logger(
+        `Downloading ${digest}${suffix} - ${globalPercentage}% - (${transferred + currentDownloaded}/${totalSize})`,
+      );
     });
     await pipeline(readStream, createWriteStream(tmpFileName));
-    await nodeTar.extract({ file: tmpFileName, cwd: destFolder });
+    // in case of zstd, we need to unpack the file first
+    if (compressionType === 'zstd') {
+      //use fstd library to extract the file
+      const content = await fs.promises.readFile(tmpFileName);
+      const decompressed = fzstd.decompress(content);
+      const unpackedFileName = tmpFileName.replace('.zst', '.tar');
+      await fs.promises.writeFile(unpackedFileName, decompressed);
+      await nodeTar.extract({ file: unpackedFileName, cwd: destFolder });
+    } else {
+      await nodeTar.extract({ file: tmpFileName, cwd: destFolder });
+    }
+    // remove the temporary file
+    await fs.promises.rm(tmpFileName);
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   protected async fetchOciImageConfig(imageData: ImageRegistryNameTag, digest: string, token: string): Promise<any> {
     const options = this.getOptions();
-    options.headers = options.headers || {};
+    options.headers = options.headers ?? {};
     // add the Bearer token
-    options.headers.Authorization = `Bearer ${token}`;
+    options.headers['Authorization'] = `Bearer ${token}`;
 
     // say we want to return JSON from got
     const blobURL = `${imageData.registryURL}/${imageData.name}/blobs/${digest}`;
@@ -575,18 +631,18 @@ export class ImageRegistry {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ): Promise<any> {
     const options = this.getOptions();
-    options.headers = options.headers || {};
+    options.headers = options.headers ?? {};
 
     // add the Bearer token
-    options.headers.Authorization = `Bearer ${token}`;
+    options.headers['Authorization'] = `Bearer ${token}`;
 
     // add the manifest accept headers
     const acceptHeaders = [];
-    if (options.headers.Accept) {
-      if (typeof options.headers.Accept === 'string') {
-        acceptHeaders.push(options.headers.Accept);
-      } else if (Array.isArray(options.headers.Accept)) {
-        acceptHeaders.push(...options.headers.Accept);
+    if (options.headers['Accept']) {
+      if (typeof options.headers['Accept'] === 'string') {
+        acceptHeaders.push(options.headers['Accept']);
+      } else if (Array.isArray(options.headers['Accept'])) {
+        acceptHeaders.push(...options.headers['Accept']);
       }
     }
     acceptHeaders.push('application/vnd.oci.image.manifest.v1+json');
@@ -596,7 +652,7 @@ export class ImageRegistry {
     acceptHeaders.push('application/vnd.docker.distribution.manifest.list.v2+json');
     acceptHeaders.push('application/vnd.oci.image.index.v1+json');
 
-    options.headers.Accept = acceptHeaders;
+    options.headers['Accept'] = acceptHeaders;
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let parsedManifest: any;
@@ -613,25 +669,38 @@ export class ImageRegistry {
       }
     }
 
-    // check mediaType of the manifest
-    // if it is application/vnd.oci.image.index.v1+json it is an index
-    if (parsedManifest.mediaType === 'application/vnd.oci.image.index.v1+json') {
+    // https://github.com/opencontainers/image-spec/blob/main/image-index.md
+    // check schemaVersion and (mediaType of the manifest or if it contains manifests field being an array)
+    if (
+      parsedManifest.schemaVersion === 2 &&
+      (parsedManifest.mediaType === 'application/vnd.oci.image.index.v1+json' ||
+        parsedManifest.mediaType === 'application/vnd.docker.distribution.manifest.list.v2+json' ||
+        Array.isArray(parsedManifest.manifests))
+    ) {
       // need to grab correct manifest from the index corresponding to our platform
       let platformArch: 'amd64' | 'arm64' = 'amd64';
       const arch = os.arch();
-      if (arch === 'x64') {
-        // default to amd64
-        platformArch = 'amd64';
-      } else if (arch === 'arm64') {
+      // only change arch if we are on arm64
+      if (arch === 'arm64') {
         platformArch = 'arm64';
       }
 
+      let platformOs: 'linux' | 'windows' | 'darwin' = 'linux';
+      if (isMac()) {
+        platformOs = 'darwin';
+      } else if (isWindows()) {
+        platformOs = 'windows';
+      }
       // find the manifest corresponding to our platform
-      const matchedManifest = parsedManifest.manifests.find(
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (manifestIterator: any) =>
-          manifestIterator.mediaType === 'application/vnd.oci.image.manifest.v1+json' &&
-          manifestIterator.platform.architecture === platformArch,
+      const matchedManifest = this.findBestManifest(
+        parsedManifest.manifests.filter(
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (m: any) =>
+            m.mediaType === 'application/vnd.oci.image.manifest.v1+json' ||
+            m.mediaType === 'application/vnd.docker.distribution.manifest.v2+json',
+        ),
+        platformArch,
+        platformOs,
       );
 
       // need to grab that manifest
@@ -641,9 +710,50 @@ export class ImageRegistry {
         const manifestURL = `${imageData.registryURL}/${imageData.name}/manifests/${matchedManifestDigest}`;
         return this.getManifestFromURL(manifestURL, imageData, token);
       }
-      throw new Error('Unable to find a manifest corresponding to the platform/architecture');
+      throw new Error(
+        `Unable to find a manifest corresponding to the platform os/architecture ${platformOs}/${platformArch}`,
+      );
     }
     return parsedManifest;
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  findBestManifest(manifests: any[], wantedArch: string, wantedOs: string): any | undefined {
+    // eslint-disable-next-line etc/no-commented-out-code
+    // manifestsMap [os] [arch] = manifest
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const manifestsMap = new Map<string, Map<string, any>>();
+    manifests.forEach(manifest => {
+      const arch = manifest.platform.architecture;
+      const os = manifest.platform.os;
+      let manifestsForOs = manifestsMap.get(os);
+      if (!manifestsForOs) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        manifestsForOs = new Map<string, any>();
+      }
+      manifestsForOs.set(arch, manifest);
+      manifestsMap.set(os, manifestsForOs);
+    });
+
+    let wantedOses = manifestsMap.get(wantedOs);
+    if (!wantedOses) {
+      wantedOses = manifestsMap.get('linux');
+    }
+
+    const keys = Array.from(wantedOses?.keys() ?? []);
+    if (!wantedOses || !keys[0]) {
+      return;
+    }
+
+    let wanted = wantedOses.get(wantedArch);
+    if (!wanted) {
+      if (wantedOses.size === 1) {
+        wanted = wantedOses.get(keys[0]);
+      } else {
+        wanted = wantedOses.get('amd64');
+      }
+    }
+    return wanted;
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -677,12 +787,12 @@ export class ImageRegistry {
         if (wwwAuthenticate) {
           const authInfo = this.extractAuthData(wwwAuthenticate);
           if (authInfo) {
-            const url = new URL(authInfo.authUrl);
             scheme = authInfo.scheme?.toLowerCase();
             // in case of basic auth, we use directly the registry URL
             if (scheme === 'basic') {
               return { authUrl: registryUrl, scheme };
             }
+            const url = new URL(authInfo.authUrl);
             if (authInfo.service) {
               url.searchParams.set('service', authInfo.service);
             }
@@ -740,6 +850,13 @@ export class ImageRegistry {
     let rawResponse: string | undefined;
     const options = this.getOptions();
 
+    // if we have auth for this registry, add basic auth to the headers
+    const authServer = this.getAuthconfigForServer(imageData.registry);
+    if (authServer) {
+      options.headers = options.headers ?? {};
+      const loginAndPassWord = `${authServer.username}:${authServer.password}`;
+      options.headers['Authorization'] = `Basic ${Buffer.from(loginAndPassWord).toString('base64')}`;
+    }
     // need to replace repository%3Auser with repository:user coming from imageData
     let tokenUrl = authInfo.authUrl.replace('user%2Fimage', imageData.name.replaceAll('/', '%2F'));
 
@@ -805,6 +922,49 @@ export class ImageRegistry {
     }
     if (!rawResponse?.includes('token')) {
       throw Error('Unable to validate provided credentials.');
+    }
+  }
+
+  async searchImages(options: ImageSearchOptions): Promise<ImageSearchResult[]> {
+    try {
+      if (!options.registry) {
+        options.registry = 'https://index.docker.io';
+      }
+      if (options.registry === 'docker.io') {
+        options.registry = 'index.docker.io';
+      }
+      if (!options.registry.startsWith('http')) {
+        options.registry = 'https://' + options.registry;
+      }
+      const resultJSON = await got.get(
+        `${options.registry}/v1/search?q=${options.query}&n=${options.limit ?? 25}`,
+        this.getOptions(),
+      );
+      return JSON.parse(resultJSON.body).results;
+    } catch (e: unknown) {
+      throw new Error(`searching images. ${String(e)}`);
+    }
+  }
+
+  async listImageTags(options: ImageTagsListOptions): Promise<string[]> {
+    const imageData = this.extractImageDataFromImageName(options.image);
+
+    // grab auth info from the registry
+    const authInfo = await this.getAuthInfo(imageData.registry);
+    const token = await this.getToken(authInfo, imageData);
+    if (authInfo.scheme.toLowerCase() !== 'bearer') {
+      throw new Error(`Unsupported auth scheme: ${authInfo.scheme}`);
+    }
+    const opts = this.getOptions();
+    opts.headers = opts.headers ?? {};
+    // add the Bearer token
+    opts.headers['Authorization'] = `Bearer ${token}`;
+
+    try {
+      const catalog = await got.get(`${imageData.registryURL}/${imageData.name}/tags/list`, opts);
+      return JSON.parse(catalog.body).tags;
+    } catch (e: unknown) {
+      throw new Error(`getting tags of image ${options.image}. ${String(e)}`);
     }
   }
 }

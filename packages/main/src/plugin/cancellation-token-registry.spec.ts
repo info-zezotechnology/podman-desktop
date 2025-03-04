@@ -1,5 +1,5 @@
 /**********************************************************************
- * Copyright (C) 2023 Red Hat, Inc.
+ * Copyright (C) 2023-2025 Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,12 +16,12 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
-import { beforeAll, expect, expectTypeOf, test } from 'vitest';
+import { assertType, beforeAll, expect, test } from 'vitest';
+
 import { CancellationTokenSource } from './cancellation-token.js';
 import { CancellationTokenRegistry } from './cancellation-token-registry.js';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let cancellationTokenRegistry: any;
+let cancellationTokenRegistry: CancellationTokenRegistry;
 
 /* eslint-disable @typescript-eslint/no-empty-function */
 beforeAll(() => {
@@ -31,8 +31,8 @@ beforeAll(() => {
 test('Should return CancellationTokenSources with progressive id', async () => {
   const tokenSourceId1 = cancellationTokenRegistry.createCancellationTokenSource();
   const tokenSourceid2 = cancellationTokenRegistry.createCancellationTokenSource();
-  expectTypeOf(tokenSourceId1).toBeNumber();
-  expectTypeOf(tokenSourceid2).toBeNumber();
+  assertType<number>(tokenSourceId1);
+  assertType<number>(tokenSourceid2);
   expect(tokenSourceid2).toBeGreaterThan(tokenSourceId1);
 });
 
@@ -49,8 +49,8 @@ test('Return undefined if id not valid', async () => {
 
 test('Return CancellationToken if id valid', async () => {
   const tokenSourceId = cancellationTokenRegistry.createCancellationTokenSource();
-  expectTypeOf(tokenSourceId).toBeNumber();
+  assertType<number>(tokenSourceId);
   const token = cancellationTokenRegistry.getCancellationTokenSource(tokenSourceId);
-  expectTypeOf(token).toBeObject();
-  expect(token instanceof CancellationTokenSource);
+  expect(token).toBeDefined();
+  expect(token instanceof CancellationTokenSource).toBeTruthy();
 });

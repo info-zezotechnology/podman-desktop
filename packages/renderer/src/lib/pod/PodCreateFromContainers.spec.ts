@@ -17,13 +17,16 @@
  ***********************************************************************/
 
 import '@testing-library/jest-dom/vitest';
-import { test, expect, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/svelte';
-import { providerInfos } from '../../stores/providers';
-import type { ProviderInfo } from '../../../../main/src/plugin/api/provider-info';
-import { podCreationHolder, type PodCreation } from '/@/stores/creation-from-containers-store';
-import PodCreateFromContainers from './PodCreateFromContainers.svelte';
+
 import type { ContainerInspectInfo } from '@podman-desktop/api';
+import { fireEvent, render, screen } from '@testing-library/svelte';
+import { expect, test, vi } from 'vitest';
+
+import { type PodCreation, podCreationHolder } from '/@/stores/creation-from-containers-store';
+import type { ProviderInfo } from '/@api/provider-info';
+
+import { providerInfos } from '../../stores/providers';
+import PodCreateFromContainers from './PodCreateFromContainers.svelte';
 
 const providerInfo: ProviderInfo = {
   id: 'podman',
@@ -38,6 +41,7 @@ const providerInfo: ProviderInfo = {
   containerConnections: [
     {
       name: 'machine',
+      displayName: 'machine',
       status: 'started',
       endpoint: {
         socketPath: 'socket',
@@ -55,6 +59,7 @@ const providerInfo: ProviderInfo = {
   containerProviderConnectionCreationDisplayName: 'Podman machine',
   kubernetesProviderConnectionInitialization: false,
   extensionId: '',
+  cleanupSupport: false,
 };
 
 const podCreation: PodCreation = {
@@ -250,7 +255,7 @@ test('Show warning if multiple containers use the same port', async () => {
   podCreationHolder.set(podCreationSamePortContainers);
 
   render(PodCreateFromContainers, {});
-  const warningLabel = await screen.findByLabelText('warning');
+  const warningLabel = await screen.findByLabelText('Warning Message Content');
   expect(warningLabel).toBeInTheDocument();
 });
 

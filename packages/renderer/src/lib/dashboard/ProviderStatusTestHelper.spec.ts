@@ -16,25 +16,17 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
-import type { ComponentProps, SvelteComponent } from 'svelte';
-
-import { render, screen } from '@testing-library/svelte';
 import type { ProviderStatus } from '@podman-desktop/api';
-import type { ProviderInfo } from '../../../../main/src/plugin/api/provider-info';
-import { InitializeAndStartMode } from '/@/lib/dashboard/ProviderInitUtils';
+import { render, screen } from '@testing-library/svelte';
+import type { Component } from 'svelte';
 import { expect, test } from 'vitest';
 
-type Constructor<T> = new (...args: any[]) => T;
+import { type InitializationContext, InitializeAndStartMode } from '/@/lib/dashboard/ProviderInitUtils';
+import type { ProviderInfo } from '/@api/provider-info';
 
-type SvelteComponentOptions<C extends SvelteComponent> = ComponentProps<C> | { props: ComponentProps<C> };
-
-export function verifyStatus<C extends SvelteComponent>(
-  component: Constructor<C>,
-  status: ProviderStatus,
-  sameVersions: boolean,
-): void {
+export function verifyStatus<
+  C extends Component<{ provider: ProviderInfo; initializationContext: InitializationContext }>,
+>(component: C, status: ProviderStatus, sameVersions: boolean): void {
   const provider: ProviderInfo = {
     containerConnections: [],
     containerProviderConnectionCreation: false,
@@ -56,13 +48,14 @@ export function verifyStatus<C extends SvelteComponent>(
       version: sameVersions ? '1.0.0' : '1.0.1',
     },
     extensionId: '',
+    cleanupSupport: false,
   };
 
-  const initializationContext = { mode: InitializeAndStartMode };
-  render(component, {
+  const initializationContext: InitializationContext = { mode: InitializeAndStartMode };
+  render<Component<{ provider: ProviderInfo; initializationContext: InitializationContext }>>(component, {
     provider: provider,
     initializationContext: initializationContext,
-  } as unknown as SvelteComponentOptions<C>);
+  });
 
   const updateButton = screen.queryByRole('button', { name: 'Update to 1.0.1' });
   if (sameVersions) {

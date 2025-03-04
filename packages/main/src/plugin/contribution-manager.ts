@@ -1,5 +1,5 @@
 /**********************************************************************
- * Copyright (C) 2022 Red Hat, Inc.
+ * Copyright (C) 2022-2025 Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,29 +16,47 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
-import * as path from 'node:path';
 import * as fs from 'node:fs';
-import type { ContributionInfo } from './api/contribution-info.js';
-import type { ApiSenderType } from './api.js';
-import type { Directories } from './directories.js';
-import { getFreePort } from './util/port.js';
-import type { Exec } from './util/exec.js';
-import * as jsYaml from 'js-yaml';
+import * as path from 'node:path';
+
 import type { RunResult } from '@podman-desktop/api';
-import type { ContainerProviderRegistry } from './container-registry.js';
+import * as jsYaml from 'js-yaml';
+
+import type { ContributionInfo } from '/@api/contribution-info.js';
+
 import { isLinux, isMac, isWindows } from '../util.js';
+import type { ApiSenderType } from './api.js';
+import type { ContainerProviderRegistry } from './container-registry.js';
+import type { Directories } from './directories.js';
+import type { Exec } from './util/exec.js';
+import { getFreePort } from './util/port.js';
 
 export interface DockerExtensionMetadata {
   name: string;
+  description?: string;
+  extensionId?: string;
+  publisher?: string;
+  title?: string;
+  version?: string;
   vm?: {
     composefile?: string;
     exposes?: {
       socket?: string;
     };
   };
+  ui: {
+    [key: string]: {
+      title: string;
+      src: string;
+      root: string;
+      backend?: {
+        socket: string;
+      };
+    };
+  };
 }
 
-interface ComposeObject {
+export interface ComposeObject {
   services: {
     [key: string]: {
       image?: string;
@@ -92,7 +110,7 @@ export class ContributionManager {
     const allContribs = await Promise.all(
       matchingDirectories.map(async directory => {
         const metadata = await this.loadMetadata(directory);
-        const extensionId = metadata.name;
+        const extensionId = metadata.extensionId ?? metadata.name;
         // grab only UI contributions for now
         if (!metadata.ui) {
           return [];
@@ -104,6 +122,9 @@ export class ContributionManager {
         const uiKeys = Object.keys(metadata.ui);
         return uiKeys.map(key => {
           const uiMetadata = metadata.ui[key];
+          if (!uiMetadata) {
+            throw new Error('Invalid metadata');
+          }
 
           const uiUri = `file://${path.join(directory, uiMetadata.root, uiMetadata.src)}`;
 
@@ -124,6 +145,10 @@ export class ContributionManager {
           const contribution: ContributionInfo = {
             id: key,
             extensionId,
+            description: metadata.description ?? '',
+            displayName: uiMetadata.title,
+            publisher: metadata.publisher ?? '',
+            version: metadata.version ?? '',
             name: uiMetadata.title,
             type: 'docker',
             uiUri,
@@ -177,6 +202,7 @@ export class ContributionManager {
         return undefined;
       }
     }
+    return undefined;
   }
 
   async startVM(extensionId: string, vmCustomizedComposeFile?: string, monitorVM?: boolean): Promise<void> {
@@ -292,8 +318,9 @@ export class ContributionManager {
     }
 
     // check we have the podman desktop service running
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const podmanDesktopService = jsonResultPs.find((item: any) => item.Service === 'podman-desktop-socket');
+    const podmanDesktopService = jsonResultPs.find((item: unknown) => {
+      return item && typeof item === 'object' && 'Service' in item && item.Service === 'podman-desktop-socket';
+    });
 
     if (!podmanDesktopService) {
       throw new Error(`unable to find the podman-desktop-socket service in the ps command ${result.stdout}`);
@@ -364,9 +391,8 @@ export class ContributionManager {
     return this.exec.exec(composeBinary, args, { env, cwd });
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  async loadBase64Icon(rootDirectory: string, metadata: any): Promise<string> {
-    if (!metadata.icon) {
+  async loadBase64Icon(rootDirectory: string, metadata: unknown): Promise<string> {
+    if (!metadata || typeof metadata !== 'object' || !('icon' in metadata) || typeof metadata.icon !== 'string') {
       return this.EMPTY_ICON;
     }
     const iconPath = path.join(rootDirectory, metadata.icon);
@@ -378,8 +404,7 @@ export class ContributionManager {
       .then(data => 'data:image/svg+xml;base64,' + Buffer.from(data).toString('base64'));
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  async loadMetadata(rootDirectory: string): Promise<any> {
+  async loadMetadata(rootDirectory: string): Promise<DockerExtensionMetadata> {
     const manifestPath = path.join(rootDirectory, 'metadata.json');
     if (!fs.existsSync(manifestPath)) {
       throw new Error('Invalid path : ' + manifestPath);
@@ -533,6 +558,7 @@ export class ContributionManager {
       await fs.promises.writeFile(composeFilePath, jsYaml.dump(afterTransformationCompose, { lineWidth: 1000 }));
       return composeFilePath;
     }
+    return undefined;
   }
 
   // enhance the compose file with different things like:
@@ -578,32 +604,34 @@ export class ContributionManager {
       const service = services[serviceKey];
 
       // add custom labels
-      service.labels = service.labels || {};
-      service.labels['io.podman_desktop.PodmanDesktop.extension'] = 'true';
-      service.labels['io.podman_desktop.PodmanDesktop.extensionName'] = extensionName;
+      if (service) {
+        service.labels = service?.labels ?? {};
+        service.labels['io.podman_desktop.PodmanDesktop.extension'] = 'true';
+        service.labels['io.podman_desktop.PodmanDesktop.extensionName'] = extensionName;
 
-      // then for compatibility
-      service.labels['com.docker.desktop.extension'] = 'true';
-      service.labels['com.docker.desktop.extension.name'] = extensionName;
+        // then for compatibility
+        service.labels['com.docker.desktop.extension'] = 'true';
+        service.labels['com.docker.desktop.extension.name'] = extensionName;
 
-      if (service?.image === '${DESKTOP_PLUGIN_IMAGE}') {
-        service.image = ociImageName;
+        if (service?.image === '${DESKTOP_PLUGIN_IMAGE}') {
+          service.image = ociImageName;
 
-        // flag this container as being the VM service label
-        service.labels['io.podman_desktop.PodmanDesktop.vm-service'] = 'true';
-      }
+          // flag this container as being the VM service label
+          service.labels['io.podman_desktop.PodmanDesktop.vm-service'] = 'true';
+        }
 
-      // apply restart policy if not specified
-      service.deploy = service.deploy || {};
-      service.deploy.restart_policy = service.deploy.restart_policy || {};
-      if (!service.deploy.restart_policy.condition) {
-        service.deploy.restart_policy.condition = 'always';
-      }
+        // apply restart policy if not specified
+        service.deploy = service.deploy ?? {};
+        service.deploy.restart_policy = service.deploy.restart_policy ?? {};
+        if (!service.deploy.restart_policy.condition) {
+          service.deploy.restart_policy.condition = 'always';
+        }
 
-      // add the volume from the podman-desktop-socket (only if not inside the service itself)
-      if (serviceKey !== PODMAN_DESKTOP_SOCKET_SERVICE) {
-        service.volumes_from = service.volumes_from || [];
-        service.volumes_from.push(PODMAN_DESKTOP_SOCKET_SERVICE);
+        // add the volume from the podman-desktop-socket (only if not inside the service itself)
+        if (serviceKey !== PODMAN_DESKTOP_SOCKET_SERVICE) {
+          service.volumes_from = service.volumes_from ?? [];
+          service.volumes_from.push(PODMAN_DESKTOP_SOCKET_SERVICE);
+        }
       }
     }
     return composeObject;

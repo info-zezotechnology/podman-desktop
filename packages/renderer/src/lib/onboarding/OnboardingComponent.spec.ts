@@ -16,12 +16,16 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 import '@testing-library/jest-dom/vitest';
-import { test, expect, beforeAll, vi } from 'vitest';
+
 import { render, screen } from '@testing-library/svelte';
-import OnboardingComponent from './OnboardingComponent.svelte';
+import { tick } from 'svelte';
+import { beforeAll, expect, test, vi } from 'vitest';
+
 import { configurationProperties } from '/@/stores/configurationProperties';
 import { providerInfos } from '/@/stores/providers';
-import type { ProviderInfo } from '../../../../main/src/plugin/api/provider-info';
+import type { ProviderInfo } from '/@api/provider-info';
+
+import OnboardingComponent from './OnboardingComponent.svelte';
 
 const providerInfo: ProviderInfo = {
   id: 'podman',
@@ -36,6 +40,7 @@ const providerInfo: ProviderInfo = {
   containerConnections: [
     {
       name: 'machine',
+      displayName: 'machine',
       status: 'started',
       endpoint: {
         socketPath: 'socket',
@@ -53,32 +58,30 @@ const providerInfo: ProviderInfo = {
   containerProviderConnectionCreationDisplayName: 'Podman machine',
   kubernetesProviderConnectionInitialization: false,
   extensionId: 'id',
+  cleanupSupport: false,
 };
 
-async function waitRender(customProperties: any): Promise<void> {
-  const result = render(OnboardingComponent, { ...customProperties });
-  // wait that result.component.$$.ctx[2] is set
-  while (result.component.$$.ctx[2] === undefined) {
-    await new Promise(resolve => setTimeout(resolve, 100));
-  }
+async function waitRender(customProperties: object): Promise<void> {
+  render(OnboardingComponent, { ...customProperties });
+  await tick();
 }
 
 beforeAll(() => {
-  (window as any).getConfigurationValue = vi.fn();
-  (window as any).updateConfigurationValue = vi.fn();
-  (window as any).getOsMemory = vi.fn();
-  (window as any).getOsCpu = vi.fn();
-  (window as any).getOsFreeDiskSize = vi.fn();
-  (window as any).getCancellableTokenSource = vi.fn();
-  (window as any).auditConnectionParameters = vi.fn();
-  (window as any).telemetryTrack = vi.fn();
+  Object.defineProperty(window, 'getConfigurationValue', { value: vi.fn() });
+  Object.defineProperty(window, 'updateConfigurationValue', { value: vi.fn() });
+  Object.defineProperty(window, 'getOsMemory', { value: vi.fn() });
+  Object.defineProperty(window, 'getOsCpu', { value: vi.fn() });
+  Object.defineProperty(window, 'getOsFreeDiskSize', { value: vi.fn() });
+  Object.defineProperty(window, 'getCancellableTokenSource', { value: vi.fn() });
+  Object.defineProperty(window, 'auditConnectionParameters', { value: vi.fn() });
+  Object.defineProperty(window, 'telemetryTrack', { value: vi.fn() });
 
   Object.defineProperty(window, 'matchMedia', {
     value: () => {
       return {
         matches: false,
-        addListener: () => {},
-        removeListener: () => {},
+        addListener: (): void => {},
+        removeListener: (): void => {},
       };
     },
   });

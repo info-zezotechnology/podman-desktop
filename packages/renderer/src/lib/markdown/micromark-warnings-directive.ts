@@ -16,7 +16,11 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
+/* eslint-disable @typescript-eslint/ban-ts-comment */
+// @ts-nocheck
+import type { Directive } from 'micromark-extension-directive';
 import type { CompileContext } from 'micromark-util-types';
+
 import { createUIButton } from './component/micromark-button';
 import { createExpandableSection } from './component/micromark-expandable-section';
 import type { ExpandableSectionProps } from './micromark-utils';
@@ -31,15 +35,15 @@ const characterReferences = new Map([
   ['&gt;', '>'],
 ]);
 
-export function decode(value: string) {
+export function decode(value: string): string {
   return value.replace(/(&quot;|&amp;|&gt;|&lt;)/g, replace);
 
   /**
    * @param {string} value
    * @returns {string}
    */
-  function replace(value: string) {
-    return characterReferences.get(value) || '';
+  function replace(value: string): string {
+    return characterReferences.get(value) ?? '';
   }
 }
 
@@ -47,7 +51,7 @@ export function decode(value: string) {
  * Allow to generate a link markdown directive that executes a command
  * syntax is the following:
  * :warnings[[{item}, {item}]]
- * where item is 
+ * where item is
  * {
     state: string;
     description: string;
@@ -66,7 +70,7 @@ export function decode(value: string) {
 /**
  * @type {import('micromark-extension-directive').Handle}
  */
-export function warnings(this: CompileContext, d: any) {
+export function warnings(this: CompileContext, d: Directive): boolean {
   // Make sure it's not part of a text directive
   if (d.type !== 'textDirective') {
     return false;
@@ -75,10 +79,10 @@ export function warnings(this: CompileContext, d: any) {
   // Add the div tag which depicts the wrapper list containing all items
   this.tag('<div class="flex flex-col space-y-3">');
 
-  const items = JSON.parse(decode(d.label) || '');
+  const items = JSON.parse(decode(d.label) ?? '');
   for (const item of items) {
     // start the div representing one row
-    this.tag('<div class="flex flex-row space-x-3 bg-charcoal-600 p-4 rounded-md items-start">');
+    this.tag('<div class="flex flex-row space-x-3 bg-[var(--pd-invert-content-card-bg)] p-4 rounded-md items-start">');
     // add icon representing the warning status
     this.tag('<div class="mr-2 flex justify-center">');
     this.tag(item.state === 'successful' ? '✅' : '❌');
@@ -86,7 +90,7 @@ export function warnings(this: CompileContext, d: any) {
     // add the warning description
     if (item.description) {
       // add title to the left
-      this.tag('<div class="flex-grow">');
+      this.tag('<div class="grow">');
       this.raw(item.description);
       this.tag('</div>');
     }

@@ -1,5 +1,5 @@
 /**********************************************************************
- * Copyright (C) 2023 Red Hat, Inc.
+ * Copyright (C) 2023-2025 Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,34 +16,33 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 import '@testing-library/jest-dom/vitest';
-import { test, vi, type Mock, beforeAll, describe, expect, beforeEach, afterEach } from 'vitest';
+
 import { fireEvent, render, screen } from '@testing-library/svelte';
-import { runImageInfo } from '../../stores/run-image-store';
-import RunImage from '/@/lib/image/RunImage.svelte';
-import type { ImageInspectInfo } from '../../../../main/src/plugin/api/image-inspect-info';
-import { mockBreadcrumb } from '../../stores/breadcrumb.spec';
 import userEvent from '@testing-library/user-event';
+import { tick } from 'svelte';
 import { router } from 'tinro';
+import { afterEach, beforeAll, beforeEach, describe, expect, type Mock, test, vi } from 'vitest';
+
+import RunImage from '/@/lib/image/RunImage.svelte';
+import type { ImageInspectInfo } from '/@api/image-inspect-info';
+
+import { mockBreadcrumb } from '../../stores/breadcrumb.spec';
+import { runImageInfo } from '../../stores/run-image-store';
+import ImageIcon from '../images/ImageIcon.svelte';
 
 const originalConsoleDebug = console.debug;
 
 // fake the window.events object
 beforeAll(() => {
   (window.events as unknown) = {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    receive: (_channel: string, func: any) => {
+    receive: (_channel: string, func: () => void): void => {
       func();
     },
   };
-  (window as any).getImageInspect = vi.fn();
-  (window as any).listNetworks = vi.fn().mockResolvedValue([]);
-  (window as any).listContainers = vi.fn().mockResolvedValue([]);
-  (window as any).createAndStartContainer = vi.fn().mockResolvedValue({ id: '1234' });
-  (window as any).getFreePort = vi.fn();
-  (window as any).isFreePort = vi.fn();
+  vi.mocked(window.listNetworks).mockResolvedValue([]);
+  vi.mocked(window.listContainers).mockResolvedValue([]);
+  vi.mocked(window.createAndStartContainer).mockResolvedValue({ id: '1234' });
 
   mockBreadcrumb();
 });
@@ -57,17 +56,13 @@ afterEach(() => {
   console.error = originalConsoleDebug;
 });
 
-async function waitRender() {
-  const result = render(RunImage);
-
-  //wait until dataReady is true
-  while (result.component.$$.ctx[30] !== true) {
-    await new Promise(resolve => setTimeout(resolve, 100));
-  }
-  return result;
+async function waitRender(): Promise<void> {
+  render(RunImage);
+  await tick();
+  await tick();
 }
 
-async function createRunImage(entrypoint?: string | string[], cmd?: string[]) {
+async function createRunImage(entrypoint?: string | string[], cmd?: string[]): Promise<void> {
   runImageInfo.set({
     age: '',
     base64RepoTag: '',
@@ -77,11 +72,14 @@ async function createRunImage(entrypoint?: string | string[], cmd?: string[]) {
     size: 0,
     humanSize: '',
     id: '',
-    inUse: false,
+    status: 'UNUSED',
     name: '',
     selected: false,
     shortId: '',
     tag: '',
+    icon: ImageIcon,
+    badges: [],
+    digest: 'sha256:1234567890',
   });
   const imageInfo: ImageInspectInfo = {
     Architecture: '',
@@ -92,7 +90,7 @@ async function createRunImage(entrypoint?: string | string[], cmd?: string[]) {
       AttachStderr: false,
       AttachStdin: false,
       AttachStdout: false,
-      Cmd: cmd || [],
+      Cmd: cmd ?? [],
       Domainname: '',
       Entrypoint: entrypoint,
       Env: [],
@@ -156,7 +154,7 @@ describe('RunImage', () => {
 
     await fireEvent.click(link);
 
-    const entryPoint = screen.getByRole('textbox', { name: 'Entrypoint:' });
+    const entryPoint = screen.getByRole('textbox', { name: 'Entrypoint' });
     expect(entryPoint).toBeInTheDocument();
     expect((entryPoint as HTMLInputElement).value).toBe('entrypoint');
   });
@@ -168,7 +166,7 @@ describe('RunImage', () => {
 
     await fireEvent.click(link);
 
-    const entryPoint = screen.getByRole('textbox', { name: 'Entrypoint:' });
+    const entryPoint = screen.getByRole('textbox', { name: 'Entrypoint' });
     expect(entryPoint).toBeInTheDocument();
     expect((entryPoint as HTMLInputElement).value).toBe('entrypoint');
   });
@@ -180,7 +178,7 @@ describe('RunImage', () => {
 
     await fireEvent.click(link);
 
-    const entryPoint = screen.getByRole('textbox', { name: 'Entrypoint:' });
+    const entryPoint = screen.getByRole('textbox', { name: 'Entrypoint' });
     expect(entryPoint).toBeInTheDocument();
     expect((entryPoint as HTMLInputElement).value).toBe('entrypoint1 entrypoint2');
   });
@@ -192,7 +190,7 @@ describe('RunImage', () => {
 
     await fireEvent.click(link);
 
-    const command = screen.getByRole('textbox', { name: 'Command:' });
+    const command = screen.getByRole('textbox', { name: 'Command' });
     expect(command).toBeInTheDocument();
     expect((command as HTMLInputElement).value).toBe('command');
   });
@@ -204,7 +202,7 @@ describe('RunImage', () => {
 
     await fireEvent.click(link);
 
-    const entryPoint = screen.getByRole('textbox', { name: 'Command:' });
+    const entryPoint = screen.getByRole('textbox', { name: 'Command' });
     expect(entryPoint).toBeInTheDocument();
     expect((entryPoint as HTMLInputElement).value).toBe('command1 command2');
   });
@@ -262,7 +260,7 @@ describe('RunImage', () => {
   });
 
   test('Expect that image without cmd is sent to API', async () => {
-    await createRunImage(['entrypoint1', 'entrypoint2'], undefined);
+    await createRunImage(['entrypoint1', 'entrypoint2']);
 
     const button = screen.getByRole('button', { name: 'Start Container' });
 
@@ -326,6 +324,7 @@ describe('RunImage', () => {
   });
 
   test('Expect to see an error if the container/host ranges have different size', async () => {
+    (window.isFreePort as Mock).mockResolvedValue(true);
     router.goto('/basic');
 
     await createRunImage(undefined, ['command1', 'command2']);
@@ -345,6 +344,9 @@ describe('RunImage', () => {
     await userEvent.click(containerInput);
     await userEvent.clear(containerInput);
     await userEvent.keyboard('9000-9003');
+
+    // wait onPortInputTimeout (500ms) triggers
+    await new Promise(resolve => setTimeout(resolve, 600));
 
     const button = screen.getByRole('button', { name: 'Start Container' });
 
@@ -458,86 +460,8 @@ describe('RunImage', () => {
     );
   });
 
-  test('Expect "start container" button to be disabled if user adds a port which is invalid (lower than 0)', async () => {
-    router.goto('/basic');
-
-    await createRunImage(undefined, ['command1', 'command2']);
-
-    const link1 = screen.getByRole('link', { name: 'Basic' });
-    await fireEvent.click(link1);
-
-    const customMappingButton = screen.getByRole('button', { name: 'Add custom port mapping' });
-    await fireEvent.click(customMappingButton);
-
-    const hostInput = screen.getByLabelText('host port');
-    await userEvent.click(hostInput);
-    await userEvent.clear(hostInput);
-    // adds a negative port
-    await userEvent.keyboard('-1');
-
-    const containerInput = screen.getByLabelText('container port');
-    await userEvent.click(containerInput);
-    await userEvent.clear(containerInput);
-    await userEvent.keyboard('80');
-
-    const button = screen.getByRole('button', { name: 'Start Container' });
-    expect((button as HTMLButtonElement).disabled).toBeTruthy();
-  });
-
-  test('Expect "start container" button to be disabled if user adds a port which is invalid (over upper limit > 65535)', async () => {
-    router.goto('/basic');
-
-    await createRunImage(undefined, ['command1', 'command2']);
-
-    const link1 = screen.getByRole('link', { name: 'Basic' });
-    await fireEvent.click(link1);
-
-    const customMappingButton = screen.getByRole('button', { name: 'Add custom port mapping' });
-    await fireEvent.click(customMappingButton);
-
-    const hostInput = screen.getByLabelText('host port');
-    await userEvent.click(hostInput);
-    await userEvent.clear(hostInput);
-    // adds a negative port
-    await userEvent.keyboard('71000');
-
-    const containerInput = screen.getByLabelText('container port');
-    await userEvent.click(containerInput);
-    await userEvent.clear(containerInput);
-    await userEvent.keyboard('80');
-
-    const button = screen.getByRole('button', { name: 'Start Container' });
-    expect((button as HTMLButtonElement).disabled).toBeTruthy();
-  });
-
-  test('Expect "start container" button to be disabled if user adds a port which is invalid (isNaN)', async () => {
-    router.goto('/basic');
-
-    await createRunImage(undefined, ['command1', 'command2']);
-
-    const link1 = screen.getByRole('link', { name: 'Basic' });
-    await fireEvent.click(link1);
-
-    const customMappingButton = screen.getByRole('button', { name: 'Add custom port mapping' });
-    await fireEvent.click(customMappingButton);
-
-    const hostInput = screen.getByLabelText('host port');
-    await userEvent.click(hostInput);
-    await userEvent.clear(hostInput);
-    // adds a negative port
-    await userEvent.keyboard('test');
-
-    const containerInput = screen.getByLabelText('container port');
-    await userEvent.click(containerInput);
-    await userEvent.clear(containerInput);
-    await userEvent.keyboard('80');
-
-    const button = screen.getByRole('button', { name: 'Start Container' });
-    expect((button as HTMLButtonElement).disabled).toBeTruthy();
-  });
-
-  test('Expect "start container" button to be disabled if user adds a port which is NOT free', async () => {
-    (window.isFreePort as Mock).mockResolvedValue(false);
+  test('Expect "start container" button to be disabled when port is not free', async () => {
+    (window.isFreePort as Mock).mockRejectedValue(new Error('Error Message'));
     router.goto('/basic');
 
     await createRunImage(undefined, ['command1', 'command2']);
@@ -566,33 +490,63 @@ describe('RunImage', () => {
     expect((button as HTMLButtonElement).disabled).toBeTruthy();
   });
 
-  test('Expect "start container" button to be enabled if user adds a port which is valid and free', async () => {
-    (window.isFreePort as Mock).mockResolvedValue(true);
-    router.goto('/basic');
+  test('Expect able to play with devices', async () => {
+    await createRunImage('', []);
 
-    await createRunImage(undefined, ['command1', 'command2']);
-
-    const link1 = screen.getByRole('link', { name: 'Basic' });
+    const link1 = screen.getByRole('link', { name: 'Advanced' });
     await fireEvent.click(link1);
 
-    const customMappingButton = screen.getByRole('button', { name: 'Add custom port mapping' });
-    await fireEvent.click(customMappingButton);
+    // set the input field for the path
+    const deviceHostInput = screen.getByRole('textbox', { name: 'device.host.0' });
 
-    const hostInput = screen.getByLabelText('host port');
-    await userEvent.click(hostInput);
-    await userEvent.clear(hostInput);
-    // adds a negative port
-    await userEvent.keyboard('8080');
+    // set the value
+    await userEvent.type(deviceHostInput, '/dev/tty0');
 
-    const containerInput = screen.getByLabelText('container port');
-    await userEvent.click(containerInput);
-    await userEvent.clear(containerInput);
-    await userEvent.keyboard('80');
+    // add a new element
+    const addDeviceButton = screen.getByRole('button', { name: 'Add device after index 0' });
+    await fireEvent.click(addDeviceButton);
 
-    // wait onPortInputTimeout (500ms) triggers
-    await new Promise(resolve => setTimeout(resolve, 600));
+    // again (should be 3 now)
+    await fireEvent.click(addDeviceButton);
+
+    // now set the input for fields 2 and 3
+    const deviceHostInput2 = screen.getByRole('textbox', { name: 'device.host.1' });
+    await userEvent.type(deviceHostInput2, '/dev/tty1');
+
+    const deviceHostInput3 = screen.getByRole('textbox', { name: 'device.host.2' });
+    await userEvent.type(deviceHostInput3, '/dev/tty2');
+    const deviceContainerInput3 = screen.getByRole('textbox', { name: 'device.container.2' });
+    await userEvent.type(deviceContainerInput3, '/dev/ttyOnContainer2');
+
+    // delete the entry 2
+    const deleteDeviceButton = screen.getByRole('button', { name: 'Delete device at index 1' });
+    await fireEvent.click(deleteDeviceButton);
+
+    // now click on start
 
     const button = screen.getByRole('button', { name: 'Start Container' });
-    expect((button as HTMLButtonElement).disabled).toBeFalsy();
+
+    await fireEvent.click(button);
+
+    // should have item 1 and item 3 as we deleted item 2
+    expect(window.createAndStartContainer).toHaveBeenCalledWith(
+      'engineid',
+      expect.objectContaining({
+        HostConfig: expect.objectContaining({
+          Devices: [
+            {
+              CgroupPermissions: 'rwm',
+              PathOnHost: '/dev/tty0',
+              PathInContainer: '/dev/tty0',
+            },
+            {
+              CgroupPermissions: 'rwm',
+              PathOnHost: '/dev/tty2',
+              PathInContainer: '/dev/ttyOnContainer2',
+            },
+          ],
+        }),
+      }),
+    );
   });
 });

@@ -17,18 +17,20 @@
  ***********************************************************************/
 
 import '@testing-library/jest-dom/vitest';
-import { test, expect, vi, beforeAll } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/svelte';
+
+import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
+import { get } from 'svelte/store';
+import { router } from 'tinro';
+import { beforeAll, expect, test, vi } from 'vitest';
+
+import { lastPage } from '/@/stores/breadcrumb';
+import { volumeListInfos } from '/@/stores/volumes';
+import type { VolumeListInfo } from '/@api/volume-info';
 
 import VolumeDetails from './VolumeDetails.svelte';
-import { get } from 'svelte/store';
-import { volumeListInfos } from '/@/stores/volumes';
-import type { VolumeListInfo } from '../../../../main/src/plugin/api/volume-info';
-
-import { router } from 'tinro';
-import { lastPage } from '/@/stores/breadcrumb';
 
 const listVolumesMock = vi.fn();
+const showMessageBoxMock = vi.fn();
 
 const myVolume: VolumeListInfo = {
   engineId: 'engine0',
@@ -53,11 +55,15 @@ const myVolume: VolumeListInfo = {
 const removeVolumeMock = vi.fn();
 
 beforeAll(() => {
-  (window as any).listVolumes = listVolumesMock;
-  (window as any).removeVolume = removeVolumeMock;
+  Object.defineProperty(window, 'showMessageBox', { value: showMessageBoxMock });
+  Object.defineProperty(window, 'listVolumes', { value: listVolumesMock });
+  Object.defineProperty(window, 'removeVolume', { value: removeVolumeMock });
+  Object.defineProperty(window, 'getConfigurationProperties', { value: vi.fn().mockResolvedValue({}) });
 });
 
 test('Expect redirect to previous page if volume is deleted', async () => {
+  // Mock the showMessageBox to return 0 (yes)
+  showMessageBoxMock.mockResolvedValue({ response: 0 });
   const routerGotoSpy = vi.spyOn(router, 'goto');
   listVolumesMock.mockResolvedValue([myVolume]);
   window.dispatchEvent(new CustomEvent('extensions-already-started'));
@@ -84,6 +90,9 @@ test('Expect redirect to previous page if volume is deleted', async () => {
   // click on delete volume button
   const deleteButton = screen.getByRole('button', { name: 'Delete Volume' });
   await fireEvent.click(deleteButton);
+
+  // Wait for confirmation modal to disappear after clicking on delete
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
 
   // check that remove method has been called
   expect(removeVolumeMock).toHaveBeenCalled();

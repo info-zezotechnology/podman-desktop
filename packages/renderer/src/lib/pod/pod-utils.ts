@@ -1,5 +1,5 @@
 /**********************************************************************
- * Copyright (C) 2022 Red Hat, Inc.
+ * Copyright (C) 2022-2025 Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,8 +16,9 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
-import moment from 'moment';
 import humanizeDuration from 'humanize-duration';
+import moment from 'moment';
+
 import type { PodInfo } from '../../../../main/src/plugin/api/pod-info';
 import type { PodInfoUI } from './PodInfoUI';
 
@@ -27,18 +28,25 @@ export class PodUtils {
   }
 
   humanizeAge(started: string): string {
-    // get start time in ms
-    const uptimeInMs = moment().diff(started);
-    // make it human friendly
+    // Return nothing if 'started' is not provided
+    if (!started) {
+      return '';
+    }
+
+    const startedDate = toISOStringSafe(started);
+    const uptimeInMs = moment().diff(startedDate);
+
+    // Make it human-friendly
     return humanizeDuration(uptimeInMs, { round: true, largest: 1 });
   }
 
-  refreshAge(podInfoUI: PodInfoUI): string {
-    if (podInfoUI.status !== 'RUNNING' || !podInfoUI.created) {
-      return '';
+  getUpDate(podInfoUI: PodInfoUI): Date | undefined {
+    if (!podInfoUI.created) {
+      return undefined;
     }
-    // make it human friendly
-    return this.humanizeAge(podInfoUI.created);
+
+    const createdDate = toISOStringSafe(podInfoUI.created);
+    return moment(createdDate).toDate();
   }
 
   getEngineId(podinfo: PodInfo): string {
@@ -62,10 +70,12 @@ export class PodUtils {
       containers: podinfo.Containers,
       selected: false,
       kind: podinfo.kind,
+      node: podinfo.node,
+      namespace: podinfo.Namespace,
     };
   }
 
-  calculateNewPodName(existedPods?: PodInfo[]) {
+  calculateNewPodName(existedPods?: PodInfo[]): string {
     const proposedPodName = 'my-pod';
 
     if (!existedPods) {
@@ -86,10 +96,17 @@ export class PodUtils {
       return uniqueName;
     }
   }
+
+  filterResetSearchTerm(f: string): string {
+    return f
+      .split(' ')
+      .filter(part => part.startsWith('is:'))
+      .join(' ');
+  }
 }
 
 // eslint-disable-next-line  @typescript-eslint/no-explicit-any
-export function ensureRestrictedSecurityContext(body: any) {
+export function ensureRestrictedSecurityContext(body: any): void {
   // eslint-disable-next-line  @typescript-eslint/no-explicit-any
   body.spec?.containers?.forEach((container: any) => {
     if (!container.securityContext) {
@@ -119,4 +136,12 @@ export function ensureRestrictedSecurityContext(body: any) {
       container.securityContext.capabilities.drop.push('ALL');
     }
   });
+}
+
+// Utility function to safely convert a date string to ISO format
+// To avoid https://momentjs.com/guides/#/warnings/js-date/ warning
+// and provide better compatibility with the library, we will convert to ISO format before
+// passing to moment
+export function toISOStringSafe(date: string): string {
+  return new Date(date).toISOString();
 }

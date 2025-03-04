@@ -16,7 +16,7 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
-function isSerializable(value: any): boolean {
+function isSerializable(value: unknown): boolean {
   switch (typeof value) {
     case 'string':
     case 'number':

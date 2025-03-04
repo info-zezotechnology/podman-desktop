@@ -1,23 +1,47 @@
+/**********************************************************************
+ * Copyright (C) 2023-2024 Red Hat, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ ***********************************************************************/
+
 import '@testing-library/jest-dom/vitest';
-import { beforeAll, expect, test, vi } from 'vitest';
+
 import { render, screen } from '@testing-library/svelte';
+import { beforeAll, expect, test, vi } from 'vitest';
+
 import { mockBreadcrumb } from '../../stores/breadcrumb.spec';
+import { ContainerGroupInfoTypeUI, type ContainerInfoUI } from '../container/ContainerInfoUI';
 import ComposeDetailsLogs from './ComposeDetailsLogs.svelte';
 import type { ComposeInfoUI } from './ComposeInfoUI';
-import { ContainerGroupInfoTypeUI, type ContainerInfoUI } from '../container/ContainerInfoUI';
 
-vi.mock('xterm', () => {
+vi.mock('@xterm/xterm', () => {
   return {
-    Terminal: vi.fn().mockReturnValue({ loadAddon: vi.fn(), open: vi.fn(), write: vi.fn(), clear: vi.fn() }),
+    Terminal: vi
+      .fn()
+      .mockReturnValue({ loadAddon: vi.fn(), open: vi.fn(), write: vi.fn(), clear: vi.fn(), dispose: vi.fn() }),
   };
 });
 
 beforeAll(() => {
-  (window as any).getConfigurationValue = vi.fn();
-  (window as any).ResizeObserver = vi.fn().mockReturnValue({ observe: vi.fn(), unobserve: vi.fn() });
-  (window as any).telemetryPage = vi.fn().mockResolvedValue(undefined);
-  (window as any).logsContainer = vi.fn().mockResolvedValue(undefined);
-  (window as any).refreshTerminal = vi.fn();
+  Object.defineProperty(window, 'getConfigurationValue', { value: vi.fn() });
+  Object.defineProperty(window, 'ResizeObserver', {
+    value: vi.fn().mockReturnValue({ observe: vi.fn(), unobserve: vi.fn() }),
+  });
+  Object.defineProperty(window, 'telemetryPage', { value: vi.fn().mockResolvedValue(undefined) });
+  Object.defineProperty(window, 'logsContainer', { value: vi.fn().mockResolvedValue(undefined) });
+  Object.defineProperty(window, 'refreshTerminal', { value: vi.fn() });
   mockBreadcrumb();
 });
 
@@ -45,6 +69,7 @@ const containerInfoUIMock: ContainerInfoUI = {
   selected: false,
   created: 0,
   labels: {},
+  imageBase64RepoTag: '',
 };
 
 const composeInfoUIMock: ComposeInfoUI = {

@@ -1,5 +1,5 @@
 /**********************************************************************
- * Copyright (C) 2023 Red Hat, Inc.
+ * Copyright (C) 2023-2024 Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,18 +16,23 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
-import { beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
 import * as fs from 'node:fs';
+
+import { beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
+
+import type { ApiSenderType } from '/@/plugin/api.js';
+
 import type { IConfigurationNode } from './configuration-registry.js';
 import { ConfigurationRegistry } from './configuration-registry.js';
 import type { Directories } from './directories.js';
+import type { NotificationRegistry } from './tasks/notification-registry.js';
 import type { Disposable } from './types/disposable.js';
-import type { ApiSenderType } from '/@/plugin/api.js';
 
 let configurationRegistry: ConfigurationRegistry;
 
 // mock the fs methods
 const readFileSync = vi.spyOn(fs, 'readFileSync');
+const cpSync = vi.spyOn(fs, 'cpSync');
 
 const getConfigurationDirectoryMock = vi.fn();
 const directories = {
@@ -36,6 +41,10 @@ const directories = {
 const apiSender = {
   send: vi.fn(),
 } as unknown as ApiSenderType;
+
+const notificationRegistry = {
+  addNotification: vi.fn(),
+} as unknown as NotificationRegistry;
 
 let registerConfigurationsDisposable: Disposable;
 
@@ -52,6 +61,7 @@ beforeEach(() => {
   configurationRegistry = new ConfigurationRegistry(apiSender, directories);
   readFileSync.mockReturnValue(JSON.stringify({}));
 
+  cpSync.mockReturnValue(undefined);
   configurationRegistry.init();
 
   const node: IConfigurationNode = {
@@ -158,4 +168,165 @@ test('Should not find configuration after dispose', async () => {
   records = configurationRegistry.getConfigurationProperties();
   const afterDisposeRecord = records['my.fake.property'];
   expect(afterDisposeRecord).toBeUndefined();
+});
+
+test('should work with an invalid configuration file', async () => {
+  vi.resetAllMocks();
+
+  getConfigurationDirectoryMock.mockReturnValue('/my-config-dir');
+
+  configurationRegistry = new ConfigurationRegistry(apiSender, directories);
+  readFileSync.mockReturnValue('invalid JSON content');
+
+  // configuration is broken but it should not throw any error, just that config is empty
+  const originalConsoleError = console.error;
+  const mockedConsoleLog = vi.fn();
+  console.error = mockedConsoleLog;
+  try {
+    configurationRegistry.init().forEach(notification => notificationRegistry.addNotification(notification));
+  } finally {
+    console.error = originalConsoleError;
+  }
+
+  expect(configurationRegistry.getConfigurationProperties()).toEqual({});
+  expect(mockedConsoleLog).toBeCalledWith(expect.stringContaining('Unable to parse'), expect.anything());
+
+  // check we added a notification
+  expect(notificationRegistry.addNotification).toBeCalledWith(
+    expect.objectContaining({ highlight: true, type: 'warn', title: 'Corrupted configuration file' }),
+  );
+
+  // check we did a backup of the file
+  expect(cpSync).toBeCalledWith(
+    expect.stringContaining('settings.json'),
+    expect.stringContaining('settings.json.backup'),
+  );
+});
+
+test('addConfigurationEnum', async () => {
+  const enumNode: IConfigurationNode = {
+    id: 'my.enum.property',
+    title: 'Fake Enum Property',
+    type: 'object',
+    properties: {
+      ['my.fake.enum.property']: {
+        description: 'Autostart container engine when launching Podman Desktop',
+        type: 'string',
+        default: 'myDefault',
+        enum: ['myValue1', 'myValue2'],
+      },
+    },
+  };
+
+  configurationRegistry.registerConfigurations([enumNode]);
+
+  // now call the addConfigurationEnum
+  const disposable = configurationRegistry.addConfigurationEnum('my.fake.enum.property', ['myValue3'], 'myDefault');
+
+  const records = configurationRegistry.getConfigurationProperties();
+  const record = records['my.fake.enum.property'];
+  expect(record).toBeDefined();
+  expect(record?.enum).toEqual(['myValue1', 'myValue2', 'myValue3']);
+
+  // now call the dispose
+  disposable.dispose();
+
+  // should be removed after disposable
+
+  const afterDisposeRecord = records['my.fake.enum.property'];
+  expect(afterDisposeRecord).toBeDefined();
+  expect(afterDisposeRecord?.enum).toEqual(['myValue1', 'myValue2']);
+});
+
+test('addConfigurationEnum with a previous default value', async () => {
+  const enumNode: IConfigurationNode = {
+    id: 'my.enum.property',
+    title: 'Fake Enum Property',
+    type: 'object',
+    properties: {
+      ['my.fake.enum.property']: {
+        description: 'Autostart container engine when launching Podman Desktop',
+        type: 'string',
+        default: 'myDefault',
+        enum: ['myValue1', 'myValue2'],
+      },
+    },
+  };
+
+  configurationRegistry.registerConfigurations([enumNode]);
+
+  // now call the addConfigurationEnum
+  const disposable = configurationRegistry.addConfigurationEnum('my.fake.enum.property', ['myValue3'], 'myValue1');
+
+  // set value to myValue3
+  await configurationRegistry.updateConfigurationValue('my.fake.enum.property', 'myValue3');
+
+  const records = configurationRegistry.getConfigurationProperties();
+  const record = records['my.fake.enum.property'];
+  expect(record).toBeDefined();
+  expect(record?.enum).toEqual(['myValue1', 'myValue2', 'myValue3']);
+
+  // now call the dispose
+  disposable.dispose();
+
+  // check default property is no longer 'myValue3' but it is defaulted to myValue1
+  const val = configurationRegistry.getConfiguration('my.fake')?.get<string>('enum.property');
+  expect(val).toEqual('myValue1');
+});
+
+test('check to be able to register a property with a group', async () => {
+  const node: IConfigurationNode = {
+    id: 'custom',
+    title: 'Fake Property',
+    properties: {
+      'my.fake.property': {
+        description: 'property being part of a group',
+        type: 'string',
+        group: 'myGroup',
+        default: 'myDefault',
+      },
+    },
+  };
+
+  configurationRegistry.registerConfigurations([node]);
+
+  const records = configurationRegistry.getConfigurationProperties();
+  const record = records['my.fake.property'];
+  expect(record).toBeDefined();
+  expect(record?.group).toEqual('myGroup');
+});
+
+test('check to be able to register a property with DockerCompatibility scope', async () => {
+  const node: IConfigurationNode = {
+    id: 'custom',
+    title: 'Fake Property',
+    properties: {
+      'my.fake.property': {
+        description: 'property being part of a group',
+        type: 'string',
+        scope: 'DockerCompatibility',
+        default: 'myDefault',
+      },
+    },
+  };
+
+  configurationRegistry.registerConfigurations([node]);
+
+  const records = configurationRegistry.getConfigurationProperties();
+  const record = records['my.fake.property'];
+  expect(record).toBeDefined();
+  expect(record?.scope).toEqual('DockerCompatibility');
+});
+
+describe('should be notified when a configuration is updated', async () => {
+  test('expect correct properties', async () => {
+    const listener = vi.fn();
+    configurationRegistry.onDidUpdateConfiguration(listener);
+    const config = configurationRegistry.getConfiguration('my.fake.property', 'myValue');
+    await config.update('myKey', 'myValue');
+
+    expect(listener).toBeTruthy();
+    expect(listener).toBeCalledWith({ properties: ['myKey'] });
+    expect(config.get('myKey')).toBe('myValue');
+  });
 });

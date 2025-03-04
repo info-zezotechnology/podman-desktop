@@ -1,5 +1,6 @@
 <script lang="ts">
 import { onMount } from 'svelte';
+
 import MonacoEditor from '../editor/MonacoEditor.svelte';
 import type { ComposeInfoUI } from './ComposeInfoUI';
 
@@ -19,5 +20,5 @@ onMount(async () => {
 </script>
 
 {#if kubeDetails}
-  <MonacoEditor content="{kubeDetails}" language="yaml" />
+  <MonacoEditor content={kubeDetails} language="yaml" />
 {/if}

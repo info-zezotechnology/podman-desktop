@@ -16,9 +16,15 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
-import * as extensionApi from '@podman-desktop/api';
 import * as fs from 'node:fs';
+
+import * as extensionApi from '@podman-desktop/api';
 import * as jsYaml from 'js-yaml';
+
+interface KubeConfig {
+  'current-context': string;
+  contexts: KubeContext[];
+}
 
 interface KubeContext {
   name: string;
@@ -49,7 +55,7 @@ export async function updateContext(
   const kubeConfigRawContent = await fs.promises.readFile(kubeconfigFile, 'utf-8');
 
   // parse the content using jsYaml
-  const kubeConfig = jsYaml.load(kubeConfigRawContent);
+  const kubeConfig = jsYaml.load(kubeConfigRawContent) as KubeConfig;
 
   // get the current context
   const currentContext = kubeConfig?.['current-context'];
@@ -118,7 +124,7 @@ function getKubeconfig(): string | undefined {
   return kubeconfigFile;
 }
 
-async function setContext(newContext: string) {
+async function setContext(newContext: string): Promise<void> {
   const file = getKubeconfig();
   if (!file) {
     await extensionApi.window.showErrorMessage('No kubeconfig file found');
@@ -128,10 +134,12 @@ async function setContext(newContext: string) {
   const kubeConfigRawContent = fs.readFileSync(file, 'utf-8');
 
   // parse the content using jsYaml
-  const kubeConfig = jsYaml.load(kubeConfigRawContent);
+  const kubeConfig = jsYaml.load(kubeConfigRawContent) as KubeConfig;
 
   // update the context
-  kubeConfig['current-context'] = newContext;
+  if (kubeConfig) {
+    kubeConfig['current-context'] = newContext;
+  }
 
   // write again the file using promises fs
   await fs.promises.writeFile(

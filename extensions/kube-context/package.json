@@ -2,7 +2,7 @@
   "name": "kube-context",
   "displayName": "Kube Context",
   "description": "Easily switch between Kubernetes contexts",
-  "version": "0.0.1",
+  "version": "1.18.0-next",
   "icon": "icon.png",
   "publisher": "podman-desktop",
   "license": "Apache-2.0",
@@ -14,11 +14,11 @@
     "commands": [
       {
         "command": "kubecontext.switch",
-        "title": "Kube Context: switch context"
+        "title": "Kube Context: Switch context"
       },
       {
         "command": "kubecontext.quickpick",
-        "title": "Kube Context: select a context"
+        "title": "Kube Context: Select a context"
       }
     ],
     "icons": {
@@ -32,19 +32,20 @@
     }
   },
   "scripts": {
-    "build": "rollup --bundleConfigAsCjs --config rollup.config.js --compact --environment BUILD:production  && node ./scripts/build.js",
-    "test": "vitest run --coverage --passWithNoTests",
-    "test:watch": "vitest watch --coverage --passWithNoTests",
-    "watch": "rollup --bundleConfigAsCjs --config rollup.config.js -w"
+    "build": "vite build && node ./scripts/build.js",
+    "test": "vitest run --coverage",
+    "test:watch": "vitest watch --coverage",
+    "watch": "vite build -w"
   },
   "dependencies": {
-    "@podman-desktop/api": "^0.0.1",
+    "@podman-desktop/api": "workspace:*",
     "js-yaml": "^4.1.0"
   },
   "devDependencies": {
-    "adm-zip": "^0.5.10",
+    "adm-zip": "^0.5.16",
     "@types/js-yaml": "^4.0.9",
     "mkdirp": "^3.0.1",
-    "vitest": "^0.34.6"
+    "vite": "^6.2.0",
+    "vitest": "^3.0.6"
   }
 }

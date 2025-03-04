@@ -1,23 +1,24 @@
 <script lang="ts">
-import { configurationProperties } from '../../stores/configurationProperties';
 import { onMount } from 'svelte';
-import Route from '../../Route.svelte';
+
+import ExperimentalPage from '/@/lib/preferences/ExperimentalPage.svelte';
+import PreferencesContainerConnectionEdit from '/@/lib/preferences/PreferencesContainerConnectionEdit.svelte';
+
 import type { IConfigurationPropertyRecordedSchema } from '../../../../main/src/plugin/configuration-registry';
-import PreferencesRendering from './PreferencesRendering.svelte';
+import Route from '../../Route.svelte';
+import { configurationProperties } from '../../stores/configurationProperties';
+import Onboarding from '../onboarding/Onboarding.svelte';
+import PreferencesDockerCompatibilityRendering from './docker-compat/PreferencesDockerCompatibilityRendering.svelte';
+import PreferencesAuthenticationProvidersRendering from './PreferencesAuthenticationProvidersRendering.svelte';
+import PreferencesCliToolsRendering from './PreferencesCliToolsRendering.svelte';
 import PreferencesContainerConnectionRendering from './PreferencesContainerConnectionRendering.svelte';
 import PreferencesKubernetesConnectionRendering from './PreferencesKubernetesConnectionRendering.svelte';
-import PreferencesProviderRendering from './PreferencesProviderRendering.svelte';
-import PreferencesExtensionRendering from './PreferencesExtensionRendering.svelte';
-import PreferencesRegistriesEditing from './PreferencesRegistriesEditing.svelte';
-import PreferencesPageDockerExtensions from '../docker-extension/PreferencesPageDockerExtensions.svelte';
-import PreferencesProxiesRendering from './PreferencesProxiesRendering.svelte';
-import PreferencesExtensionList from './PreferencesExtensionList.svelte';
-import PreferencesResourcesRendering from './PreferencesResourcesRendering.svelte';
-import PreferencesAuthenticationProvidersRendering from './PreferencesAuthenticationProvidersRendering.svelte';
-import PreferencesInstallExtensionFromId from './PreferencesInstallExtensionFromId.svelte';
-import PreferencesCliToolsRendering from './PreferencesCliToolsRendering.svelte';
 import PreferencesKubernetesContextsRendering from './PreferencesKubernetesContextsRendering.svelte';
-import Onboarding from '../onboarding/Onboarding.svelte';
+import PreferencesProviderRendering from './PreferencesProviderRendering.svelte';
+import PreferencesProxiesRendering from './PreferencesProxiesRendering.svelte';
+import PreferencesRegistriesEditing from './PreferencesRegistriesEditing.svelte';
+import PreferencesRendering from './PreferencesRendering.svelte';
+import PreferencesResourcesRendering from './PreferencesResourcesRendering.svelte';
 import { isDefaultScope } from './Util';
 
 let properties: IConfigurationPropertyRecordedSchema[];
@@ -39,34 +40,34 @@ onMount(async () => {
 });
 </script>
 
-<div class="flex flex-col h-full">
+<div class="flex flex-col h-full bg-[var(--pd-invert-content-bg)]">
   <Route path="/*" breadcrumb="Preferences">
     {#if defaultPrefPageId !== undefined}
-      <PreferencesRendering key="{defaultPrefPageId}" properties="{properties}" />
+      <PreferencesRendering key={defaultPrefPageId} properties={properties} />
     {:else}
       empty
     {/if}
   </Route>
+  <Route path="/experimental" breadcrumb="Preferences">
+    <ExperimentalPage properties={properties}/>
+  </Route>
   <Route path="/default/:key/*" breadcrumb="Preferences" let:meta>
-    <PreferencesRendering key="{meta.params.key}" properties="{properties}" />
-  </Route>
-  <Route path="/ddExtensions" breadcrumb="Docker Desktop Extensions">
-    <PreferencesPageDockerExtensions />
-  </Route>
-  <Route path="/extension/:extensionId/*" breadcrumb="Extensions" let:meta>
-    <PreferencesExtensionRendering extensionId="{meta.params.extensionId}" />
+    <PreferencesRendering key={meta.params.key} properties={properties} />
   </Route>
   <Route path="/provider/:providerInternalId/*" breadcrumb="Resources" let:meta navigationHint="details">
-    <PreferencesProviderRendering providerInternalId="{meta.params.providerInternalId}" properties="{properties}" />
+    <PreferencesProviderRendering providerInternalId={meta.params.providerInternalId} properties={properties} />
   </Route>
   <Route path="/provider-task/:providerInternalId/:taskId/*" breadcrumb="Resources" let:meta>
     <PreferencesProviderRendering
-      providerInternalId="{meta.params.providerInternalId}"
-      properties="{properties}"
-      taskId="{+meta.params.taskId}" />
+      providerInternalId={meta.params.providerInternalId}
+      properties={properties}
+      taskId={+meta.params.taskId} />
   </Route>
   <Route path="/resources" breadcrumb="Resources" navigationHint="root">
     <PreferencesResourcesRendering />
+  </Route>
+  <Route path="/docker-compatibility" breadcrumb="Docker Compatibility">
+    <PreferencesDockerCompatibilityRendering />
   </Route>
   <Route path="/registries" breadcrumb="Registries">
     <PreferencesRegistriesEditing />
@@ -83,28 +84,31 @@ onMount(async () => {
   <Route path="/proxies" breadcrumb="Proxy">
     <PreferencesProxiesRendering />
   </Route>
-  <Route path="/extensions" breadcrumb="Extensions">
-    <PreferencesExtensionList />
-  </Route>
-
-  <Route path="/extensions/install-from-id/:extensionId" breadcrumb="Install Extension from id" let:meta>
-    <PreferencesInstallExtensionFromId extensionId="{meta.params.extensionId}" />
-  </Route>
 
   <Route path="/onboarding/:extensionId" breadcrumb="Extension Onboarding" let:meta navigationHint="details">
-    <Onboarding extensionIds="{[meta.params.extensionId]}" />
+    <Onboarding extensionIds={[meta.params.extensionId]} />
   </Route>
 
   <Route
-    path="/container-connection/:provider/:name/:connection/*"
+    path="/container-connection/view/:provider/:name/:connection/*"
     breadcrumb="Container Engine"
     let:meta
     navigationHint="details">
     <PreferencesContainerConnectionRendering
-      providerInternalId="{meta.params.provider}"
-      name="{meta.params.name}"
-      connection="{meta.params.connection}"
-      properties="{properties}" />
+      providerInternalId={meta.params.provider}
+      name={meta.params.name}
+      connection={meta.params.connection}
+      properties={properties} />
+  </Route>
+  <Route
+    path="/container-connection/edit/:provider/:name/*"
+    breadcrumb="Container Engine"
+    let:meta
+    navigationHint="details">
+    <PreferencesContainerConnectionEdit
+      providerInternalId={meta.params.provider}
+      name={meta.params.name}
+      properties={properties} />
   </Route>
   <Route
     path="/kubernetes-connection/:provider/:apiUrlBase64/*"
@@ -112,8 +116,8 @@ onMount(async () => {
     let:meta
     navigationHint="details">
     <PreferencesKubernetesConnectionRendering
-      providerInternalId="{meta.params.provider}"
-      apiUrlBase64="{meta.params.apiUrlBase64}"
-      properties="{properties}" />
+      providerInternalId={meta.params.provider}
+      apiUrlBase64={meta.params.apiUrlBase64}
+      properties={properties} />
   </Route>
 </div>

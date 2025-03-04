@@ -1,20 +1,23 @@
 <script lang="ts">
-import Route from '../../Route.svelte';
-import ComposeIcon from '../images/PodIcon.svelte';
-import StatusIcon from '../images/StatusIcon.svelte';
-import ComposeActions from './ComposeActions.svelte';
-import type { Unsubscriber } from 'svelte/store';
+import { StatusIcon, Tab } from '@podman-desktop/ui-svelte';
 import { onDestroy, onMount } from 'svelte';
+import type { Unsubscriber } from 'svelte/store';
+import { router } from 'tinro';
+
 import { containersInfos } from '/@/stores/containers';
-import type { ComposeInfoUI } from './ComposeInfoUI';
+
+import Route from '../../Route.svelte';
 import { ContainerUtils } from '../container/container-utils';
-import ComposeDetailsLogs from './ComposeDetailsLogs.svelte';
-import ComposeDetailsKube from './ComposeDetailsKube.svelte';
 import type { ContainerInfoUI } from '../container/ContainerInfoUI';
+import ComposeIcon from '../images/PodIcon.svelte';
 import DetailsPage from '../ui/DetailsPage.svelte';
-import Tab from '../ui/Tab.svelte';
-import ComposeDetailsSummary from './ComposeDetailsSummary.svelte';
+import { getTabUrl, isTabSelected } from '../ui/Util';
+import ComposeActions from './ComposeActions.svelte';
 import ComposeDetailsInspect from './ComposeDetailsInspect.svelte';
+import ComposeDetailsKube from './ComposeDetailsKube.svelte';
+import ComposeDetailsLogs from './ComposeDetailsLogs.svelte';
+import ComposeDetailsSummary from './ComposeDetailsSummary.svelte';
+import type { ComposeInfoUI } from './ComposeInfoUI';
 
 export let composeName: string;
 export let engineId: string;
@@ -85,32 +88,32 @@ onDestroy(() => {
 </script>
 
 {#if compose}
-  <DetailsPage title="{composeName}" subtitle="">
-    <StatusIcon slot="icon" icon="{ComposeIcon}" size="{24}" status="{compose.status}" />
+  <DetailsPage title={composeName} subtitle="">
+    <StatusIcon slot="icon" icon={ComposeIcon} size={24} status={compose.status} />
     <svelte:fragment slot="actions">
       <div class="flex items-center w-5">
         <div>&nbsp;</div>
       </div>
-      <ComposeActions compose="{compose}" detailed="{true}" />
+      <ComposeActions compose={compose} detailed={true} on:update={(): ComposeInfoUI => (compose = compose)} />
     </svelte:fragment>
     <svelte:fragment slot="tabs">
-      <Tab title="Summary" url="summary" />
-      <Tab title="Logs" url="logs" />
-      <Tab title="Inspect" url="inspect" />
-      <Tab title="Kube" url="kube" />
+      <Tab title="Summary" selected={isTabSelected($router.path, 'summary')} url={getTabUrl($router.path, 'summary')} />
+      <Tab title="Logs" selected={isTabSelected($router.path, 'logs')} url={getTabUrl($router.path, 'logs')} />
+      <Tab title="Inspect" selected={isTabSelected($router.path, 'inspect')} url={getTabUrl($router.path, 'inspect')} />
+      <Tab title="Kube" selected={isTabSelected($router.path, 'kube')} url={getTabUrl($router.path, 'kube')} />
     </svelte:fragment>
     <svelte:fragment slot="content">
       <Route path="/summary" breadcrumb="Summary" navigationHint="tab">
-        <ComposeDetailsSummary compose="{compose}" />
+        <ComposeDetailsSummary compose={compose} />
       </Route>
       <Route path="/logs" breadcrumb="Logs" navigationHint="tab">
-        <ComposeDetailsLogs compose="{compose}" />
+        <ComposeDetailsLogs compose={compose} />
       </Route>
       <Route path="/inspect" breadcrumb="Inspect" navigationHint="tab">
-        <ComposeDetailsInspect compose="{compose}" />
+        <ComposeDetailsInspect compose={compose} />
       </Route>
       <Route path="/kube" breadcrumb="Kube" navigationHint="tab">
-        <ComposeDetailsKube compose="{compose}" />
+        <ComposeDetailsKube compose={compose} />
       </Route>
     </svelte:fragment>
   </DetailsPage>

@@ -1,29 +1,33 @@
 <script lang="ts">
-import { onDestroy, onMount } from 'svelte';
-
-import { router } from 'tinro';
-import type { Unsubscriber } from 'svelte/store';
-import type { VolumeInfoUI } from './VolumeInfoUI';
-import { fetchVolumesWithData, filtered, searchPattern, volumeListInfos } from '../../stores/volumes';
-import { providerInfos } from '../../stores/providers';
-import NavPage from '../ui/NavPage.svelte';
-import { VolumeUtils } from './volume-utils';
-import NoContainerEngineEmptyScreen from '../image/NoContainerEngineEmptyScreen.svelte';
-import VolumeEmptyScreen from './VolumeEmptyScreen.svelte';
-import FilteredEmptyScreen from '../ui/FilteredEmptyScreen.svelte';
-import VolumeIcon from '../images/VolumeIcon.svelte';
-import Prune from '../engine/Prune.svelte';
-import moment from 'moment';
-import type { EngineInfoUI } from '../engine/EngineInfoUI';
-import Button from '../ui/Button.svelte';
 import { faPieChart, faPlusCircle, faTrash } from '@fortawesome/free-solid-svg-icons';
-import Table from '../table/Table.svelte';
-import { Column, Row } from '../table/table';
-import VolumeColumnStatus from './VolumeColumnStatus.svelte';
-import VolumeColumnName from './VolumeColumnName.svelte';
-import VolumeColumnEnvironment from './VolumeColumnEnvironment.svelte';
-import SimpleColumn from '../table/SimpleColumn.svelte';
+import {
+  Button,
+  FilteredEmptyScreen,
+  NavPage,
+  Table,
+  TableColumn,
+  TableRow,
+  TableSimpleColumn,
+} from '@podman-desktop/ui-svelte';
+import moment from 'moment';
+import { onDestroy, onMount } from 'svelte';
+import type { Unsubscriber } from 'svelte/store';
+import { router } from 'tinro';
+
+import { providerInfos } from '../../stores/providers';
+import { fetchVolumesWithData, filtered, searchPattern, volumeListInfos } from '../../stores/volumes';
+import { withBulkConfirmation } from '../actions/BulkActions';
+import type { EngineInfoUI } from '../engine/EngineInfoUI';
+import Prune from '../engine/Prune.svelte';
+import NoContainerEngineEmptyScreen from '../image/NoContainerEngineEmptyScreen.svelte';
+import VolumeIcon from '../images/VolumeIcon.svelte';
+import { VolumeUtils } from './volume-utils';
 import VolumeColumnActions from './VolumeColumnActions.svelte';
+import VolumeColumnEnvironment from './VolumeColumnEnvironment.svelte';
+import VolumeColumnName from './VolumeColumnName.svelte';
+import VolumeColumnStatus from './VolumeColumnStatus.svelte';
+import VolumeEmptyScreen from './VolumeEmptyScreen.svelte';
+import type { VolumeInfoUI } from './VolumeInfoUI';
 
 export let searchTerm = '';
 $: searchPattern.set(searchTerm);
@@ -91,30 +95,37 @@ onDestroy(() => {
 
 // delete the items selected in the list
 let bulkDeleteInProgress = false;
-async function deleteSelectedVolumes() {
+async function deleteSelectedVolumes(): Promise<void> {
   const selectedVolumes = volumes.filter(volume => volume.selected);
 
-  if (selectedVolumes.length > 0) {
-    bulkDeleteInProgress = true;
-    await Promise.all(
-      selectedVolumes.map(async volume => {
-        try {
-          await window.removeVolume(volume.engineId, volume.name);
-        } catch (e) {
-          console.log('error while removing volume', e);
-        }
-      }),
-    );
-    bulkDeleteInProgress = false;
+  if (selectedVolumes.length === 0) {
+    return;
   }
+
+  // mark volumes for deletion
+  bulkDeleteInProgress = true;
+  selectedVolumes.forEach(volume => (volume.status = 'DELETING'));
+  volumes = volumes;
+
+  await Promise.all(
+    selectedVolumes.map(async volume => {
+      try {
+        await window.removeVolume(volume.engineId, volume.name);
+      } catch (e) {
+        console.error('error while removing volume', e);
+      }
+    }),
+  );
+  bulkDeleteInProgress = false;
 }
 
 let refreshTimeouts: NodeJS.Timeout[] = [];
 const SECOND = 1000;
-function refreshAge() {
-  volumes = volumes.map(volumeInfo => {
-    return { ...volumeInfo, age: volumeUtils.refreshAge(volumeInfo) };
-  });
+function refreshAge(): void {
+  for (const volumeInfo of volumes) {
+    volumeInfo.age = volumeUtils.refreshAge(volumeInfo);
+  }
+  volumes = volumes;
 
   // compute new interval
   const newInterval = computeInterval();
@@ -155,7 +166,7 @@ function computeInterval(): number {
 }
 
 let fetchDataInProgress = false;
-async function fetchUsageData() {
+async function fetchUsageData(): Promise<void> {
   fetchDataInProgress = true;
   try {
     await fetchVolumesWithData();
@@ -171,76 +182,82 @@ function gotoCreateVolume(): void {
 let selectedItemsNumber: number;
 let table: Table;
 
-let statusColumn = new Column<VolumeInfoUI>('Status', {
+let statusColumn = new TableColumn<VolumeInfoUI>('Status', {
   align: 'center',
   width: '70px',
   renderer: VolumeColumnStatus,
-  comparator: (a, b) => Number(b.inUse) - Number(a.inUse),
+  comparator: (a, b): number => b.status.localeCompare(a.status),
 });
 
-let nameColumn = new Column<VolumeInfoUI>('Name', {
+let nameColumn = new TableColumn<VolumeInfoUI>('Name', {
   width: '3fr',
   renderer: VolumeColumnName,
-  comparator: (a, b) => a.shortName.localeCompare(b.shortName),
+  comparator: (a, b): number => a.shortName.localeCompare(b.shortName),
 });
 
-let envColumn = new Column<VolumeInfoUI>('Environment', {
+let envColumn = new TableColumn<VolumeInfoUI>('Environment', {
   renderer: VolumeColumnEnvironment,
-  comparator: (a, b) => a.engineName.localeCompare(b.engineName),
+  comparator: (a, b): number => a.engineName.localeCompare(b.engineName),
 });
 
-let ageColumn = new Column<VolumeInfoUI, string>('Age', {
-  renderMapping: object => object.age,
-  renderer: SimpleColumn,
-  comparator: (a, b) => moment().diff(a.created) - moment().diff(b.created),
+let ageColumn = new TableColumn<VolumeInfoUI, string>('Age', {
+  renderMapping: (object): string => object.age,
+  renderer: TableSimpleColumn,
+  comparator: (a, b): number => moment().diff(a.created) - moment().diff(b.created),
 });
 
-let sizeColumn = new Column<VolumeInfoUI, string>('Size', {
+let sizeColumn = new TableColumn<VolumeInfoUI, string>('Size', {
   align: 'right',
-  renderMapping: object => object.humanSize,
-  renderer: SimpleColumn,
-  comparator: (a, b) => a.size - b.size,
+  renderMapping: (object): string => object.humanSize,
+  renderer: TableSimpleColumn,
+  comparator: (a, b): number => a.size - b.size,
   initialOrder: 'descending',
 });
 
-const columns: Column<VolumeInfoUI, VolumeInfoUI | string>[] = [
+const columns = [
   statusColumn,
   nameColumn,
   envColumn,
   ageColumn,
   sizeColumn,
-  new Column<VolumeInfoUI>('Actions', { align: 'right', renderer: VolumeColumnActions }),
+  new TableColumn<VolumeInfoUI>('Actions', { align: 'right', renderer: VolumeColumnActions, overflow: true }),
 ];
 
-const row = new Row<VolumeInfoUI>({
-  selectable: volume => !volume.inUse,
+const row = new TableRow<VolumeInfoUI>({
+  selectable: (volume): boolean => volume.status === 'UNUSED',
   disabledText: 'Volume is used by a container',
 });
 </script>
 
-<NavPage bind:searchTerm="{searchTerm}" title="volumes">
+<NavPage bind:searchTerm={searchTerm} title="volumes">
   <svelte:fragment slot="additional-actions">
-    {#if providerConnections.length > 0}
-      <Button on:click="{() => gotoCreateVolume()}" icon="{faPlusCircle}" title="Create a volume">Create</Button>
-    {/if}
     {#if $volumeListInfos.map(volumeInfo => volumeInfo.Volumes).flat().length > 0}
-      <Prune type="volumes" engines="{enginesList}" />
+      <Prune type="volumes" engines={enginesList} />
 
       <Button
-        inProgress="{fetchDataInProgress}"
-        on:click="{() => fetchUsageData()}"
-        title="Collect usage data for volumes. It can take a while..."
-        icon="{faPieChart}">Collect usage data</Button>
+        inProgress={fetchDataInProgress}
+        on:click={fetchUsageData}
+        title="Gather sizes for volumes. It can take a while..."
+        icon={faPieChart}
+        aria-label="Gather volume sizes">Gather volume sizes</Button>
+    {/if}
+    {#if providerConnections.length > 0}
+      <Button on:click={gotoCreateVolume} icon={faPlusCircle} title="Create a volume" aria-label="Create"
+        >Create</Button>
     {/if}
   </svelte:fragment>
 
   <svelte:fragment slot="bottom-additional-actions">
     {#if selectedItemsNumber > 0}
       <Button
-        on:click="{() => deleteSelectedVolumes()}"
+        on:click={(): void =>
+          withBulkConfirmation(
+            deleteSelectedVolumes,
+            `delete ${selectedItemsNumber} volume${selectedItemsNumber > 1 ? 's' : ''}`,
+          )}
         title="Delete {selectedItemsNumber} selected items"
-        inProgress="{bulkDeleteInProgress}"
-        icon="{faTrash}" />
+        inProgress={bulkDeleteInProgress}
+        icon={faTrash} />
       <span>On {selectedItemsNumber} selected items.</span>
     {/if}
   </svelte:fragment>
@@ -248,19 +265,20 @@ const row = new Row<VolumeInfoUI>({
   <div class="flex min-w-full h-full" slot="content">
     <Table
       kind="volume"
-      bind:this="{table}"
-      bind:selectedItemsNumber="{selectedItemsNumber}"
-      data="{volumes}"
-      columns="{columns}"
-      row="{row}"
-      defaultSortColumn="Name">
+      bind:this={table}
+      bind:selectedItemsNumber={selectedItemsNumber}
+      data={volumes}
+      columns={columns}
+      row={row}
+      defaultSortColumn="Name"
+      on:update={(): VolumeInfoUI[] => (volumes = volumes)}>
     </Table>
 
     {#if providerConnections.length === 0}
       <NoContainerEngineEmptyScreen />
     {:else if $filtered.map(volumeInfo => volumeInfo.Volumes).flat().length === 0}
       {#if searchTerm}
-        <FilteredEmptyScreen icon="{VolumeIcon}" kind="volumes" bind:searchTerm="{searchTerm}" />
+        <FilteredEmptyScreen icon={VolumeIcon} kind="volumes" bind:searchTerm={searchTerm} />
       {:else}
         <VolumeEmptyScreen />
       {/if}

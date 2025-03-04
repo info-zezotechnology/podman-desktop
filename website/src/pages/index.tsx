@@ -1,26 +1,28 @@
-import React from 'react';
-import Layout from '@theme/Layout';
-import Link from '@docusaurus/Link';
 import BrowserOnly from '@docusaurus/BrowserOnly';
-import TailWindThemeSelector from '../components/TailWindThemeSelector';
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import Link from '@docusaurus/Link';
+import useBaseUrl from '@docusaurus/useBaseUrl';
 import type { IconProp } from '@fortawesome/fontawesome-svg-core';
 import { faApple, faLinux, faWindows } from '@fortawesome/free-brands-svg-icons';
 import {
   faCertificate,
   faCloudArrowDown,
   faCogs,
-  faGaugeHigh,
-  faPlug,
-  faRocket,
-  faGears,
-  faRotateRight,
   faDiagramProject,
+  faGaugeHigh,
+  faGears,
+  faRocket,
+  faRotateRight,
 } from '@fortawesome/free-solid-svg-icons';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import Layout from '@theme/Layout';
 import ThemedImage from '@theme/ThemedImage';
-import useBaseUrl from '@docusaurus/useBaseUrl';
+import React from 'react';
 
-function DownloadClientLinks() {
+import PodmanAILabBanner from '../components/PodmanAILabBanner';
+import TailWindThemeSelector from '../components/TailWindThemeSelector';
+import { TelemetryLink } from '../components/TelemetryLink';
+
+function DownloadClientLinks(): JSX.Element {
   let operatingSystem = '';
   let varIcon = undefined;
   let url = 'macos'; // Just use macos by default as the url before checking the user agent in case of an odd issue (unable to get userAgent / it's blank / etc.)
@@ -32,7 +34,7 @@ function DownloadClientLinks() {
     varIcon = 'faWindows';
   } else if (userAgent.indexOf('Mac') !== -1) {
     operatingSystem = 'macOS';
-    url = 'macos';
+    // do not need to set url to macos as it is already set
     varIcon = 'faApple';
   } else if (userAgent.indexOf('Linux') !== -1) {
     operatingSystem = 'Linux';
@@ -46,11 +48,13 @@ function DownloadClientLinks() {
   if (operatingSystem !== '') {
     mainButton = (
       <div>
-        <Link
-          className="no-underline hover:no-underline inline-flex text-white hover:text-white bg-violet-600 border-0 py-4 px-8 mt-6 mb-1 focus:outline-none hover:bg-violet-700 rounded text-lg"
+        <TelemetryLink
+          className="no-underline hover:no-underline inline-flex text-white hover:text-white bg-violet-600 border-0 py-4 px-8 mt-6 mb-1 focus:outline-hidden hover:bg-violet-700 rounded-sm text-lg"
+          eventPath="landing"
+          eventTitle="hero-download"
           to={'/downloads/' + url}>
           <FontAwesomeIcon size="2x" icon={varIcon as IconProp} className="px-2" /> Download Now
-        </Link>
+        </TelemetryLink>
         <caption className="block mt-0 dark:text-gray-400">
           For <strong>{operatingSystem}</strong> <em>(browser-detected)</em>
         </caption>
@@ -59,7 +63,7 @@ function DownloadClientLinks() {
     otherButton = (
       <div>
         <Link
-          className="underline font-semibold hover:underline ml-4 inline-flex py-2 px-6 my-4  focus:outline-none text-lg"
+          className="underline font-semibold hover:underline ml-4 inline-flex py-2 px-6 my-4  focus:outline-hidden text-lg"
           to="/downloads">
           Other downloads
         </Link>
@@ -67,11 +71,13 @@ function DownloadClientLinks() {
     );
   } else {
     mainButton = (
-      <Link
-        className="no-underline hover:no-underline inline-flex text-white hover:text-white bg-indigo-500 border-0 py-2 px-6 focus:outline-none hover:bg-indigo-600 rounded text-lg"
-        to="/downloads">
-        Download Page
-      </Link>
+      <div>
+        <Link
+          className="no-underline hover:no-underline inline-flex text-white hover:text-white bg-purple-500 border-0 py-2 px-6 mt-6 mb-1 focus:outline-hidden hover:bg-purple-600 rounded-sm text-lg"
+          to="/downloads">
+          Download Page
+        </Link>
+      </div>
     );
   }
 
@@ -83,11 +89,11 @@ function DownloadClientLinks() {
   );
 }
 
-function DownloadGenericLinks() {
+function DownloadGenericLinks(): JSX.Element {
   return (
     <div className="flex justify-center">
       <Link
-        className="no-underline hover:no-underline inline-flex text-white hover:text-white bg-indigo-500 border-0 py-2 px-6 focus:outline-none hover:bg-indigo-600 rounded text-lg"
+        className="no-underline hover:no-underline inline-flex text-white hover:text-white bg-purple-500 border-0 py-2 px-6 mt-6 mb-1 focus:outline-hidden hover:bg-purple-600 rounded-sm text-lg"
         to="/downloads">
         Download Page
       </Link>
@@ -95,18 +101,19 @@ function DownloadGenericLinks() {
   );
 }
 
-function Hero() {
+function Hero(): JSX.Element {
   return (
     <section className="text-gray-900 dark:text-gray-400 body-font">
       <div className="container mx-auto flex px-5 pb-24 pt-4 items-center justify-center flex-col">
         <div className="text-center lg:w-2/3 w-full bg-hero-pattern bg-no-repeat bg-center">
           <div className="bg-white/30 dark:bg-transparent">
-            <h1 className="title-font sm:text-4xl text-3xl lg:text-6xl mb-8 font-medium text-gray-900 dark:text-white leading-[1.2]">
-              Containers and Kubernetes for application developers
+            <h1 className="title-font text-4xl leading-[3rem] lg:text-5xl lg:leading-[4rem] font-bold text-gray-900 dark:text-white mt-[80px]">
+              Best Free &amp; Open Source Tool for Containers &amp; Kubernetes
             </h1>
-            <p className="text-base md:text-lg">
-              Podman Desktop is an open source graphical tool enabling you to seamlessly work with containers and
-              Kubernetes from your local environment.
+            <p className="text-base font-medium leading-[1.9rem] md:text-lg md:leading-[1.9rem] mt-[88px]">
+              The best free and open source tool for developers to work with containers and Kubernetes. Simplify
+              container management, streamline Kubernetes workflows, and transition from local development to production
+              with ease.
             </p>
             <div className="flex-none">
               {/* With client mode, provides the link to the client browser */}
@@ -130,7 +137,7 @@ function Hero() {
   );
 }
 
-function SectionTitle(props) {
+function SectionTitle(props: Readonly<{ name: string }>): JSX.Element {
   return (
     <div>
       <p className="inline-block px-3 py-px mb-4 text-xs font-semibold tracking-wider text-purple-800 uppercase rounded-full dark:bg-purple-400 bg-purple-400">
@@ -140,7 +147,7 @@ function SectionTitle(props) {
   );
 }
 
-function KeepUpToDate() {
+function KeepUpToDate(): JSX.Element {
   return (
     <section className="text-gray-900 dark:text-gray-400 dark:bg-charcoal-800 bg-zinc-100 body-font">
       <div className="container px-5 py-24 mx-auto flex flex-wrap">
@@ -179,7 +186,7 @@ function KeepUpToDate() {
   );
 }
 
-function Extensibility() {
+function Extensibility(): JSX.Element {
   return (
     <section className="text-gray-900 dark:text-gray-400 dark:bg-charcoal-600 bg-zinc-200 body-font">
       <div className="container px-5 py-24 mx-auto flex flex-wrap">
@@ -187,28 +194,40 @@ function Extensibility() {
           <SectionTitle name="extensibility" />
 
           <h2 className="max-w-lg mb-6 font-sans text-3xl font-light leading-none tracking-tight text-gray-900 dark:text-white sm:text-4xl md:mx-auto">
-            Bring new features with Podman Desktop plug-ins or Docker Desktop Extensions.
+            Bring new features to Podman Desktop with extensions
           </h2>
         </div>
 
         <div className="flex flex-col w-full text-center">
-          <div className="mx-10">
-            <FontAwesomeIcon size="3x" icon={faPlug} className="ml-2 mb-4 text-gray-900 dark:text-gray-300" />
-          </div>
-
-          <ul className="list-disc list-inside text-center">
-            <li>Container engines are plugged through extension points</li>
-            <li>JavaScript extensions can contribute new behaviour</li>
-            <li>Reuse existing extensions such as Trivy and OpenShift directly in Podman Desktop</li>
-          </ul>
-
           <div className="flex flex-col items-center">
-            <div className="text-left my-4">
-              <p className="-ml-5 text-base">
-                Current Podman Desktop plugins: Podman, Docker, Lima, Kubernetes, and OpenShift Local with the Podman
-                preset.
-              </p>
-            </div>
+            <p className="text-base lg:w-2/3 text-center mx-auto">
+              Podman Desktop is built around extension points. You can easily create a new extension using our pre-made
+              templates, easy-to-use API and UI components. Integrate your own tools into Podman Desktop with ease to
+              enrich with your own developer tools and experiences.
+            </p>
+            <ul className="list-disc list-inside text-center">
+              <li>
+                Explore our{' '}
+                <Link title="catalog of extensions" to="/extensions">
+                  catalog of extensions
+                </Link>
+                .
+              </li>
+              <li>
+                Learn to{' '}
+                <Link title="develop your own extensions" to="/docs/extensions/developing">
+                  develop your own extensions
+                </Link>
+                .
+              </li>
+              <li>
+                Want to use a Docker Desktop extension? Extensions such as{' '}
+                <Link title="trivy" to="https://github.com/aquasecurity/trivy-docker-extension">
+                  Trivy
+                </Link>{' '}
+                work out of the box with Podman Desktop.
+              </li>
+            </ul>
           </div>
 
           <ThemedImage
@@ -223,7 +242,7 @@ function Extensibility() {
           <div className="flex flex-col items-center">
             <Link
               title="Extend Podman Desktop"
-              className="no-underline hover:no-underline text-gray-900 dark:text-white hover:dark:text-violet-600 "
+              className="no-underline hover:no-underline text-gray-900 dark:text-white dark:hover:text-violet-600 "
               to="/extend">
               <div className="mt-3 text-purple-800 dark:text-purple-400 inline-flex items-center">
                 Learn More
@@ -246,7 +265,7 @@ function Extensibility() {
   );
 }
 
-function Configure() {
+function Configure(): JSX.Element {
   return (
     <section className="text-gray-900 dark:text-gray-400 dark:bg-charcoal-800 bg-zinc-100 body-font py-24">
       <div className="container px-5 mx-auto flex flex-wrap">
@@ -261,10 +280,10 @@ function Configure() {
         <div className="container px-5 pb-5 mx-auto">
           <div className="flex flex-wrap sm:-m-4 -mx-4 -mb-10 -mt-4 md:space-y-0 space-y-6">
             <div className="p-4 md:w-1/4 flex">
-              <div className="w-12 h-12 inline-flex items-center justify-center rounded-full bg-gray-700 text-purple-700 mb-4 flex-shrink-0">
+              <div className="w-12 h-12 inline-flex items-center justify-center rounded-full bg-gray-700 text-purple-700 mb-4 shrink-0">
                 <FontAwesomeIcon size="2x" icon={faCogs} className="w-6 h-6 " />
               </div>
-              <div className="flex-grow pl-6">
+              <div className="grow pl-6">
                 <h2 className="text-gray-900 dark:text-gray-100 text-lg title-font font-medium mb-2">Registries</h2>
                 <p className="leading-relaxed text-base">
                   <a href="/docs/containers/registries">Manage OCI registries. Add/edit/delete registries.</a>
@@ -273,10 +292,10 @@ function Configure() {
             </div>
 
             <div className="p-4 md:w-1/4 flex">
-              <div className="w-12 h-12 inline-flex items-center justify-center rounded-full bg-gray-700 text-purple-700 mb-4 flex-shrink-0">
+              <div className="w-12 h-12 inline-flex items-center justify-center rounded-full bg-gray-700 text-purple-700 mb-4 shrink-0">
                 <FontAwesomeIcon size="2x" icon={faCogs} className="w-6 h-6 " />
               </div>
-              <div className="flex-grow pl-6">
+              <div className="grow pl-6">
                 <h2 className="text-gray-900 dark:text-gray-100 text-lg title-font font-medium mb-2">Proxy</h2>
                 <p className="leading-relaxed text-base">
                   <a href="/docs/proxy">Configure your proxy settings.</a>
@@ -285,10 +304,10 @@ function Configure() {
             </div>
 
             <div className="p-4 md:w-1/4 flex">
-              <div className="w-12 h-12 inline-flex items-center justify-center rounded-full bg-gray-700 text-purple-700 mb-4 flex-shrink-0">
+              <div className="w-12 h-12 inline-flex items-center justify-center rounded-full bg-gray-700 text-purple-700 mb-4 shrink-0">
                 <FontAwesomeIcon size="2x" icon={faCogs} className="w-6 h-6 " />
               </div>
-              <div className="flex-grow pl-6">
+              <div className="grow pl-6">
                 <h2 className="text-gray-900 dark:text-gray-100 text-lg title-font font-medium mb-2">
                   Resources Utilization
                 </h2>
@@ -297,10 +316,10 @@ function Configure() {
             </div>
 
             <div className="p-4 md:w-1/4 flex">
-              <div className="w-12 h-12 inline-flex items-center justify-center rounded-full bg-gray-700 text-purple-700 mb-4 flex-shrink-0">
+              <div className="w-12 h-12 inline-flex items-center justify-center rounded-full bg-gray-700 text-purple-700 mb-4 shrink-0">
                 <FontAwesomeIcon size="2x" icon={faCogs} className="w-6 h-6 " />
               </div>
-              <div className="flex-grow pl-6">
+              <div className="grow pl-6">
                 <h2 className="text-gray-900 dark:text-gray-100 text-lg title-font font-medium mb-2">
                   Container Engines
                 </h2>
@@ -318,7 +337,7 @@ function Configure() {
   );
 }
 
-function EnterpriseReady() {
+function EnterpriseReady(): JSX.Element {
   return (
     <section className="text-gray-900 dark:text-gray-400 dark:bg-charcoal-600 bg-zinc-200 body-font py-24">
       <div className="container px-5 mx-auto flex flex-wrap">
@@ -335,10 +354,10 @@ function EnterpriseReady() {
           </h1>
           <div className="flex flex-wrap sm:-m-4 -mx-4 -mb-10 -mt-4 md:space-y-0 space-y-6">
             <div className="p-4 md:w-1/3 flex">
-              <div className="w-12 h-12 inline-flex items-center justify-center rounded-full bg-gray-700 text-purple-700 mb-4 flex-shrink-0">
+              <div className="w-12 h-12 inline-flex items-center justify-center rounded-full bg-gray-700 text-purple-700 mb-4 shrink-0">
                 <FontAwesomeIcon size="2x" icon={faCertificate} className="w-6 h-6 " />
               </div>
-              <div className="flex-grow pl-6">
+              <div className="grow pl-6">
                 <h2 className="text-gray-900 dark:text-gray-100 text-lg title-font font-medium mb-2">Code signing</h2>
 
                 <p className="leading-relaxed text-base">
@@ -347,10 +366,10 @@ function EnterpriseReady() {
               </div>
             </div>
             <div className="p-4 md:w-1/3 flex">
-              <div className="w-12 h-12 inline-flex items-center justify-center rounded-full bg-gray-700 text-purple-800 mb-4 flex-shrink-0">
+              <div className="w-12 h-12 inline-flex items-center justify-center rounded-full bg-gray-700 text-purple-800 mb-4 shrink-0">
                 <FontAwesomeIcon size="2x" icon={faCloudArrowDown} className="w-6 h-6 " />
               </div>
-              <div className="flex-grow pl-6">
+              <div className="grow pl-6">
                 <h2 className="text-gray-900 dark:text-gray-100  text-lg title-font font-medium mb-2">Proxy</h2>
                 <p className="leading-relaxed text-base">
                   <a href="/docs/proxy">Configure proxy within the tool. Avoid any painful files to edit.</a>
@@ -358,10 +377,10 @@ function EnterpriseReady() {
               </div>
             </div>
             <div className="p-4 md:w-1/3 flex">
-              <div className="w-12 h-12 inline-flex items-center justify-center rounded-full bg-gray-700 text-purple-800 mb-4 flex-shrink-0">
+              <div className="w-12 h-12 inline-flex items-center justify-center rounded-full bg-gray-700 text-purple-800 mb-4 shrink-0">
                 <FontAwesomeIcon size="2x" icon={faCogs} className="w-6 h-6 " />
               </div>
-              <div className="flex-grow pl-6">
+              <div className="grow pl-6">
                 <h2 className="text-gray-900 dark:text-gray-100 text-lg title-font font-medium mb-2">Registries</h2>
                 <p className="leading-relaxed text-base">
                   <a href="/docs/proxy">Manage OCI registries. Add/edit/delete registries.</a>
@@ -375,7 +394,7 @@ function EnterpriseReady() {
   );
 }
 
-function RunAnywhere() {
+function RunAnywhere(): JSX.Element {
   return (
     <section className="text-gray-900 dark:text-gray-400 dark:bg-charcoal-600 bg-zinc-200 body-font">
       <div className="container px-5 py-24 mx-auto flex flex-wrap">
@@ -395,12 +414,12 @@ function RunAnywhere() {
             <div className="flex rounded-lg h-full bg-zinc-100  hover:bg-purple-500 dark:hover:bg-purple-700 dark:bg-charcoal-800 bg-opacity-60 p-8 flex-col">
               <div className="flex items-center mb-3 flex-col">
                 <FontAwesomeIcon size="4x" icon={faWindows} />
-                <div className="inline-flex items-center justify-center rounded-full text-gray-900 dark:text-gray-400 flex-shrink-0"></div>
+                <div className="inline-flex items-center justify-center rounded-full text-gray-900 dark:text-gray-400 shrink-0"></div>
                 <h2 className=" text-lg title-font font-medium"> Windows</h2>
               </div>
 
-              <div className="flex-grow">
-                <div className="flex-grow w-full">
+              <div className="grow">
+                <div className="grow w-full">
                   <p className="text-base text-center">exe or setup.exe</p>
                 </div>
               </div>
@@ -413,10 +432,10 @@ function RunAnywhere() {
             <div className="flex rounded-lg h-full bg-zinc-100  hover:bg-purple-500 dark:hover:bg-purple-700 dark:bg-charcoal-800 bg-opacity-60 p-8 flex-col">
               <div className="flex items-center mb-3 flex-col">
                 <FontAwesomeIcon size="4x" icon={faApple} />
-                <div className="inline-flex items-center justify-center rounded-full text-gray-900 dark:text-gray-400 flex-shrink-0"></div>
+                <div className="inline-flex items-center justify-center rounded-full text-gray-900 dark:text-gray-400 shrink-0"></div>
                 <h2 className=" text-lg title-font font-medium"> macOS</h2>
               </div>
-              <div className="flex-grow w-full">
+              <div className="grow w-full">
                 <p className="text-base text-center">arm64, x64 or unified dmg</p>
               </div>
             </div>
@@ -428,10 +447,10 @@ function RunAnywhere() {
             <div className="flex rounded-lg h-full bg-zinc-100  hover:bg-purple-500 dark:hover:bg-purple-700 dark:bg-charcoal-800 bg-opacity-60 p-8 flex-col">
               <div className="flex items-center mb-3 flex-col">
                 <FontAwesomeIcon size="4x" icon={faLinux} />
-                <div className="inline-flex items-center justify-center rounded-full text-gray-900 dark:text-gray-400 flex-shrink-0"></div>
+                <div className="inline-flex items-center justify-center rounded-full text-gray-900 dark:text-gray-400 shrink-0"></div>
                 <h2 className=" text-lg title-font font-medium"> Linux</h2>
               </div>
-              <div className="flex-grow">
+              <div className="grow">
                 <p className="text-base text-center">Flatpak or AMD64 binary (tar.gz)</p>
               </div>
             </div>
@@ -442,7 +461,7 @@ function RunAnywhere() {
   );
 }
 
-function MainFeatures() {
+function MainFeatures(): JSX.Element {
   return (
     <section className="text-gray-900 dark:text-gray-400 dark:bg-charcoal-800 bg-zinc-100 body-font py-24">
       <div className="container px-5 mx-auto flex flex-wrap">
@@ -450,16 +469,16 @@ function MainFeatures() {
           <SectionTitle name="features" />
 
           <h2 className="max-w-lg mb-6 font-sans text-3xl font-bold leading-none tracking-tight text-gray-900 dark:text-white sm:text-4xl md:mx-auto">
-            Build, run and manage containers.
+            Build, run and manage containers
           </h2>
         </div>
         <div className="container px-5 pb-5 mx-auto">
           <div className="flex flex-wrap sm:-m-4 -mx-4 -mb-10 -mt-4 md:space-y-0 space-y-6">
             <div className="p-4 md:w-1/4 flex">
-              <div className="w-12 h-12 inline-flex items-center justify-center rounded-full bg-gray-700 text-purple-700 mb-4 flex-shrink-0">
+              <div className="w-12 h-12 inline-flex items-center justify-center rounded-full bg-gray-700 text-purple-700 mb-4 shrink-0">
                 <FontAwesomeIcon size="2x" icon={faGears} className="w-6 h-6 " />
               </div>
-              <div className="flex-grow pl-6">
+              <div className="grow pl-6">
                 <h2 className="text-gray-900 dark:text-gray-100 text-lg title-font font-medium mb-2">Build</h2>
                 <p className="leading-relaxed text-base list-disc">
                   <a href="/docs/containers/images/building-an-image">
@@ -470,10 +489,10 @@ function MainFeatures() {
               </div>
             </div>
             <div className="p-4 md:w-1/4 flex">
-              <div className="w-12 h-12 inline-flex items-center justify-center rounded-full bg-gray-700 text-purple-700 mb-4 flex-shrink-0">
+              <div className="w-12 h-12 inline-flex items-center justify-center rounded-full bg-gray-700 text-purple-700 mb-4 shrink-0">
                 <FontAwesomeIcon size="2x" icon={faRocket} className="w-6 h-6 " />
               </div>
-              <div className="flex-grow pl-6">
+              <div className="grow pl-6">
                 <h2 className="text-gray-900 dark:text-gray-100 text-lg title-font font-medium mb-2">Run</h2>
 
                 <p className="leading-relaxed text-base list-disc">
@@ -491,10 +510,10 @@ function MainFeatures() {
               </div>
             </div>
             <div className="p-4 md:w-1/4 flex">
-              <div className="w-12 h-12 inline-flex items-center justify-center rounded-full bg-gray-700 text-purple-800 mb-4 flex-shrink-0">
+              <div className="w-12 h-12 inline-flex items-center justify-center rounded-full bg-gray-700 text-purple-800 mb-4 shrink-0">
                 <FontAwesomeIcon size="2x" icon={faGaugeHigh} className="w-6 h-6 " />
               </div>
-              <div className="flex-grow pl-6">
+              <div className="grow pl-6">
                 <h2 className="text-gray-900 dark:text-gray-100 text-lg title-font font-medium mb-2">Inspect</h2>
                 <p className="leading-relaxed text-base list-disc">
                   <FontAwesomeIcon icon={faRocket} className="text-purple-700 w-3 h-3 mt-1 mr-2" />
@@ -507,10 +526,10 @@ function MainFeatures() {
               </div>
             </div>
             <div className="p-4 md:w-1/4 flex">
-              <div className="w-12 h-12 inline-flex items-center justify-center rounded-full bg-gray-700 text-purple-800 mb-4 flex-shrink-0">
+              <div className="w-12 h-12 inline-flex items-center justify-center rounded-full bg-gray-700 text-purple-800 mb-4 shrink-0">
                 <FontAwesomeIcon size="2x" icon={faDiagramProject} className="w-6 h-6 " />
               </div>
-              <div className="flex-grow pl-6">
+              <div className="grow pl-6">
                 <h2 className="text-gray-900 dark:text-gray-100 text-lg title-font font-medium mb-2">Push</h2>
                 <p className="leading-relaxed text-base list-disc">
                   <a href="/docs/containers/images/pushing-an-image-to-a-registry">
@@ -531,7 +550,7 @@ function MainFeatures() {
         <div className="flex flex-col text-center w-full mb-5">
           <Link
             title="Discover More"
-            className="no-underline hover:no-underline text-gray-900 dark:text-white hover:dark:text-violet-600 "
+            className="no-underline hover:no-underline text-gray-900 dark:text-white dark:hover:text-violet-600 "
             to="/features">
             <div className="mt-3 text-purple-800 dark:text-purple-400 inline-flex items-center">
               Discover More
@@ -553,7 +572,7 @@ function MainFeatures() {
   );
 }
 
-function Pods() {
+function Pods(): JSX.Element {
   return (
     <section className="text-gray-900 dark:text-gray-400 dark:bg-charcoal-600 bg-zinc-200 body-font py-24">
       <div className="container px-5 mx-auto flex flex-wrap">
@@ -567,10 +586,10 @@ function Pods() {
         <div className="container px-5 pb-5 mx-auto">
           <div className="flex flex-wrap sm:-m-4 -mx-4 -mb-10 -mt-4 md:space-y-0 space-y-6">
             <div className="p-4 md:w-1/2 flex">
-              <div className="w-12 h-12 inline-flex items-center justify-center rounded-full bg-gray-700 text-purple-700 mb-4 flex-shrink-0">
+              <div className="w-12 h-12 inline-flex items-center justify-center rounded-full bg-gray-700 text-purple-700 mb-4 shrink-0">
                 <FontAwesomeIcon size="2x" icon={faGears} className="w-6 h-6 " />
               </div>
-              <div className="flex-grow pl-6">
+              <div className="grow pl-6">
                 <h2 className="text-gray-900 dark:text-gray-100 text-lg title-font font-medium mb-2">
                   Working with pods
                 </h2>
@@ -585,10 +604,10 @@ function Pods() {
               </div>
             </div>
             <div className="p-4 md:w-1/2 flex">
-              <div className="w-12 h-12 inline-flex items-center justify-center rounded-full bg-gray-700 text-purple-800 mb-4 flex-shrink-0">
+              <div className="w-12 h-12 inline-flex items-center justify-center rounded-full bg-gray-700 text-purple-800 mb-4 shrink-0">
                 <FontAwesomeIcon size="2x" icon={faGaugeHigh} className="w-6 h-6 " />
               </div>
-              <div className="flex-grow pl-6">
+              <div className="grow pl-6">
                 <h2 className="text-gray-900 dark:text-gray-100 text-lg title-font font-medium mb-2">
                   Working with Kubernetes
                 </h2>
@@ -619,7 +638,7 @@ function Pods() {
         <div className="flex flex-col text-center w-full mb-5">
           <Link
             title="Discover More"
-            className="no-underline hover:no-underline text-gray-900 dark:text-white hover:dark:text-violet-600 "
+            className="no-underline hover:no-underline text-gray-900 dark:text-white dark:hover:text-violet-600 "
             to="/features">
             <div className="mt-3 text-purple-800 dark:text-purple-400 inline-flex items-center">
               Discover More
@@ -647,6 +666,7 @@ export default function Home(): JSX.Element {
       title="Podman Desktop - Containers and Kubernetes"
       description="Podman Desktop - An open source graphical tool for developing on containers and Kubernetes">
       <TailWindThemeSelector />
+      <PodmanAILabBanner />
       <Hero />
       <RunAnywhere />
       <MainFeatures />

@@ -1,18 +1,38 @@
+/**********************************************************************
+ * Copyright (C) 2023-2024 Red Hat, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ ***********************************************************************/
+
 import '@testing-library/jest-dom/vitest';
-import { beforeAll, test, expect, vi } from 'vitest';
+
 import { fireEvent, render, screen } from '@testing-library/svelte';
+import { beforeAll, expect, test, vi } from 'vitest';
+
 import ContributionActions from '/@/lib/actions/ContributionActions.svelte';
 
 const executeCommand = vi.fn();
 
 beforeAll(() => {
-  (window as any).executeCommand = executeCommand;
+  Object.defineProperty(window, 'executeCommand', { value: executeCommand });
   executeCommand.mockImplementation(() => {});
 
   (window.events as unknown) = {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    receive: (_channel: string, func: any) => {
-      func();
+    receive: (_channel: string, func: unknown): void => {
+      // Cast to function before calling
+      (func as () => void)();
     },
   };
 });
@@ -43,6 +63,40 @@ test('Expect one ListItemButtonIcon', async () => {
   expect(item).toBeInTheDocument();
 });
 
+test('Expect one ListItemButtonIcon without detail', async () => {
+  render(ContributionActions, {
+    args: [],
+    contributions: [
+      {
+        command: 'dummy.command',
+        title: 'dummy-title',
+      },
+    ],
+    onError: () => {},
+    dropdownMenu: false,
+  });
+  const item = screen.getByLabelText('dummy-title');
+  expect(item).toBeInTheDocument();
+});
+
+test('Expect one ListItemButtonIcon with detail', async () => {
+  render(ContributionActions, {
+    args: [],
+    contributions: [
+      {
+        command: 'dummy.command',
+        title: 'dummy-title',
+      },
+    ],
+    onError: () => {},
+    dropdownMenu: false,
+    detailed: true,
+  });
+  const item = screen.getByLabelText('dummy-title');
+  expect(item).toBeInTheDocument();
+  expect(item).not.toHaveClass('m-0.5');
+});
+
 test('Expect executeCommand to be called', async () => {
   render(ContributionActions, {
     args: [],
@@ -65,7 +119,7 @@ test('Expect executeCommand to be called with sanitize object', async () => {
   render(ContributionActions, {
     args: [
       {
-        nonSerializable: () => {},
+        nonSerializable: (): void => {},
         serializable: 'hello',
       },
     ],
@@ -89,7 +143,7 @@ test('Expect executeCommand to be called with sanitize object nested', async () 
     args: [
       {
         parent: {
-          nonSerializable: () => {},
+          nonSerializable: (): void => {},
           serializable: 'hello',
         },
       },
@@ -173,4 +227,43 @@ test('Expect when property to be true multiple args', async () => {
   });
   const item = screen.getByText('dummy-title');
   expect(item).toBeInTheDocument();
+});
+
+test('Expect default icon if no custom icon', async () => {
+  render(ContributionActions, {
+    args: [],
+    contributions: [
+      {
+        command: 'dummy.command',
+        title: 'dummy-title',
+      },
+    ],
+    onError: () => {},
+    dropdownMenu: true,
+  });
+
+  const iconItem = screen.getByRole('img', { name: '', hidden: true });
+  expect(iconItem).toBeInTheDocument();
+  // expect to have the svelte-fa class
+  expect(iconItem).toHaveClass('svelte-fa');
+});
+
+test('Expect custom icon on the contributed action', async () => {
+  render(ContributionActions, {
+    args: [],
+    contributions: [
+      {
+        command: 'dummy.command',
+        title: 'dummy-title',
+        icon: '${dummyIcon}',
+      },
+    ],
+    onError: () => {},
+    dropdownMenu: true,
+  });
+
+  const iconItem = screen.getByRole('img', { name: 'dummy-title' });
+  expect(iconItem).toBeInTheDocument();
+  // expect to have the podman desktop icon class
+  expect(iconItem).toHaveClass('podman-desktop-icon-dummyIcon');
 });

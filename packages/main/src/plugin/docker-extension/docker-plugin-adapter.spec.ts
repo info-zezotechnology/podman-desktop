@@ -1,5 +1,5 @@
 /**********************************************************************
- * Copyright (C) 2023 Red Hat, Inc.
+ * Copyright (C) 2023-2024 Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,13 +16,14 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
+import type { IpcMainEvent } from 'electron';
 import { beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
 
-import { DockerPluginAdapter } from './docker-plugin-adapter.js';
-import type { ContributionManager } from '../contribution-manager.js';
+import type { SimpleContainerInfo } from '/@api/container-info.js';
+
 import type { ContainerProviderRegistry } from '../container-registry.js';
-import type { SimpleContainerInfo } from '../api/container-info.js';
-import type { IpcMainEvent } from 'electron';
+import type { ContributionManager } from '../contribution-manager.js';
+import { DockerPluginAdapter } from './docker-plugin-adapter.js';
 
 let dockerPluginAdapter: TestDockerPluginAdapter;
 
@@ -36,7 +37,7 @@ vi.mock('electron', () => {
 const contributionManager = {} as unknown as ContributionManager;
 
 class TestDockerPluginAdapter extends DockerPluginAdapter {
-  async getVmServiceContainer(contributionId: string): Promise<SimpleContainerInfo> {
+  override async getVmServiceContainer(contributionId: string): Promise<SimpleContainerInfo> {
     return super.getVmServiceContainer(contributionId);
   }
 }

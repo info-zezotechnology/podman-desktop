@@ -1,6 +1,6 @@
 benoitf:
   name: Florent Benoit
-  title: Maintainer of Podman Desktop
+  title: Principal Software Engineer
   url: https://github.com/benoitf
   image_url: https://github.com/benoitf.png
 
@@ -51,3 +51,45 @@ duffy:
   title: User Experience Designer
   url: https://github.com/mairin
   image_url: https://github.com/mairin.png
+
+cedric:
+  name: Cedric Clyburn
+  title: Developer Advocate
+  url: https://github.com/cedricclyburn
+  image_url: https://github.com/cedricclyburn.png
+
+SoniaSandler:
+  name: Sonia Sandler
+  title: Associate Software Engineer
+  url: https://github.com/SoniaSandler
+  image_url: https://github.com/SoniaSandler.png
+
+gastoner:
+  name: Evžen Gasta
+  title: Associate Software Engineer
+  url: https://github.com/gastoner
+  image_url: https://github.com/gastoner.png
+
+shipsing:
+  name: Shipra Singh
+  title: Tech writer
+  url: https://github.com/shipsing
+  image_url: https://github.com/shipsing.png
+
+meisele:
+  name: Markus Eisele
+  title: Product Marketing
+  url: https://github.com/myfear
+  image_url: https://github.com/myfear.png
+
+phmartin:
+  name: Philippe Martin
+  title: Principal Software Engineer
+  url: https://github.com/feloy
+  image_url: https://github.com/feloy.png
+
+axel7083:
+  name: Axel Stefanini
+  title: Software Engineer
+  url: https://github.com/axel7083
+  image_url: https://github.com/axel7083.png

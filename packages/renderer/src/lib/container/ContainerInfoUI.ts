@@ -68,7 +68,9 @@ export interface ContainerInfoUI {
   actionInProgress?: boolean;
   actionError?: string;
   labels: { [label: string]: string };
-  icon?: any;
+  icon?: unknown;
+  imageBase64RepoTag: string;
+  imageHref?: string;
 }
 
 export interface ContainerGroupInfoUI extends ContainerGroupPartInfoUI {

@@ -1,5 +1,5 @@
 /**********************************************************************
- * Copyright (C) 2022 Red Hat, Inc.
+ * Copyright (C) 2022-2024 Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,16 +16,21 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
-import * as path from 'path';
-import * as fs from 'fs';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+
 import type * as containerDesktopAPI from '@podman-desktop/api';
+
+import { CONFIGURATION_DEFAULT_SCOPE } from '/@api/configuration/constants.js';
+import type { IExperimentalConfiguration } from '/@api/configuration/models.js';
+import type { NotificationCardOptions } from '/@api/notification.js';
+
+import type { ApiSenderType } from './api.js';
 import { ConfigurationImpl } from './configuration-impl.js';
+import type { Directories } from './directories.js';
 import type { Event } from './events/emitter.js';
 import { Emitter } from './events/emitter.js';
-import { CONFIGURATION_DEFAULT_SCOPE } from './configuration-registry-constants.js';
-import type { Directories } from './directories.js';
 import { Disposable } from './types/disposable.js';
-import type { ApiSenderType } from './api.js';
 
 export type IConfigurationPropertySchemaType =
   | 'markdown'
@@ -55,6 +60,7 @@ export interface IConfigurationPropertySchema {
   type?: IConfigurationPropertySchemaType | IConfigurationPropertySchemaType[];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   default?: any;
+  group?: string;
   description?: string;
   placeholder?: string;
   markdownDescription?: string;
@@ -68,6 +74,7 @@ export interface IConfigurationPropertySchema {
   hidden?: boolean;
   enum?: string[];
   when?: string;
+  experimental?: IExperimentalConfiguration;
 }
 
 export type ConfigurationScope =
@@ -76,6 +83,7 @@ export type ConfigurationScope =
   | 'KubernetesConnection'
   | 'ContainerProviderConnectionFactory'
   | 'KubernetesProviderConnectionFactory'
+  | 'DockerCompatibility'
   | 'Onboarding';
 
 export interface IConfigurationExtensionInfo {
@@ -134,7 +142,9 @@ export class ConfigurationRegistry implements IConfigurationRegistry {
     return path.resolve(this.directories.getConfigurationDirectory(), 'settings.json');
   }
 
-  public init(): void {
+  public init(): NotificationCardOptions[] {
+    const notifications: NotificationCardOptions[] = [];
+
     const settingsFile = this.getSettingsFile();
     const parentDirectory = path.dirname(settingsFile);
     if (!fs.existsSync(parentDirectory)) {
@@ -145,9 +155,36 @@ export class ConfigurationRegistry implements IConfigurationRegistry {
     }
 
     const settingsRawContent = fs.readFileSync(settingsFile, 'utf-8');
-    this.configurationValues.set(CONFIGURATION_DEFAULT_SCOPE, JSON.parse(settingsRawContent));
+    let configData: unknown;
+    try {
+      configData = JSON.parse(settingsRawContent);
+    } catch (error) {
+      console.error(`Unable to parse ${settingsFile} file`, error);
+
+      const backupFilename = `${settingsFile}.backup-${Date.now()}`;
+      // keep original file as a backup
+      fs.cpSync(settingsFile, backupFilename);
+
+      // append notification for the user
+      notifications.push({
+        title: 'Corrupted configuration file',
+        body: `Configuration file located at ${settingsFile} was invalid. Created a copy at '${backupFilename}' and started with default settings.`,
+        extensionId: 'core',
+        type: 'warn',
+        highlight: true,
+        silent: true,
+      });
+      configData = {};
+    }
+    this.configurationValues.set(CONFIGURATION_DEFAULT_SCOPE, configData);
+    return notifications;
   }
 
+  /**
+   * Register a configuration
+   * @param configurations
+   * @return the {@link Disposable} object provided **delete** definitely the value from the settings.
+   */
   public registerConfigurations(configurations: IConfigurationNode[]): Disposable {
     this.doRegisterConfigurations(configurations, true);
     return Disposable.create(() => {
@@ -201,10 +238,21 @@ export class ConfigurationRegistry implements IConfigurationRegistry {
     return scope === CONFIGURATION_DEFAULT_SCOPE;
   }
 
+  /**
+   * This method remove the configuration value from the settings definitely
+   * @remarks this would lose the value provided by the user
+   * @param configurations
+   */
   public deregisterConfigurations(configurations: IConfigurationNode[]): void {
     this.doDeregisterConfigurations(configurations, true);
   }
 
+  /**
+   * This method remove the configuration value from the settings definitely
+   * @remarks this would lose the value provided by the user
+   * @param configurations
+   * @param notify
+   */
   public doDeregisterConfigurations(configurations: IConfigurationNode[], notify?: boolean): string[] {
     const properties: string[] = [];
     for (const configuration of configurations) {
@@ -241,7 +289,7 @@ export class ConfigurationRegistry implements IConfigurationRegistry {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     value: any,
     scope?: containerDesktopAPI.ConfigurationScope | containerDesktopAPI.ConfigurationScope[],
-  ) {
+  ): Promise<void> {
     if (Array.isArray(scope)) {
       for (const scopeItem of scope) {
         await this.updateSingleScopeConfigurationValue(key, value, scopeItem);
@@ -264,8 +312,12 @@ export class ConfigurationRegistry implements IConfigurationRegistry {
     this._onDidChangeConfigurationAPI.fire({ affectsConfiguration });
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  async updateSingleScopeConfigurationValue(key: string, value: any, scope?: containerDesktopAPI.ConfigurationScope) {
+  async updateSingleScopeConfigurationValue(
+    key: string,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    value: any,
+    scope?: containerDesktopAPI.ConfigurationScope,
+  ): Promise<void> {
     // extract parent key with first name before first . notation
     const parentKey = key.substring(0, key.indexOf('.'));
     // extract child key with first name after first . notation
@@ -288,7 +340,7 @@ export class ConfigurationRegistry implements IConfigurationRegistry {
     return promise;
   }
 
-  public saveDefault() {
+  public saveDefault(): void {
     const cloneConfig = { ...this.configurationValues.get(CONFIGURATION_DEFAULT_SCOPE) };
     // for each key being already the default value, remove the entry
     Object.keys(cloneConfig)
@@ -307,11 +359,43 @@ export class ConfigurationRegistry implements IConfigurationRegistry {
     section?: string,
     scope?: containerDesktopAPI.ConfigurationScope,
   ): containerDesktopAPI.Configuration {
-    const callback = (scope: containerDesktopAPI.ConfigurationScope) => {
+    const callback = (sectionName: string, scope: containerDesktopAPI.ConfigurationScope): void => {
       if (scope === CONFIGURATION_DEFAULT_SCOPE) {
         this.saveDefault();
       }
+      // perform notification in case of the update
+      this._onDidUpdateConfiguration.fire({ properties: [sectionName] });
     };
     return new ConfigurationImpl(this.apiSender, callback, this.configurationValues, section, scope);
+  }
+
+  addConfigurationEnum(key: string, values: string[], valueWhenRemoved: unknown): Disposable {
+    const property = this.configurationProperties[key];
+    if (property?.enum) {
+      property.enum?.push(...values);
+      this.apiSender.send('configuration-changed');
+    }
+    return Disposable.create(() => {
+      this.removeConfigurationEnum(key, values, valueWhenRemoved);
+    });
+  }
+
+  protected removeConfigurationEnum(key: string, values: string[], valueWhenRemoved: unknown): void {
+    const property = this.configurationProperties[key];
+    if (property) {
+      // remove the values from the enum
+      property.enum = property.enum?.filter(e => !values.includes(e));
+
+      // if the current value is the enum being removed, need to switch back to the previous element
+      // current scope
+      const currentValue = this.configurationValues.get(CONFIGURATION_DEFAULT_SCOPE)[key];
+
+      if (values.some(val => val === currentValue)) {
+        this.updateConfigurationValue(key, valueWhenRemoved).catch((e: unknown) =>
+          console.error(`unable to update default value for the property ${key}`, e),
+        );
+      }
+      this.apiSender.send('configuration-changed');
+    }
   }
 }

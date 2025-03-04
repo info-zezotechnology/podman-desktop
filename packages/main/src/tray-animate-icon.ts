@@ -16,10 +16,13 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
+import * as path from 'node:path';
+
 import type { Tray } from 'electron';
 import { app, nativeTheme } from 'electron';
-import * as path from 'path';
+
 import { isLinux, isMac } from './util.js';
+
 export type TrayIconStatus = 'initialized' | 'updating' | 'error' | 'ready';
 
 export class AnimatedTray {
@@ -45,19 +48,10 @@ export class AnimatedTray {
   }
 
   protected getAssetsFolder(): string {
-    // choose right folder for resources
-    // see extraResources in electron-builder config file
-    let assetsFolder;
-    if (this.isProd()) {
-      assetsFolder = path.resolve(process.resourcesPath, AnimatedTray.MAIN_ASSETS_FOLDER);
-    } else {
-      assetsFolder = path.resolve(app.getAppPath(), AnimatedTray.MAIN_ASSETS_FOLDER);
-    }
-
-    return assetsFolder;
+    return path.resolve(app.getAppPath(), AnimatedTray.MAIN_ASSETS_FOLDER);
   }
 
-  protected animateTrayIcon() {
+  protected animateTrayIcon(): void {
     if (this.trayIconLoopId === 4) {
       this.trayIconLoopId = 0;
     }
@@ -146,7 +140,7 @@ export class AnimatedTray {
     return this.getIconPath('empty');
   }
 
-  setStatus(status: TrayIconStatus) {
+  setStatus(status: TrayIconStatus): void {
     this.status = status;
     this.updateIcon();
   }

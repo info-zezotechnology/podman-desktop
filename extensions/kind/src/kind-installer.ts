@@ -15,23 +15,21 @@
  *
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
-import * as extensionApi from '@podman-desktop/api';
-import { ProgressLocation } from '@podman-desktop/api';
-import * as os from 'node:os';
 import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
-import { Octokit } from '@octokit/rest';
-import { isWindows, installBinaryToSystem } from './util';
-import type { components } from '@octokit/openapi-types';
 
-const githubOrganization = 'kubernetes-sigs';
-const githubRepo = 'kind';
-
-type GitHubRelease = components['schemas']['release'];
+import type { Octokit } from '@octokit/rest';
+import * as extensionApi from '@podman-desktop/api';
 
 export interface AssetInfo {
   id: number;
   name: string;
+}
+
+export interface KindGithubReleaseArtifactMetadata extends extensionApi.QuickPickItem {
+  tag: string;
+  id: number;
 }
 
 const WINDOWS_X64_PLATFORM = 'win32-x64';
@@ -55,13 +53,14 @@ const MACOS_X64_ASSET_NAME = 'kind-darwin-amd64';
 const MACOS_ARM64_ASSET_NAME = 'kind-darwin-arm64';
 
 export class KindInstaller {
+  private readonly KIND_GITHUB_OWNER = 'kubernetes-sigs';
+  private readonly KIND_GITHUB_REPOSITORY = 'kind';
   private assetNames = new Map<string, string>();
-
-  private assetPromise: Promise<AssetInfo>;
 
   constructor(
     private readonly storagePath: string,
     private telemetryLogger: extensionApi.TelemetryLogger,
+    private readonly octokit: Octokit,
   ) {
     this.assetNames.set(WINDOWS_X64_PLATFORM, WINDOWS_X64_ASSET_NAME);
     this.assetNames.set(LINUX_X64_PLATFORM, LINUX_X64_ASSET_NAME);
@@ -70,108 +69,136 @@ export class KindInstaller {
     this.assetNames.set(MACOS_ARM64_PLATFORM, MACOS_ARM64_ASSET_NAME);
   }
 
-  findAssetInfo(data: GitHubRelease[], assetName: string): AssetInfo {
-    for (const release of data) {
-      for (const asset of release.assets) {
-        if (asset.name === assetName) {
-          return {
-            id: asset.id,
-            name: assetName,
-          };
-        }
-      }
+  // Get the latest version of kubectl from GitHub Releases
+  // and return the artifact metadata
+  async getLatestVersionAsset(): Promise<KindGithubReleaseArtifactMetadata> {
+    const latestReleases = await this.grabLatestsReleasesMetadata();
+    // from biggest to smallest
+    return latestReleases[0];
+  }
+
+  // Provides last 5 majors releases from GitHub using the GitHub API
+  // return name, tag and id of the release
+  async grabLatestsReleasesMetadata(): Promise<KindGithubReleaseArtifactMetadata[]> {
+    // Grab last 5 majors releases from GitHub using the GitHub API
+
+    const lastReleases = await this.octokit.repos.listReleases({
+      owner: this.KIND_GITHUB_OWNER,
+      repo: this.KIND_GITHUB_REPOSITORY,
+    });
+
+    // keep only releases and not pre-releases
+    lastReleases.data = lastReleases.data.filter(release => !release.prerelease);
+
+    // keep only the last 5 releases
+    lastReleases.data = lastReleases.data.slice(0, 5);
+
+    return lastReleases.data.map(release => {
+      return {
+        label: release.name ?? release.tag_name,
+        tag: release.tag_name,
+        id: release.id,
+      };
+    });
+  }
+
+  async promptUserForVersion(currentKindTag?: string): Promise<KindGithubReleaseArtifactMetadata> {
+    // Get the latest releases
+    let lastReleasesMetadata = await this.grabLatestsReleasesMetadata();
+    // if the user already has an installed version, we remove it from the list
+    if (currentKindTag) {
+      lastReleasesMetadata = lastReleasesMetadata.filter(release => release.tag.slice(1) !== currentKindTag);
     }
-    return undefined;
-  }
 
-  async getAssetInfo(): Promise<AssetInfo> {
-    if (!(await this.assetPromise)) {
-      const assetName = this.assetNames.get(os.platform().concat('-').concat(os.arch()));
-      const octokit = new Octokit();
-      this.assetPromise = octokit.repos
-        .listReleases({ owner: githubOrganization, repo: githubRepo })
-        .then(response => this.findAssetInfo(response.data, assetName))
-        .catch((error: unknown) => {
-          console.error(error);
-          return undefined;
-        });
-    }
-    return this.assetPromise;
-  }
+    // Show the quickpick
+    const selectedRelease = await extensionApi.window.showQuickPick(lastReleasesMetadata, {
+      placeHolder: 'Select Kind version to download',
+    });
 
-  async isAvailable(): Promise<boolean> {
-    const assetInfo = await this.getAssetInfo();
-    return assetInfo !== undefined;
-  }
-
-  async performInstall(): Promise<boolean> {
-    this.telemetryLogger.logUsage('install-kind-prompt');
-    const dialogResult = await extensionApi.window.showInformationMessage(
-      'The kind binary is required for local Kubernetes development, would you like to download it?',
-      'Yes',
-      'Cancel',
-    );
-    if (dialogResult === 'Yes') {
-      this.telemetryLogger.logUsage('install-kind-prompt-yes');
-      return extensionApi.window.withProgress(
-        { location: ProgressLocation.TASK_WIDGET, title: 'Installing kind' },
-        async progress => {
-          progress.report({ increment: 5 });
-          try {
-            const assetInfo = await this.getAssetInfo();
-            if (assetInfo) {
-              const octokit = new Octokit();
-              const asset = await octokit.repos.getReleaseAsset({
-                owner: githubOrganization,
-                repo: githubRepo,
-                asset_id: assetInfo.id,
-                headers: {
-                  accept: 'application/octet-stream',
-                },
-              });
-              progress.report({ increment: 80 });
-              if (asset) {
-                const destFile = path.resolve(this.storagePath, isWindows() ? assetInfo.name + '.exe' : assetInfo.name);
-                if (!fs.existsSync(this.storagePath)) {
-                  fs.mkdirSync(this.storagePath);
-                }
-                fs.appendFileSync(destFile, Buffer.from(asset.data as unknown as ArrayBuffer));
-                if (!isWindows()) {
-                  const stat = fs.statSync(destFile);
-                  fs.chmodSync(destFile, stat.mode | fs.constants.S_IXUSR);
-                }
-                // Explain to the user that the binary has been successfully installed to the storage path
-                // prompt and ask if they want to install it system-wide (copied to /usr/bin/, or AppData for Windows)
-                const result = await extensionApi.window.showInformationMessage(
-                  `Kind binary has been successfully downloaded to ${destFile}.\n\nWould you like to install it system-wide for accessibility on the command line? This will require administrative privileges.`,
-                  'Yes',
-                  'Cancel',
-                );
-                if (result === 'Yes') {
-                  try {
-                    // Move the binary file to the system from destFile and rename to 'kind'
-                    await installBinaryToSystem(destFile, 'kind');
-                    await extensionApi.window.showInformationMessage(
-                      'Kind binary has been successfully installed system-wide.',
-                    );
-                  } catch (error) {
-                    console.error(error);
-                    await extensionApi.window.showErrorMessage(`Unable to install kind binary: ${error}`);
-                  }
-                }
-                this.telemetryLogger.logUsage('install-kind-downloaded');
-                extensionApi.window.showNotification({ body: 'Kind is successfully installed.' });
-                return true;
-              }
-            }
-          } finally {
-            progress.report({ increment: -1 });
-          }
-        },
-      );
+    if (selectedRelease) {
+      return selectedRelease;
     } else {
-      this.telemetryLogger.logUsage('install-kind-prompt-no');
+      throw new Error('No version selected');
     }
-    return false;
+  }
+
+  // Get the asset id of a given release number for a given operating system and architecture
+  // operatingSystem: win32, darwin, linux (see os.platform())
+  // arch: x64, arm64 (see os.arch())
+  async getReleaseAssetId(releaseId: number, operatingSystem: string, arch: string): Promise<number> {
+    if (operatingSystem === 'win32') {
+      operatingSystem = 'windows';
+    }
+    if (arch === 'x64') {
+      arch = 'amd64';
+    }
+
+    const listOfAssets = await this.octokit.repos.listReleaseAssets({
+      owner: this.KIND_GITHUB_OWNER,
+      repo: this.KIND_GITHUB_REPOSITORY,
+      release_id: releaseId,
+    });
+
+    const searchedAssetName = `kind-${operatingSystem}-${arch}`;
+
+    // search for the right asset
+    const asset = listOfAssets.data.find(asset => searchedAssetName === asset.name);
+    if (!asset) {
+      throw new Error(`No asset found for ${operatingSystem} and ${arch}`);
+    }
+
+    return asset.id;
+  }
+
+  getKindCliStoragePath(): string {
+    const storageBinFolder = path.resolve(this.storagePath, 'bin');
+    let fileExtension = '';
+    if (extensionApi.env.isWindows) {
+      fileExtension = '.exe';
+    }
+    return path.resolve(storageBinFolder, `kind${fileExtension}`);
+  }
+
+  async download(release: KindGithubReleaseArtifactMetadata): Promise<string> {
+    // Get asset id
+    const assetId = await this.getReleaseAssetId(release.id, os.platform(), os.arch());
+
+    // Get the storage and check to see if it exists before we download Kind
+    const storageBinFolder = path.resolve(this.storagePath, 'bin');
+    if (!fs.existsSync(storageBinFolder)) {
+      await fs.promises.mkdir(storageBinFolder, { recursive: true });
+    }
+
+    const kindDownloadLocation = this.getKindCliStoragePath();
+
+    // Download the asset and make it executable
+    await this.downloadReleaseAsset(assetId, kindDownloadLocation);
+    // make executable
+    if (extensionApi.env.isLinux || extensionApi.env.isMac) {
+      // eslint-disable-next-line sonarjs/file-permissions
+      await fs.promises.chmod(kindDownloadLocation, 0o755);
+    }
+
+    return kindDownloadLocation;
+  }
+
+  async downloadReleaseAsset(assetId: number, destination: string): Promise<void> {
+    const asset = await this.octokit.repos.getReleaseAsset({
+      owner: this.KIND_GITHUB_OWNER,
+      repo: this.KIND_GITHUB_REPOSITORY,
+      asset_id: assetId,
+      headers: {
+        accept: 'application/octet-stream',
+      },
+    });
+
+    // check the parent folder exists
+    const parentFolder = path.dirname(destination);
+
+    if (!fs.existsSync(parentFolder)) {
+      await fs.promises.mkdir(parentFolder, { recursive: true });
+    }
+    // write the file
+    await fs.promises.writeFile(destination, Buffer.from(asset.data as unknown as ArrayBuffer));
   }
 }

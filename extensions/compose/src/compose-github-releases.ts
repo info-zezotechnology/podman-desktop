@@ -16,10 +16,11 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
-import type { Octokit } from '@octokit/rest';
-import type { QuickPickItem } from '@podman-desktop/api';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+
+import type { Octokit } from '@octokit/rest';
+import type { QuickPickItem } from '@podman-desktop/api';
 
 export interface ComposeGithubReleaseArtifactMetadata extends QuickPickItem {
   tag: string;
@@ -41,12 +42,17 @@ export class ComposeGitHubReleases {
     const lastReleases = await this.octokit.repos.listReleases({
       owner: ComposeGitHubReleases.COMPOSE_GITHUB_OWNER,
       repo: ComposeGitHubReleases.COMPOSE_GITHUB_REPOSITORY,
-      per_page: 5, // limit to last 5 releases
     });
+
+    // keep only releases and not pre-releases
+    lastReleases.data = lastReleases.data.filter(release => !release.prerelease);
+
+    // keep only the last 5 releases
+    lastReleases.data = lastReleases.data.slice(0, 5);
 
     return lastReleases.data.map(release => {
       return {
-        label: release.name || release.tag_name,
+        label: release.name ?? release.tag_name,
         tag: release.tag_name,
         id: release.id,
       };
@@ -69,7 +75,7 @@ export class ComposeGitHubReleases {
       arch = 'aarch64';
     }
 
-    const listOfAssets = await this.octokit.repos.listReleaseAssets({
+    const listOfAssets = await this.octokit.paginate(this.octokit.repos.listReleaseAssets, {
       owner: ComposeGitHubReleases.COMPOSE_GITHUB_OWNER,
       repo: ComposeGitHubReleases.COMPOSE_GITHUB_REPOSITORY,
       release_id: releaseId,
@@ -78,7 +84,7 @@ export class ComposeGitHubReleases {
     const searchedAssetName = `docker-compose-${operatingSystem}-${arch}${extension}`;
 
     // search for the right asset
-    const asset = listOfAssets.data.find(asset => searchedAssetName === asset.name);
+    const asset = listOfAssets.find(asset => searchedAssetName === asset.name);
     if (!asset) {
       throw new Error(`No asset found for ${operatingSystem} and ${arch}`);
     }

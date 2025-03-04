@@ -1,5 +1,5 @@
 /**********************************************************************
- * Copyright (C) 2023 Red Hat, Inc.
+ * Copyright (C) 2023-2025 Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,23 +16,21 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 import '@testing-library/jest-dom/vitest';
-import { beforeAll, test, expect, vi } from 'vitest';
+
 import { render, screen } from '@testing-library/svelte';
 import { get } from 'svelte/store';
-import FeaturedExtensions from './FeaturedExtensions.svelte';
-import { featuredExtensionInfos } from '/@/stores/featuredExtensions';
-import type { FeaturedExtension } from '../../../../main/src/plugin/featured/featured-api';
+import { beforeAll, expect, test, vi } from 'vitest';
 
-const getFeaturedExtensionsMock = vi.fn();
+import { featuredExtensionInfos } from '/@/stores/featuredExtensions';
+
+import type { FeaturedExtension } from '../../../../main/src/plugin/featured/featured-api';
+import FeaturedExtensions from './FeaturedExtensions.svelte';
 
 // fake the window.events object
 beforeAll(() => {
-  (window as any).getFeaturedExtensions = getFeaturedExtensionsMock;
   (window.events as unknown) = {
-    receive: (_channel: string, func: any) => {
+    receive: (_channel: string, func: () => void): void => {
       func();
     },
   };
@@ -74,7 +72,11 @@ test('Expect that featured extensions are displayed', async () => {
     installed: false,
   };
 
-  getFeaturedExtensionsMock.mockResolvedValue([featuredExtension1, featuredExtension2, featuredExtension3]);
+  vi.mocked(window.getFeaturedExtensions).mockResolvedValue([
+    featuredExtension1,
+    featuredExtension2,
+    featuredExtension3,
+  ]);
 
   // ask to update the featured Extensions store
   window.dispatchEvent(new CustomEvent('system-ready'));
@@ -90,38 +92,12 @@ test('Expect that featured extensions are displayed', async () => {
   const firstExtension = screen.getByTitle('This is FooBar description');
   expect(firstExtension).toBeInTheDocument();
 
-  const imageExt1 = screen.getByRole('img', { name: 'FooBar logo' });
-  // expect the image to be there
-  expect(imageExt1).toBeInTheDocument();
-  // expect image source is correct
-  expect(imageExt1).toHaveAttribute('src', 'data:image/png;base64,foobar');
-
   // Not installed so it should have a button to install
   const installButton = screen.getByRole('button', { name: 'Install foo.bar Extension' });
   // expect the button to be there
   expect(installButton).toBeInTheDocument();
 
   // get by title
-  const secondExtension = screen.getByTitle('Foobaz description');
-  expect(secondExtension).toBeInTheDocument();
-  // contains the text installed
-  expect(secondExtension).toHaveTextContent(/.*installed/);
-
-  const imageExt2 = screen.getByRole('img', { name: 'FooBaz logo' });
-  // expect the image to be there
-  expect(imageExt2).toBeInTheDocument();
-  // expect image source is correct
-  expect(imageExt2).toHaveAttribute('src', 'data:image/png;base64,foobaz');
-
-  // get by title
   const thirdExtension = screen.getByTitle('FooBar not fetchable description');
   expect(thirdExtension).toBeInTheDocument();
-  // contains the text installed
-  expect(thirdExtension).toHaveTextContent(/.*N\/A/);
-
-  const imageExt3 = screen.getByRole('img', { name: 'Bar logo' });
-  // expect the image to be there
-  expect(imageExt3).toBeInTheDocument();
-  // expect image source is correct
-  expect(imageExt3).toHaveAttribute('src', 'data:image/png;base64,bar');
 });

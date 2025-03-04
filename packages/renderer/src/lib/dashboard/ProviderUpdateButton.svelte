@@ -1,7 +1,8 @@
 <script lang="ts">
 import { faBoxOpen } from '@fortawesome/free-solid-svg-icons';
-import type { CheckStatus, ProviderInfo } from '../../../../main/src/plugin/api/provider-info';
-import Button from '../ui/Button.svelte';
+import { Button } from '@podman-desktop/ui-svelte';
+
+import type { CheckStatus, ProviderInfo } from '/@api/provider-info';
 
 export let provider: ProviderInfo;
 let updateInProgress = false;
@@ -12,7 +13,7 @@ let checksStatus: CheckStatus[] = [];
 
 let preflightChecksFailed = false;
 
-async function performUpdate(provider: ProviderInfo) {
+async function performUpdate(provider: ProviderInfo): Promise<void> {
   updateInProgress = true;
 
   checksStatus = [];
@@ -51,10 +52,11 @@ async function performUpdate(provider: ProviderInfo) {
 
 {#if provider?.updateInfo?.version}
   <Button
-    inProgress="{updateInProgress}"
-    disabled="{preflightChecksFailed}"
-    icon="{faBoxOpen}"
-    on:click="{() => performUpdate(provider)}">
+    inProgress={updateInProgress}
+    disabled={preflightChecksFailed}
+    icon={faBoxOpen}
+    padding="px-3 py-0.5"
+    on:click={(): Promise<void> => performUpdate(provider)}>
     Update to {provider.updateInfo.version}
   </Button>
 {/if}

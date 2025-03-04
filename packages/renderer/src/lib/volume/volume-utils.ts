@@ -1,5 +1,5 @@
 /**********************************************************************
- * Copyright (C) 2022 Red Hat, Inc.
+ * Copyright (C) 2022-2024 Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,11 +16,13 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
-import moment from 'moment';
-import humanizeDuration from 'humanize-duration';
-import type { VolumeInfo } from '../../../../main/src/plugin/api/volume-info';
-import type { VolumeInfoUI } from './VolumeInfoUI';
 import { filesize } from 'filesize';
+import humanizeDuration from 'humanize-duration';
+import moment from 'moment';
+
+import type { VolumeInfo } from '/@api/volume-info';
+
+import type { VolumeInfoUI } from './VolumeInfoUI';
 
 export class VolumeUtils {
   getShortName(volumeInfo: VolumeInfo): string {
@@ -75,7 +77,7 @@ export class VolumeUtils {
       engineId: volumeInfo.engineId,
       engineName: volumeInfo.engineName,
       selected: false,
-      inUse: (volumeInfo.UsageData?.RefCount || 0) > 0,
+      status: (volumeInfo.UsageData?.RefCount ?? 0) > 0 ? 'USED' : 'UNUSED',
       containersUsage: volumeInfo.containersUsage,
     };
   }

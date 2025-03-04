@@ -1,5 +1,5 @@
 /**********************************************************************
- * Copyright (C) 2023 Red Hat, Inc.
+ * Copyright (C) 2023, 2024 Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,13 +17,15 @@
  ***********************************************************************/
 
 import '@testing-library/jest-dom/vitest';
-import { test, expect, vi, beforeEach } from 'vitest';
+
 import { fireEvent, render, screen } from '@testing-library/svelte';
-import FormPage from './FormPage.svelte';
-import { lastPage, currentPage } from '../../stores/breadcrumb';
+import userEvent from '@testing-library/user-event';
 import type { TinroBreadcrumb } from 'tinro';
 import { router } from 'tinro';
-import userEvent from '@testing-library/user-event';
+import { beforeEach, expect, test, vi } from 'vitest';
+
+import { currentPage, lastPage } from '../../stores/breadcrumb';
+import FormPage from './FormPage.svelte';
 
 // mock the router
 vi.mock('tinro', () => {
@@ -49,27 +51,14 @@ test('Expect title is defined', async () => {
   expect(titleElement).toHaveTextContent(title);
 });
 
-test('Expect no backlink or close is defined', async () => {
-  render(FormPage, {
-    title: 'No Title',
-    showBreadcrumb: false,
-  });
-
-  const backElement = screen.queryByLabelText('back');
-  expect(backElement).not.toBeInTheDocument();
-
-  const closeElement = screen.queryByTitle('Close');
-  expect(closeElement).toBeInTheDocument();
-});
-
-test('Expect name is defined', async () => {
+test('Expect page name is defined', async () => {
   const name = 'My Dummy Name';
   currentPage.set({ name: name, path: '/' } as TinroBreadcrumb);
   render(FormPage, {
     title: 'No Title',
   });
 
-  const nameElement = screen.getByLabelText('name');
+  const nameElement = screen.getByLabelText('Page Name');
   expect(nameElement).toBeInTheDocument();
   expect(nameElement).toHaveTextContent(name);
 });
@@ -82,7 +71,7 @@ test('Expect backlink is defined', async () => {
     title: 'No Title',
   });
 
-  const backElement = screen.getByLabelText('back');
+  const backElement = screen.getByLabelText('Back');
   expect(backElement).toBeInTheDocument();
   expect(backElement).toHaveTextContent(backName);
 
@@ -100,7 +89,9 @@ test('Expect close link is defined', async () => {
 
   const closeElement = screen.getByTitle('Close');
   expect(closeElement).toBeInTheDocument();
-  expect(closeElement).toHaveAttribute('href', backPath);
+  await fireEvent.click(closeElement);
+
+  expect(router.goto).toHaveBeenCalledWith(backPath);
 });
 
 test('Expect Escape key works', async () => {
@@ -113,4 +104,26 @@ test('Expect Escape key works', async () => {
   await userEvent.keyboard('{Escape}');
 
   expect(router.goto).toHaveBeenCalledWith('/back');
+});
+
+test('Expect no progress', async () => {
+  currentPage.set({ name: 'My name', path: '/' } as TinroBreadcrumb);
+  render(FormPage, {
+    title: 'No Title',
+    inProgress: false,
+  });
+
+  const progress = screen.queryByRole('progressbar');
+  expect(progress).toBeNull();
+});
+
+test('Expect progress', async () => {
+  currentPage.set({ name: 'My name', path: '/' } as TinroBreadcrumb);
+  render(FormPage, {
+    title: 'No Title',
+    inProgress: true,
+  });
+
+  const progress = screen.getByRole('progressbar');
+  expect(progress).toBeInTheDocument();
 });

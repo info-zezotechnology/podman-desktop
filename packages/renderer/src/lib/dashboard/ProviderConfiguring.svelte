@@ -1,18 +1,20 @@
 <script lang="ts">
-import type { CheckStatus, ProviderInfo } from '../../../../main/src/plugin/api/provider-info';
-import PreflightChecks from './PreflightChecks.svelte';
-import ProviderLinks from './ProviderLinks.svelte';
-import ProviderLogo from './ProviderLogo.svelte';
-import ProviderUpdateButton from './ProviderUpdateButton.svelte';
+import '@xterm/xterm/css/xterm.css';
+
+import { Spinner } from '@podman-desktop/ui-svelte';
+import { FitAddon } from '@xterm/addon-fit';
+import { Terminal } from '@xterm/xterm';
 import { onDestroy, onMount } from 'svelte';
-import { Terminal } from 'xterm';
-import { FitAddon } from 'xterm-addon-fit';
-import 'xterm/css/xterm.css';
+
+import type { CheckStatus, ProviderInfo } from '/@api/provider-info';
+
 import { TerminalSettings } from '../../../../main/src/plugin/terminal-settings';
-import { getPanelDetailColor } from '../color/color';
-import { type InitializationContext, InitializationSteps, InitializeAndStartMode } from './ProviderInitUtils';
+import { getTerminalTheme } from '../../../../main/src/plugin/terminal-theme';
 import Steps from '../ui/Steps.svelte';
-import Spinner from '../ui/Spinner.svelte';
+import PreflightChecks from './PreflightChecks.svelte';
+import ProviderCard from './ProviderCard.svelte';
+import { type InitializationContext, InitializationSteps, InitializeAndStartMode } from './ProviderInitUtils';
+import ProviderUpdateButton from './ProviderUpdateButton.svelte';
 
 export let provider: ProviderInfo;
 export let initializationContext: InitializationContext;
@@ -21,8 +23,6 @@ let initializeError: string | undefined = undefined;
 
 let preflightChecks: CheckStatus[] = [];
 
-let noErrors = true;
-
 let logsXtermDiv: HTMLDivElement;
 let logsTerminal;
 
@@ -30,7 +30,7 @@ let logsTerminal;
 let resizeObserver: ResizeObserver;
 let termFit: FitAddon;
 
-async function refreshTerminal() {
+async function refreshTerminal(): Promise<void> {
   // missing element, return
   if (!logsXtermDiv) {
     console.log('missing xterm div, exiting...');
@@ -48,9 +48,7 @@ async function refreshTerminal() {
     fontSize,
     lineHeight,
     disableStdin: true,
-    theme: {
-      background: getPanelDetailColor(),
-    },
+    theme: getTerminalTheme(),
     convertEol: true,
   });
   termFit = new FitAddon();
@@ -69,7 +67,7 @@ async function refreshTerminal() {
 
 onMount(async () => {
   // Refresh the terminal on initial load
-  refreshTerminal();
+  await refreshTerminal();
 
   // Resize the terminal each time we change the div size
   resizeObserver = new ResizeObserver(() => {
@@ -86,22 +84,13 @@ onDestroy(() => {
 });
 </script>
 
-<div class="p-2 flex flex-col bg-charcoal-800 rounded-lg" role="region" aria-label="{provider.name} Provider">
-  <ProviderLogo provider="{provider}" />
-  <div class="flex flex-col items-center text-center">
-    <p class="text-xl text-gray-400" aria-label="Actual State">
-      {provider.name}
-      {#if provider.version}
-        v{provider.version}
-      {/if}
-      is initializing
-    </p>
-
-    <div class="mt-5">
+<ProviderCard provider={provider}>
+  <svelte:fragment slot="content">
+    <div class="flex flex-col w-full lg:w-2/3 justify-center items-center">
       {#if initializationContext.mode === InitializeAndStartMode}
-        <Steps steps="{InitializationSteps}" />
+        <Steps steps={InitializationSteps} />
       {/if}
-      <div class="flex flex-col text-gray-700" aria-label="Transitioning State">
+      <div class="flex flex-col text-[var(--pd-content-text)] items-center" aria-label="Transitioning State">
         <div>Initializing</div>
         <div class="my-2">
           <Spinner />
@@ -110,23 +99,16 @@ onDestroy(() => {
     </div>
 
     <div
-      class=""
-      style="background-color: {getPanelDetailColor()}; width: 100%; text-align: left; display: {initializeError
-        ? 'block'
-        : 'none'}"
-      class:h-full="{noErrors === false}"
-      class:min-w-full="{noErrors === false}"
-      bind:this="{logsXtermDiv}">
+      class="bg-[var(--pd-terminal-background)] p-[5px] pr-0"
+      style="width: 100%; text-align: left; display: {initializeError ? 'block' : 'none'}"
+      bind:this={logsXtermDiv}>
     </div>
-  </div>
 
-  {#if provider.updateInfo}
-    <div class="mt-5 mb-1 w-full flex justify-around">
-      <ProviderUpdateButton onPreflightChecks="{checks => (preflightChecks = checks)}" provider="{provider}" />
-    </div>
-  {/if}
-  <PreflightChecks preflightChecks="{preflightChecks}" />
-
-  <div class="mt-5 mb-1 w-full flex justify-around"></div>
-  <ProviderLinks provider="{provider}" />
-</div>
+    <PreflightChecks preflightChecks={preflightChecks} />
+  </svelte:fragment>
+  <svelte:fragment slot="update">
+    {#if provider.updateInfo?.version && provider.version !== provider.updateInfo?.version}
+      <ProviderUpdateButton onPreflightChecks={(checks): CheckStatus[] => (preflightChecks = checks)} provider={provider} />
+    {/if}
+  </svelte:fragment>
+</ProviderCard>

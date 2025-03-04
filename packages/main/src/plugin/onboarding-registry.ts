@@ -1,5 +1,5 @@
 /**********************************************************************
- * Copyright (C) 2023 Red Hat, Inc.
+ * Copyright (C) 2023-2025 Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,12 +15,12 @@
  *
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
-import * as path from 'path';
-import type { Onboarding, OnboardingInfo, OnboardingStatus } from './api/onboarding.js';
-import type { AnalyzedExtension } from './extension-loader.js';
-import type { ConfigurationRegistry } from './configuration-registry.js';
+import * as path from 'node:path';
+
+import type { AnalyzedExtension } from '/@/plugin/extension/extension-analyzer.js';
+import type { Onboarding, OnboardingInfo, OnboardingStatus } from '/@api/onboarding.js';
+
 import { getBase64Image } from '../util.js';
 import type { Context } from './context/context.js';
 import { Disposable } from './types/disposable.js';
@@ -28,10 +28,7 @@ import { Disposable } from './types/disposable.js';
 export class OnboardingRegistry {
   private onboardingInfos: Map<string, OnboardingInfo> = new Map<string, OnboardingInfo>();
 
-  constructor(
-    private configurationRegistry: ConfigurationRegistry,
-    private context: Context,
-  ) {}
+  constructor(private context: Context) {}
 
   registerOnboarding(extension: AnalyzedExtension, onboarding: Onboarding): Disposable {
     const onInfo = this.createOnboardingInfo(extension, onboarding);
@@ -54,13 +51,19 @@ export class OnboardingRegistry {
     this.checkIdsReadability(extension, onboarding);
     //TODO we need to check the onboarding has a valid schema. contains atleast a step and substep
     this.convertImages(extension, onboarding);
+
     return {
       ...onboarding,
       extension: extension.id,
+      removable: extension.removable,
+      name: extension.name,
+      displayName: extension.manifest?.displayName ?? extension.name,
+      description: extension.manifest?.description ?? '',
+      icon: onboarding.media?.path ?? '',
     };
   }
 
-  convertImages(extension: AnalyzedExtension, onboarding: Onboarding) {
+  convertImages(extension: AnalyzedExtension, onboarding: Onboarding): void {
     if (onboarding.media?.path) {
       const base64Image = getBase64Image(path.resolve(extension.path, onboarding.media.path));
       if (base64Image) {
@@ -88,7 +91,22 @@ export class OnboardingRegistry {
   }
 
   listOnboarding(): OnboardingInfo[] {
-    return Array.from(this.onboardingInfos.values());
+    const comparePriorities = (p1: number, p2: number): number => {
+      if (p1 === p2) {
+        return 0;
+      }
+      return p1 < p2 ? -1 : 1;
+    };
+    return Array.from(this.onboardingInfos.values()).toSorted((a, b) => {
+      if (a.removable && b.removable) {
+        return comparePriorities(a.priority ?? 100, b.priority ?? 100);
+      } else if (a.removable && !b.removable) {
+        return 1;
+      } else if (!a.removable && b.removable) {
+        return -1;
+      }
+      return comparePriorities(a.priority ?? 100, b.priority ?? 100);
+    });
   }
 
   updateStepState(status: OnboardingStatus, extension: string, stepId?: string): void {
@@ -150,8 +168,8 @@ export class OnboardingRegistry {
    *
    * In case of a rule not respected, a warning is displayed in the console.
    */
-  checkIdsReadability(extension: AnalyzedExtension, onboarding: Onboarding) {
-    const warn = (msg: string) => {
+  checkIdsReadability(extension: AnalyzedExtension, onboarding: Onboarding): void {
+    const warn = (msg: string): void => {
       console.warn(`[${extension.id}]: ${msg}`);
     };
     onboarding.steps.forEach(step => {

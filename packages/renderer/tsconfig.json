@@ -8,7 +8,8 @@
     "preserveValueImports": false,
     "baseUrl": ".",
     "paths": {
-      "/@/*": ["./src/*"]
+      "/@/*": ["./src/*"],
+      "/@api/*": ["../api/src/*"]
     },
     /**
      * Typecheck JS in `.svelte` and `.js` files by default.
@@ -17,7 +18,8 @@
      * of JS in `.svelte` files.
      */
     "allowJs": true,
-    "checkJs": true
+    "checkJs": true,
+    "types": ["@testing-library/jest-dom"]
   },
   "include": [
     "src/**/*.d.ts",
@@ -26,6 +28,7 @@
     "src/**/*.svelte",
     "types/**/*.d.ts",
     "../../types/**/*.d.ts",
-    "../preload/exposedInMainWorld.d.ts"
+    "../preload/exposedInMainWorld.d.ts",
+    "../api/src/**/*.ts"
   ]
 }

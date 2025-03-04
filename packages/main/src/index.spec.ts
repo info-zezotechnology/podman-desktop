@@ -1,5 +1,5 @@
 /**********************************************************************
- * Copyright (C) 2023 Red Hat, Inc.
+ * Copyright (C) 2023-2025 Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,15 +16,32 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
-import { afterEach, beforeEach, expect, test, vi } from 'vitest';
-import { handleOpenUrl, mainWindowDeferred } from './index.js';
-import type { BrowserWindow } from 'electron';
+import type { App } from 'electron';
+import { app, BrowserWindow, Menu, Tray } from 'electron';
+import { aboutMenuItem } from 'electron-util/main';
+import { afterEach, assert, beforeEach, expect, test, vi } from 'vitest';
+
+import { mainWindowDeferred } from './index.js';
+import type { ConfigurationRegistry, IConfigurationChangeEvent } from './plugin/configuration-registry.js';
+import { Emitter } from './plugin/events/emitter.js';
+import { PluginSystem } from './plugin/index.js';
 import { Deferred } from './plugin/util/deferred.js';
+import * as util from './util.js';
+
 const consoleLogMock = vi.fn();
 const originalConsoleLog = console.log;
 
-/* eslint-disable @typescript-eslint/no-empty-function */
+const constants = vi.hoisted(() => {
+  let resolveFn: ((value: void | PromiseLike<void>) => void) | undefined = undefined;
+  return {
+    appReadyDeferredPromise: new Promise<void>(resolve => {
+      resolveFn = resolve;
+    }),
+    resolveFn,
+  };
+});
 
+/* eslint-disable @typescript-eslint/no-empty-function */
 vi.mock('electron-is-dev', async () => {
   return {};
 });
@@ -33,36 +50,68 @@ vi.mock('electron-context-menu', async () => {
     default: vi.fn(),
   };
 });
-vi.mock('electron-util', async () => {
+vi.mock('electron-util/main', async () => {
   return {
-    aboutMenuItem: vi.fn(),
+    aboutMenuItem: vi.fn().mockReturnValue({ label: 'foo' }),
   };
 });
 
+const _onDidChangeConfiguration = new Emitter<IConfigurationChangeEvent>();
+const configurationRegistryMock = {
+  onDidChangeConfiguration: _onDidChangeConfiguration.event,
+  registerConfigurations: vi.fn(),
+  getConfigurationProperties: vi.fn().mockReturnValue({}),
+  getConfiguration: vi.fn().mockReturnValue({
+    get: vi.fn(),
+  }),
+} as unknown as ConfigurationRegistry;
+
+const fakeWindow = {
+  isDestroyed: vi.fn(),
+  webContents: {
+    send: vi.fn(),
+  },
+} as unknown as BrowserWindow;
+
+const initMock = vi.fn();
+const extensionLoader = {
+  getConfigurationRegistry: vi.fn(),
+};
+
 vi.mock('./plugin', async () => {
-  const extensionLoader = {
-    getConfigurationRegistry: vi.fn(),
-  };
   return {
-    PluginSystem: vi.fn().mockImplementation(() => {
-      return {
-        initExtensions: vi.fn().mockImplementation(() => extensionLoader),
-      };
-    }),
+    PluginSystem: vi.fn(),
+  };
+});
+
+vi.mock('./util', async () => {
+  return {
+    isWindows: vi.fn().mockReturnValue(false),
+    isMac: vi.fn().mockReturnValue(false),
+    isLinux: vi.fn().mockReturnValue(false),
   };
 });
 
 vi.mock('electron', async () => {
   class MyCustomWindow {
-    constructor() {}
+    static readonly singleton = new MyCustomWindow();
 
-    loadURL() {}
-    setBounds() {}
+    loadURL(): void {}
+    setBounds(): void {}
 
-    on() {}
+    on(): void {}
 
-    static getAllWindows() {
-      return [];
+    show(): void {}
+    focus(): void {}
+    isMinimized(): boolean {
+      return false;
+    }
+    isDestroyed(): boolean {
+      return false;
+    }
+
+    static getAllWindows(): unknown[] {
+      return [MyCustomWindow.singleton];
     }
   }
 
@@ -79,14 +128,14 @@ vi.mock('electron', async () => {
       }),
     },
     app: {
-      getAppPath: () => 'a-custom-appPath',
-      getPath: () => 'a-custom-path',
+      getAppPath: (): string => 'a-custom-appPath',
+      getPath: (): string => 'a-custom-path',
       disableHardwareAcceleration: vi.fn(),
       requestSingleInstanceLock: vi.fn().mockReturnValue(true),
       quit: vi.fn(),
       on: vi.fn(),
       once: vi.fn(),
-      whenReady: vi.fn().mockReturnValue(new Promise(() => {})),
+      whenReady: vi.fn().mockReturnValue(constants.appReadyDeferredPromise),
       setAppUserModelId: vi.fn(),
     },
     ipcMain: {
@@ -100,60 +149,125 @@ vi.mock('electron', async () => {
     Menu: {
       buildFromTemplate: vi.fn(),
       getApplicationMenu: vi.fn(),
+      setApplicationMenu: vi.fn(),
     },
     BrowserWindow: MyCustomWindow /*{
       getAllWindows: vi.fn().mockReturnValue([]),
     },*/,
-    Tray: vi.fn().mockImplementation(() => {
-      return {
-        tray: vi.fn(),
-        setImage: vi.fn(),
-        setToolTip: vi.fn(),
-        setContextMenu: vi.fn(),
-      };
-    }),
+    Tray: vi.fn(),
   };
 });
 
 beforeEach(() => {
   console.log = consoleLogMock;
   vi.clearAllMocks();
+  vi.mocked(Tray).mockImplementation(() => {
+    return {
+      tray: vi.fn(),
+      setImage: vi.fn(),
+      setToolTip: vi.fn(),
+      setContextMenu: vi.fn(),
+    } as unknown as Tray;
+  });
+  vi.mocked(PluginSystem).mockImplementation(() => {
+    return {
+      initExtensions: initMock.mockImplementation(() => extensionLoader),
+    } as unknown as PluginSystem;
+  });
+
+  vi.mocked(app.whenReady).mockReturnValue(constants.appReadyDeferredPromise);
+  const newDefer = new Deferred<BrowserWindow>();
+  if (mainWindowDeferred.promise !== undefined) {
+    mainWindowDeferred.resolve = newDefer.resolve;
+    mainWindowDeferred.promise = newDefer.promise;
+    mainWindowDeferred.reject = newDefer.reject;
+  }
+  mainWindowDeferred.resolve(fakeWindow);
 });
 
 afterEach(() => {
   console.log = originalConsoleLog;
 });
 
-test('should send the URL to open when mainWindow is created', async () => {
-  handleOpenUrl('podman-desktop:extension/my.extension');
+test('app-ready event with activate event', async () => {
+  vi.mocked(util.isMac).mockReset();
+  vi.mocked(util.isMac).mockReturnValue(true);
 
-  const deferredCall = new Deferred<boolean>();
-  const sendMock = vi.fn().mockImplementation(() => {
-    deferredCall.resolve(true);
+  // grab all windows
+  const windows = BrowserWindow.getAllWindows();
+  expect(windows).toHaveLength(1);
+
+  const window = windows[0];
+  if (!window) {
+    assert.fail('window is undefined');
+  }
+  const spyShow = vi.spyOn(window, 'show');
+  const spyFocus = vi.spyOn(window, 'focus');
+
+  let activateCallback: ((event: unknown) => void) | undefined = undefined;
+
+  // capture activate event
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
+  vi.mocked(app.on).mockImplementation((event: string, callback: Function): App => {
+    if (event === 'activate') {
+      activateCallback = callback as (event: unknown) => void;
+    }
+    return app;
   });
-  const fakeWindow = {
-    isDestroyed: vi.fn(),
-    webContents: {
-      send: sendMock,
-    },
-  } as unknown as BrowserWindow;
 
-  mainWindowDeferred.resolve(fakeWindow);
+  if (constants.resolveFn) {
+    const appReady: (value: void | Promise<void>) => void = constants.resolveFn;
+    if (constants.resolveFn) {
+      appReady();
+    }
+  } else {
+    assert.fail('constants.resolveFn is undefined');
+  }
+  // wait activateCallback being set
+  await vi.waitUntil(() => activateCallback !== undefined);
+  // now, check that we called
+  activateCallback!({});
 
-  // wait sendMock being called
-  await deferredCall.promise;
+  // expect show and focus have been called
+  expect(spyShow).toHaveBeenCalled();
+  expect(spyFocus).toHaveBeenCalled();
 
-  expect(sendMock).toHaveBeenCalledWith('podman-desktop-protocol:install-extension', 'my.extension');
-});
+  // capture the pluginSystem.initExtensions call
+  const initExtensionsCalls = vi.mocked(initMock).mock.calls;
+  expect(initExtensionsCalls).toHaveLength(1);
 
-test('should not send the URL for invalid URLs', async () => {
-  handleOpenUrl('podman-desktop:foobar');
+  // grab onDidConfigurationRegistry parameter
+  const _onDidConfigurationRegistry = initExtensionsCalls?.[0]?.[0];
+  // call the onDidConfigurationRegistry
+  expect(_onDidConfigurationRegistry).toBeDefined();
 
-  const sendMock = vi.fn();
+  // cast as Emitter
+  const onDidConfigurationRegistry = _onDidConfigurationRegistry as Emitter<ConfigurationRegistry>;
 
-  // expect an error
-  expect(consoleLogMock).toHaveBeenCalledWith(
-    'url podman-desktop:foobar does not start with podman-desktop:extension/, skipping.',
-  );
-  expect(sendMock).not.toHaveBeenCalled();
+  // create a Menu
+  vi.mocked(Menu.getApplicationMenu).mockReturnValue({
+    items: [
+      {
+        role: 'help',
+        submenu: {
+          items: [],
+        },
+      },
+    ],
+  } as unknown as Menu);
+  vi.mocked(aboutMenuItem).mockReturnValue({
+    label: 'About',
+  });
+  vi.mocked(Menu.buildFromTemplate).mockReturnValue({} as unknown as Menu);
+
+  onDidConfigurationRegistry.fire(configurationRegistryMock);
+
+  // check we've called Menu.getApplicationMenu
+  await vi.waitFor(() => expect(vi.mocked(Menu.getApplicationMenu)).toHaveBeenCalled());
+
+  // and Menu.buildFromTemplate
+  expect(vi.mocked(Menu.buildFromTemplate)).toHaveBeenCalled();
+
+  // and Menu.setApplicationMenu
+  expect(vi.mocked(Menu.setApplicationMenu)).toHaveBeenCalled();
 });

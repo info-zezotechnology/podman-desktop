@@ -1,16 +1,19 @@
 <script lang="ts">
-import type { CheckStatus, ProviderInfo } from '../../../../main/src/plugin/api/provider-info';
-import ErrorMessage from '../ui/ErrorMessage.svelte';
-import PreflightChecks from './PreflightChecks.svelte';
-import ProviderLinks from './ProviderLinks.svelte';
-import ProviderLogo from './ProviderLogo.svelte';
-import ProviderUpdateButton from './ProviderUpdateButton.svelte';
-import Steps from '../ui/Steps.svelte';
-
+import { Button, ErrorMessage, Spinner } from '@podman-desktop/ui-svelte';
 import { onMount } from 'svelte';
-import { InitializeAndStartMode, InitializationSteps, type InitializationContext } from './ProviderInitUtils';
-import Spinner from '../ui/Spinner.svelte';
-import Button from '../ui/Button.svelte';
+
+import type { CheckStatus, ProviderInfo } from '/@api/provider-info';
+
+import Steps from '../ui/Steps.svelte';
+import PreflightChecks from './PreflightChecks.svelte';
+import ProviderCard from './ProviderCard.svelte';
+import {
+  type InitializationContext,
+  InitializationSteps,
+  InitializeAndStartMode,
+  InitializeOnlyMode,
+} from './ProviderInitUtils';
+import ProviderUpdateButton from './ProviderUpdateButton.svelte';
 
 export let provider: ProviderInfo;
 export let initializationContext: InitializationContext;
@@ -22,10 +25,9 @@ let runError: string | undefined = undefined;
 
 let preflightChecks: CheckStatus[] = [];
 
-async function runProvider() {
+async function runProvider(): Promise<void> {
   runError = undefined;
   runInProgress = true;
-  runAtStart = false;
   try {
     await window.startProvider(provider.internalId);
     await new Promise<void>(resolve => {
@@ -40,43 +42,37 @@ async function runProvider() {
   runInProgress = false;
 }
 
-onMount(() => {
+onMount(async () => {
   if (runAtStart) {
-    runProvider();
+    // we reset the mode bc the provider has to be started only after the initialization.
+    // Otherwise if the user stops the provider, this component will mount again and will start the provider everytime
+    initializationContext.mode = InitializeOnlyMode;
+    await runProvider();
   }
 });
 </script>
 
-<div class="p-2 flex flex-col bg-charcoal-800 rounded-lg" role="region" aria-label="{provider.name} Provider">
-  <ProviderLogo provider="{provider}" />
-  <div class="flex flex-col items-center text-center">
-    <p class="text-xl text-gray-400" aria-label="Actual State">
-      {provider.name}
-      {#if provider.version}
-        v{provider.version}
-      {/if}
-      is stopped
-    </p>
-    <p class="text-base text-gray-700" aria-label="Suggested Actions">
-      To start working with containers, {provider.name}
-      {#if provider.version}
-        v{provider.version}
-      {/if} needs to be started.
-    </p>
-
+<ProviderCard provider={provider}>
+  <svelte:fragment slot="content">
     {#if !runAtStart && !runInProgress}
-      <div class="mt-5">
-        <Button on:click="{() => runProvider()}">
+      <p class="text-[var(--pd-content-text)] text-center w-2/3">
+        To start working with containers, {provider.name}
+        {#if provider.version}
+          v{provider.version}
+        {/if} needs to be started.
+      </p>
+      <div class="w-1/3 flex justify-center">
+        <Button on:click={runProvider}>
           Run {provider.name}
         </Button>
       </div>
     {/if}
     {#if runAtStart || runInProgress}
-      <div class="mt-5">
+      <div class="flex flex-col w-full lg:w-2/3 justify-center items-center">
         {#if initializationContext.mode === InitializeAndStartMode}
-          <Steps steps="{InitializationSteps}" current="{1}" />
+          <Steps steps={InitializationSteps} current={1} />
         {/if}
-        <div class="flex flex-col text-gray-700" aria-label="Transitioning State">
+        <div class="flex flex-col text-[var(--pd-content-text)] items-center" aria-label="Transitioning State">
           <div>Starting</div>
           <div class="my-2">
             <Spinner />
@@ -86,15 +82,14 @@ onMount(() => {
     {/if}
 
     {#if runError}
-      <ErrorMessage class="flex flex-col mt-2 my-2 text-sm" error="{runError}" />
+      <ErrorMessage class="flex flex-col mt-2 my-2" error={runError} />
     {/if}
-  </div>
-  {#if provider.updateInfo?.version && provider.version !== provider.updateInfo?.version}
-    <div class="mt-5 mb-1 w-full flex justify-around">
-      <ProviderUpdateButton onPreflightChecks="{checks => (preflightChecks = checks)}" provider="{provider}" />
-    </div>
-  {/if}
-  <PreflightChecks preflightChecks="{preflightChecks}" />
-  <div class="mt-5 mb-1 w-full flex justify-around"></div>
-  <ProviderLinks provider="{provider}" />
-</div>
+
+    <PreflightChecks preflightChecks={preflightChecks} />
+  </svelte:fragment>
+  <svelte:fragment slot="update">
+    {#if provider.updateInfo?.version && provider.version !== provider.updateInfo?.version}
+      <ProviderUpdateButton onPreflightChecks={(checks): CheckStatus[] => (preflightChecks = checks)} provider={provider} />
+    {/if}
+  </svelte:fragment>
+</ProviderCard>

@@ -1,10 +1,10 @@
 <script lang="ts">
-import Fa from 'svelte-fa';
-import { onMount } from 'svelte';
-import { faMinus, faXmark, type IconDefinition } from '@fortawesome/free-solid-svg-icons';
 import { faSquare } from '@fortawesome/free-regular-svg-icons';
+import { faMinus, faXmark, type IconDefinition } from '@fortawesome/free-solid-svg-icons';
+import { onMount } from 'svelte';
+import Fa, { type IconSize } from 'svelte-fa';
 
-const iconSize = '14';
+const iconSize: IconSize | undefined = '0.875x';
 
 export let name: string;
 export let action: () => void = () => {};
@@ -26,9 +26,9 @@ onMount(() => {
 </script>
 
 <button
-  on:click="{() => action()}"
-  title="{titleName}"
-  aria-label="{name}"
-  class="h-[25px] w-[25px] cursor-pointer text-gray-400 hover:rounded-full hover:bg-charcoal-300 flex place-items-center justify-center">
-  <Fa size="{iconSize}" icon="{icon}" />
+  on:click={action}
+  title={titleName}
+  aria-label={name}
+  class="h-[25px] w-[25px] cursor-pointer text-[var(--pd-titlebar-text)] hover:rounded-full hover:bg-[var(--pd-titlebar-hover-bg)] flex place-items-center justify-center">
+  <Fa size={iconSize} icon={icon} />
 </button>

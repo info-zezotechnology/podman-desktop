@@ -21,9 +21,12 @@
 /* eslint-disable @typescript-eslint/no-empty-function */
 
 import '@testing-library/jest-dom/vitest';
-import { test, expect } from 'vitest';
+
 import { render, screen } from '@testing-library/svelte';
-import type { ProviderKubernetesConnectionInfo } from '../../../../main/src/plugin/api/provider-info';
+import { expect, test } from 'vitest';
+
+import type { ProviderKubernetesConnectionInfo } from '/@api/provider-info';
+
 import PreferencesKubernetesConnectionDetailsSummary from './PreferencesKubernetesConnectionDetailsSummary.svelte';
 
 const kubernetesConnection: ProviderKubernetesConnectionInfo = {
@@ -34,7 +37,7 @@ const kubernetesConnection: ProviderKubernetesConnectionInfo = {
   status: 'started',
 };
 
-test('Expect that name and url are displayed', async () => {
+test('Expect that name, url and kubernetes are displayed', async () => {
   render(PreferencesKubernetesConnectionDetailsSummary, {
     kubernetesConnectionInfo: kubernetesConnection,
   });
@@ -42,4 +45,7 @@ test('Expect that name and url are displayed', async () => {
   expect(spanConnection).toBeInTheDocument();
   const spanUrl = screen.getByLabelText('url');
   expect(spanUrl).toBeInTheDocument();
+  const kubernetes = screen.getByLabelText('kubernetes');
+  expect(kubernetes).toBeInTheDocument();
+  expect(kubernetes.textContent).toBe('Kubernetes');
 });

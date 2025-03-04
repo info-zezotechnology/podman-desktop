@@ -1,5 +1,6 @@
 {
   "compilerOptions": {
+    "strict": true,
     "target": "esnext",
     "module": "esnext",
     "moduleResolution": "Node",
@@ -11,12 +12,5 @@
     "skipLibCheck": true,
     "types": ["node"]
   },
-  "include": ["src", "types/*.d.ts", "../../types/**/*.d.ts"],
-  "ts-node": {
-    "compilerOptions": {
-      "module": "CommonJS",
-      "lib": ["ES2020", "DOM"],
-      "types": ["node"]
-    }
-  }
+  "include": ["src", "types/*.d.ts", "../../types/**/*.d.ts"]
 }

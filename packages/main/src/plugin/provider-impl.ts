@@ -16,32 +16,33 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
-import { Disposable } from './types/disposable.js';
-import type { IDisposable } from './types/disposable.js';
-import type { ContainerProviderRegistry } from './container-registry.js';
-
 import type {
+  Auditor,
   ContainerProviderConnection,
-  KubernetesProviderConnection,
   ContainerProviderConnectionFactory,
+  Event,
+  KubernetesProviderConnection,
+  KubernetesProviderConnectionFactory,
   Provider,
+  ProviderAutostart,
+  ProviderCleanup,
+  ProviderConnectionStatus,
+  ProviderDetectionCheck,
+  ProviderImages,
+  ProviderInformation,
+  ProviderInstallation,
   ProviderLifecycle,
+  ProviderLinks,
   ProviderOptions,
   ProviderStatus,
-  ProviderConnectionStatus,
-  Event,
-  ProviderInstallation,
-  ProviderLinks,
-  ProviderImages,
-  ProviderDetectionCheck,
   ProviderUpdate,
-  ProviderAutostart,
-  KubernetesProviderConnectionFactory,
-  ProviderInformation,
-  Auditor,
 } from '@podman-desktop/api';
-import type { ProviderRegistry } from './provider-registry.js';
+
+import type { ContainerProviderRegistry } from './container-registry.js';
 import { Emitter } from './events/emitter.js';
+import type { ProviderRegistry } from './provider-registry.js';
+import type { IDisposable } from './types/disposable.js';
+import { Disposable } from './types/disposable.js';
 
 export class ProviderImpl implements Provider, IDisposable {
   private containerProviderConnections: Set<ContainerProviderConnection>;
@@ -87,10 +88,10 @@ export class ProviderImpl implements Provider, IDisposable {
     this._status = providerOptions.status;
     this._version = providerOptions.version;
 
-    this._links = providerOptions.links || [];
-    this._detectionChecks = providerOptions.detectionChecks || [];
-    this._images = providerOptions.images || {};
-    this._warnings = providerOptions.warnings || [];
+    this._links = providerOptions.links ?? [];
+    this._detectionChecks = providerOptions.detectionChecks ?? [];
+    this._images = providerOptions.images ?? {};
+    this._warnings = providerOptions.warnings ?? [];
 
     // monitor connection statuses
     setInterval(() => {
@@ -258,5 +259,9 @@ export class ProviderImpl implements Provider, IDisposable {
 
   registerAutostart(update: ProviderAutostart): Disposable {
     return this.providerRegistry.registerAutostart(this, update);
+  }
+
+  registerCleanup(cleanup: ProviderCleanup): Disposable {
+    return this.providerRegistry.registerCleanup(this, cleanup);
   }
 }

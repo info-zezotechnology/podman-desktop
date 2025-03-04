@@ -16,9 +16,11 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
-import * as fs from 'fs';
-import { test } from '@playwright/test';
+import * as fs from 'node:fs';
+
 import { argosScreenshot } from '@argos-ci/playwright';
+import { test } from '@playwright/test';
+
 import { extractSitemapPathnames, pathnameToArgosName } from './utils';
 
 // Constants
@@ -30,11 +32,11 @@ const stylesheet = fs.readFileSync(stylesheetPath).toString();
 // Wait for hydration, requires Docusaurus v2.4.3+
 // Docusaurus adds a <html data-has-hydrated="true"> once hydrated
 // See https://github.com/facebook/docusaurus/pull/9256
-function waitForDocusaurusHydration() {
+function waitForDocusaurusHydration(): boolean {
   return document.documentElement.dataset.hasHydrated === 'true';
 }
 
-function screenshotPathname(pathname: string) {
+function screenshotPathname(pathname: string): void {
   test(`pathname ${pathname}`, async ({ page }) => {
     test.slow();
     const url = siteUrl + pathname;

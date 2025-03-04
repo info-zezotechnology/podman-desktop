@@ -1,5 +1,5 @@
 /**********************************************************************
- * Copyright (C) 2023 Red Hat, Inc.
+ * Copyright (C) 2023-2025 Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,27 +19,35 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import '@testing-library/jest-dom/vitest';
-import { beforeAll, test, expect, vi } from 'vitest';
+
 import { fireEvent, render, screen } from '@testing-library/svelte';
-import PodsList from '/@/lib/pod/PodsList.svelte';
-import type { ProviderInfo } from '../../../../main/src/plugin/api/provider-info';
-import { get } from 'svelte/store';
-import { providerInfos } from '/@/stores/providers';
-import { filtered, podsInfos } from '/@/stores/pods';
-import type { PodInfo } from '../../../../main/src/plugin/api/pod-info';
-import { router } from 'tinro';
 import userEvent from '@testing-library/user-event';
+/* eslint-disable import/no-duplicates */
+import { tick } from 'svelte';
+import { get } from 'svelte/store';
+/* eslint-enable import/no-duplicates */
+import { router } from 'tinro';
+import { beforeAll, expect, test, vi } from 'vitest';
+
+import PodsList from '/@/lib/pod/PodsList.svelte';
+import { filtered, podsInfos } from '/@/stores/pods';
+import { providerInfos } from '/@/stores/providers';
+import type { ContextGeneralState } from '/@api/kubernetes-contexts-states';
+import type { ProviderInfo } from '/@api/provider-info';
+
+import type { PodInfo } from '../../../../main/src/plugin/api/pod-info';
 
 const getProvidersInfoMock = vi.fn();
 const listPodsMock = vi.fn();
 const listContainersMock = vi.fn();
-const kubernetesListPodsMock = vi.fn();
 const getContributedMenusMock = vi.fn();
+const kubernetesGetCurrentNamespaceMock = vi.fn();
 
 const provider: ProviderInfo = {
   containerConnections: [
     {
       name: 'MyConnection',
+      displayName: 'MyConnection',
       status: 'started',
       endpoint: { socketPath: 'dummy' },
       type: 'podman',
@@ -60,6 +68,7 @@ const provider: ProviderInfo = {
   status: 'started',
   warnings: [],
   extensionId: '',
+  cleanupSupport: false,
 };
 
 const pod1: PodInfo = {
@@ -192,50 +201,6 @@ const manyPod: PodInfo = {
   kind: 'podman',
 };
 
-const kubepod1: PodInfo = {
-  Cgroup: '',
-  Containers: [
-    {
-      Names: 'container1',
-      Id: 'container1',
-      Status: 'running',
-    },
-  ],
-  Created: '',
-  Id: 'beab25123a40',
-  InfraId: 'kubepod1',
-  Labels: {},
-  Name: 'kubepod1',
-  Namespace: '',
-  Networks: [],
-  Status: 'running',
-  engineId: 'context1',
-  engineName: 'Kubernetes',
-  kind: 'kubernetes',
-};
-
-const kubepod2: PodInfo = {
-  Cgroup: '',
-  Containers: [
-    {
-      Names: 'container1',
-      Id: 'container1',
-      Status: 'running',
-    },
-  ],
-  Created: '',
-  Id: 'e8129c5720b3',
-  InfraId: 'kubepod2',
-  Labels: {},
-  Name: 'kubepod2',
-  Namespace: '',
-  Networks: [],
-  Status: 'running',
-  engineId: 'context2',
-  engineName: 'Kubernetes',
-  kind: 'kubernetes',
-};
-
 const ocppod: PodInfo = {
   Cgroup: '',
   Containers: [
@@ -254,19 +219,27 @@ const ocppod: PodInfo = {
   Networks: [],
   Status: 'running',
   engineId: 'userid-dev/api-sandbox-123-openshiftapps-com:6443/userId',
-  engineName: 'Kubernetes',
-  kind: 'kubernetes',
+  engineName: 'podman',
+  kind: 'podman',
 };
 
 // fake the window.events object
 beforeAll(() => {
+  vi.mocked(window.kubernetesGetContextsGeneralState).mockResolvedValue(new Map());
+  vi.mocked(window.kubernetesGetCurrentContextGeneralState).mockResolvedValue({} as ContextGeneralState);
   (window as any).getProviderInfos = getProvidersInfoMock;
   (window as any).listPods = listPodsMock;
   (window as any).listContainers = listContainersMock.mockResolvedValue([]);
-  (window as any).kubernetesListPods = kubernetesListPodsMock;
+  (window as any).kubernetesGetCurrentNamespace = kubernetesGetCurrentNamespaceMock;
   (window as any).onDidUpdateProviderStatus = vi.fn().mockResolvedValue(undefined);
+  (window as any).removePod = vi.fn();
+  (window as any).kubernetesGetDetailedContexts = vi.fn().mockResolvedValue([]);
+  vi.mocked(window.removePod);
+  (window as any).getConfigurationValue = vi.fn();
+  vi.mocked(window.getConfigurationValue).mockResolvedValue(false);
+
   (window.events as unknown) = {
-    receive: (_channel: string, func: any) => {
+    receive: (_channel: string, func: any): void => {
       func();
     },
   };
@@ -276,9 +249,8 @@ beforeAll(() => {
 });
 
 async function waitRender(customProperties: object): Promise<void> {
-  const result = render(PodsList, { ...customProperties });
-  // wait that result.component.$$.ctx[2] is set
-  await vi.waitUntil(() => result.component.$$.ctx[2] !== undefined, { timeout: 5000 });
+  render(PodsList, { ...customProperties });
+  await tick();
 }
 
 test('Expect no pods being displayed', async () => {
@@ -295,7 +267,6 @@ test('Expect no pods being displayed', async () => {
 test('Expect single podman pod being displayed', async () => {
   getProvidersInfoMock.mockResolvedValue([provider]);
   listPodsMock.mockResolvedValue([pod1]);
-  kubernetesListPodsMock.mockResolvedValue([]);
   window.dispatchEvent(new CustomEvent('provider-lifecycle-change'));
   window.dispatchEvent(new CustomEvent('extensions-already-started'));
 
@@ -307,7 +278,7 @@ test('Expect single podman pod being displayed', async () => {
 
   // Expect to have three "tooltips" which are the "dots".
   const pod1Row = screen.getByRole('row', {
-    name: 'Toggle pod pod1 beab2512 podman tooltip tooltip tooltip 0 seconds spinner spinner spinner',
+    name: `${pod1.Name}`,
   });
   expect(pod1Row).toBeInTheDocument();
 });
@@ -315,7 +286,6 @@ test('Expect single podman pod being displayed', async () => {
 test('Expect 2 podman pods being displayed', async () => {
   getProvidersInfoMock.mockResolvedValue([provider]);
   listPodsMock.mockResolvedValue([pod1, pod2]);
-  kubernetesListPodsMock.mockResolvedValue([]);
   window.dispatchEvent(new CustomEvent('provider-lifecycle-change'));
   window.dispatchEvent(new CustomEvent('extensions-already-started'));
 
@@ -325,55 +295,18 @@ test('Expect 2 podman pods being displayed', async () => {
   const pod1Details = screen.getByRole('cell', { name: 'pod1 beab2512' });
   expect(pod1Details).toBeInTheDocument();
   const pod1Row = screen.getByRole('row', {
-    name: 'Toggle pod pod1 beab2512 podman tooltip tooltip tooltip 0 seconds spinner spinner spinner',
+    name: `${pod1.Name}`,
   });
   expect(pod1Row).toBeInTheDocument();
   const pod2Row = screen.getByRole('row', {
-    name: 'Toggle pod pod2 e8129c57 podman tooltip 0 seconds spinner spinner spinner',
+    name: `${pod2.Name}`,
   });
   expect(pod2Row).toBeInTheDocument();
-});
-
-test('Expect single kubernetes pod being displayed', async () => {
-  getProvidersInfoMock.mockResolvedValue([provider]);
-  listPodsMock.mockResolvedValue([]);
-  kubernetesListPodsMock.mockResolvedValue([kubepod1]);
-  window.dispatchEvent(new CustomEvent('provider-lifecycle-change'));
-  window.dispatchEvent(new CustomEvent('extensions-already-started'));
-
-  await vi.waitUntil(() => get(providerInfos).length === 1 && get(podsInfos).length === 1, { timeout: 5000 });
-
-  render(PodsList);
-  const pod1Details = screen.getByRole('row', {
-    name: 'Toggle pod kubepod1 beab2512 kubernetes tooltip 0 seconds spinner',
-  });
-  expect(pod1Details).toBeInTheDocument();
-});
-
-test('Expect 2 kubernetes pods being displayed', async () => {
-  getProvidersInfoMock.mockResolvedValue([provider]);
-  listPodsMock.mockResolvedValue([]);
-  kubernetesListPodsMock.mockResolvedValue([kubepod1, kubepod2]);
-  window.dispatchEvent(new CustomEvent('provider-lifecycle-change'));
-  window.dispatchEvent(new CustomEvent('extensions-already-started'));
-
-  await vi.waitUntil(() => get(providerInfos).length === 1 && get(podsInfos).length === 2, { timeout: 5000 });
-
-  render(PodsList);
-  const pod1Details = screen.getByRole('row', {
-    name: 'Toggle pod kubepod1 beab2512 kubernetes tooltip 0 seconds spinner',
-  });
-  expect(pod1Details).toBeInTheDocument();
-  const pod2Details = screen.getByRole('row', {
-    name: 'Toggle pod kubepod2 e8129c57 kubernetes tooltip 0 seconds spinner',
-  });
-  expect(pod2Details).toBeInTheDocument();
 });
 
 test('Expect filter empty screen', async () => {
   getProvidersInfoMock.mockResolvedValue([provider]);
   listPodsMock.mockResolvedValue([pod1]);
-  kubernetesListPodsMock.mockResolvedValue([]);
   window.dispatchEvent(new CustomEvent('provider-lifecycle-change'));
   window.dispatchEvent(new CustomEvent('extensions-already-started'));
 
@@ -386,8 +319,7 @@ test('Expect filter empty screen', async () => {
 
 test('Expect the route to a pod details page is correctly encoded with an engineId containing / characters', async () => {
   getProvidersInfoMock.mockResolvedValue([provider]);
-  listPodsMock.mockResolvedValue([]);
-  kubernetesListPodsMock.mockResolvedValue([ocppod]);
+  listPodsMock.mockResolvedValue([ocppod]);
   window.dispatchEvent(new CustomEvent('provider-lifecycle-change'));
   window.dispatchEvent(new CustomEvent('extensions-already-started'));
 
@@ -401,11 +333,11 @@ test('Expect the route to a pod details page is correctly encoded with an engine
     { timeout: 5000 },
   );
   render(PodsList);
-  const podDetails = screen.getByRole('cell', { name: 'ocppod e8129c57' });
+  const podDetails = screen.getByText('ocppod');
   expect(podDetails).toBeInTheDocument();
 
   const podRow = screen.getByRole('row', {
-    name: 'Toggle pod ocppod e8129c57 kubernetes tooltip 0 seconds spinner',
+    name: `${ocppod.Name}`,
   });
   expect(podRow).toBeInTheDocument();
 
@@ -413,20 +345,19 @@ test('Expect the route to a pod details page is correctly encoded with an engine
   router.goto = routerGotoMock;
   await fireEvent.click(podDetails);
   expect(routerGotoMock).toHaveBeenCalledWith(
-    '/pods/kubernetes/ocppod/userid-dev%2Fapi-sandbox-123-openshiftapps-com%3A6443%2FuserId/logs',
+    '/pods/podman/ocppod/userid-dev%2Fapi-sandbox-123-openshiftapps-com%3A6443%2FuserId/',
   );
 });
 
 test('Expect the pod1 row to have 3 status dots with the correct colors and the pod2 row to have 1 status dot', async () => {
   getProvidersInfoMock.mockResolvedValue([provider]);
   listPodsMock.mockResolvedValue([pod1, pod2]);
-  kubernetesListPodsMock.mockResolvedValue([]);
   window.dispatchEvent(new CustomEvent('provider-lifecycle-change'));
   window.dispatchEvent(new CustomEvent('extensions-already-started'));
 
   await vi.waitUntil(() => get(providerInfos).length === 1 && get(podsInfos).length === 2, { timeout: 5000 });
 
-  waitRender(PodsList);
+  await waitRender(PodsList);
 
   // Should render 4 status dots.
   // 3 for the first pod, 1 for the second pod
@@ -435,29 +366,28 @@ test('Expect the pod1 row to have 3 status dots with the correct colors and the 
   expect(statusDots.length).toBe(4);
 
   expect(statusDots[0].title).toBe('container1: Running');
-  expect(statusDots[0]).toHaveClass('bg-status-running');
+  expect(statusDots[0]).toHaveClass('bg-[var(--pd-status-running)]');
 
   expect(statusDots[1].title).toBe('container3: Exited');
-  expect(statusDots[1]).toHaveClass('outline-status-exited');
+  expect(statusDots[1]).toHaveClass('outline-[var(--pd-status-exited)]');
 
   expect(statusDots[2].title).toBe('container2: Terminated');
-  expect(statusDots[2]).toHaveClass('bg-status-terminated');
+  expect(statusDots[2]).toHaveClass('bg-[var(--pd-status-terminated)]');
 
   // 2nd row / 2nd pod
   expect(statusDots[3].title).toBe('container4: Running');
-  expect(statusDots[3]).toHaveClass('bg-status-running');
+  expect(statusDots[3]).toHaveClass('bg-[var(--pd-status-running)]');
 });
 
 test('Expect the manyPod row to show 9 dots representing every status', async () => {
   getProvidersInfoMock.mockResolvedValue([provider]);
   listPodsMock.mockResolvedValue([manyPod]);
-  kubernetesListPodsMock.mockResolvedValue([]);
   window.dispatchEvent(new CustomEvent('provider-lifecycle-change'));
   window.dispatchEvent(new CustomEvent('extensions-already-started'));
 
   await vi.waitUntil(() => get(providerInfos).length === 1 && get(podsInfos).length === 1, { timeout: 5000 });
 
-  waitRender(PodsList);
+  await waitRender(PodsList);
 
   // Should render 9 status dots representing all statuses from the 11 containers provided
   // due to the functoin organizeContainers it will be reorganized and the order will be different
@@ -467,31 +397,31 @@ test('Expect the manyPod row to show 9 dots representing every status', async ()
   expect(statusDots.length).toBe(9);
 
   expect(statusDots[0].title).toBe('Running: 3');
-  expect(statusDots[0]).toHaveClass('bg-status-running');
+  expect(statusDots[0]).toHaveClass('bg-[var(--pd-status-running)]');
 
   expect(statusDots[1].title).toBe('Created: 1');
-  expect(statusDots[1]).toHaveClass('outline-status-created');
+  expect(statusDots[1]).toHaveClass('outline-[var(--pd-status-created)]');
 
   expect(statusDots[2].title).toBe('Paused: 1');
-  expect(statusDots[2]).toHaveClass('bg-status-paused');
+  expect(statusDots[2]).toHaveClass('bg-[var(--pd-status-paused)]');
 
   expect(statusDots[3].title).toBe('Waiting: 1');
-  expect(statusDots[3]).toHaveClass('bg-status-waiting');
+  expect(statusDots[3]).toHaveClass('bg-[var(--pd-status-waiting)]');
 
   expect(statusDots[4].title).toBe('Degraded: 1');
-  expect(statusDots[4]).toHaveClass('bg-status-degraded');
+  expect(statusDots[4]).toHaveClass('bg-[var(--pd-status-degraded)]');
 
   expect(statusDots[5].title).toBe('Exited: 1');
-  expect(statusDots[5]).toHaveClass('outline-status-exited');
+  expect(statusDots[5]).toHaveClass('outline-[var(--pd-status-exited)]');
 
   expect(statusDots[6].title).toBe('Stopped: 1');
-  expect(statusDots[6]).toHaveClass('outline-status-stopped');
+  expect(statusDots[6]).toHaveClass('outline-[var(--pd-status-stopped)]');
 
   expect(statusDots[7].title).toBe('Terminated: 1');
-  expect(statusDots[7]).toHaveClass('bg-status-terminated');
+  expect(statusDots[7]).toHaveClass('bg-[var(--pd-status-terminated)]');
 
   expect(statusDots[8].title).toBe('Dead: 1');
-  expect(statusDots[8]).toHaveClass('bg-status-dead');
+  expect(statusDots[8]).toHaveClass('bg-[var(--pd-status-dead)]');
 });
 
 const runningPod: PodInfo = {
@@ -542,7 +472,6 @@ const stoppedPod: PodInfo = {
 test('Expect All tab to show all pods running and stopped (not running)', async () => {
   getProvidersInfoMock.mockResolvedValue([provider]);
   listPodsMock.mockResolvedValue([stoppedPod, runningPod]);
-  kubernetesListPodsMock.mockResolvedValue([]);
   window.dispatchEvent(new CustomEvent('provider-lifecycle-change'));
   window.dispatchEvent(new CustomEvent('extensions-already-started'));
 
@@ -561,7 +490,6 @@ test('Expect All tab to show all pods running and stopped (not running)', async 
 test('Expect Running tab to show running pods only', async () => {
   getProvidersInfoMock.mockResolvedValue([provider]);
   listPodsMock.mockResolvedValue([stoppedPod, runningPod]);
-  kubernetesListPodsMock.mockResolvedValue([]);
   window.dispatchEvent(new CustomEvent('provider-lifecycle-change'));
   window.dispatchEvent(new CustomEvent('extensions-already-started'));
 
@@ -581,7 +509,6 @@ test('Expect Running tab to show running pods only', async () => {
 test('Expect Stopped tab to show stopped (not running) pods only', async () => {
   getProvidersInfoMock.mockResolvedValue([provider]);
   listPodsMock.mockResolvedValue([stoppedPod, runningPod]);
-  kubernetesListPodsMock.mockResolvedValue([]);
   window.dispatchEvent(new CustomEvent('provider-lifecycle-change'));
   window.dispatchEvent(new CustomEvent('extensions-already-started'));
 
@@ -596,4 +523,50 @@ test('Expect Stopped tab to show stopped (not running) pods only', async () => {
   await vi.waitUntil(() => get(filtered).length === 1, { timeout: 5000 });
 
   expect(get(filtered)).toEqual(expect.arrayContaining([expect.objectContaining({ Status: 'Stopped' })]));
+});
+
+test('Expect tab filtering to not duplicate filter condition in the search bar', async () => {
+  getProvidersInfoMock.mockResolvedValue([provider]);
+  listPodsMock.mockResolvedValue([stoppedPod, runningPod]);
+  window.dispatchEvent(new CustomEvent('provider-lifecycle-change'));
+  window.dispatchEvent(new CustomEvent('extensions-already-started'));
+
+  render(PodsList);
+
+  const runningTab = screen.getByRole('button', { name: 'Running' });
+  await userEvent.click(runningTab);
+  await userEvent.click(runningTab);
+  await userEvent.click(runningTab);
+
+  const searchInput = screen.getByPlaceholderText('Search pods...') as HTMLInputElement;
+  expect(searchInput.value).toBe('is:running');
+});
+
+test('Expect user confirmation to pop up when preferences require', async () => {
+  getProvidersInfoMock.mockResolvedValue([provider]);
+  listPodsMock.mockResolvedValue([pod1]);
+  window.dispatchEvent(new CustomEvent('provider-lifecycle-change'));
+  window.dispatchEvent(new CustomEvent('extensions-already-started'));
+
+  await vi.waitUntil(() => get(providerInfos).length === 1 && get(podsInfos).length === 1, { timeout: 5000 });
+
+  render(PodsList);
+
+  const checkboxes = screen.getAllByRole('checkbox', { name: 'Toggle pod' });
+  await fireEvent.click(checkboxes[0]);
+
+  vi.mocked(window.getConfigurationValue).mockResolvedValue(true);
+
+  (window as any).showMessageBox = vi.fn();
+  vi.mocked(window.showMessageBox).mockResolvedValue({ response: 1 });
+
+  const deleteButton = screen.getByRole('button', { name: 'Delete 1 selected items' });
+  await fireEvent.click(deleteButton);
+
+  expect(window.showMessageBox).toHaveBeenCalledOnce();
+
+  vi.mocked(window.showMessageBox).mockResolvedValue({ response: 0 });
+  await fireEvent.click(deleteButton);
+  expect(window.showMessageBox).toHaveBeenCalledTimes(2);
+  await vi.waitFor(() => expect(window.removePod).toHaveBeenCalled());
 });

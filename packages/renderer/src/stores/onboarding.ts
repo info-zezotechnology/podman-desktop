@@ -18,10 +18,12 @@
 
 import type { Writable } from 'svelte/store';
 import { writable } from 'svelte/store';
-import type { OnboardingInfo } from '../../../main/src/plugin/api/onboarding';
+
+import type { OnboardingInfo } from '/@api/onboarding';
+
 import { EventStore } from './event-store';
 
-const windowEvents = ['extension-stopped', 'extensions-started'];
+const windowEvents = ['extension-stopped', 'extension-started', 'extensions-started'];
 const windowListeners = ['extensions-already-started'];
 
 let readyToUpdate = false;
@@ -51,6 +53,6 @@ export const onboardingEventStore = new EventStore<OnboardingInfo[]>(
 );
 const onboardingEventStoreInfo = onboardingEventStore.setup();
 
-export const fetchOnboarding = async () => {
+export const fetchOnboarding = async (): Promise<void> => {
   await onboardingEventStoreInfo.fetch();
 };

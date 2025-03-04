@@ -17,14 +17,14 @@
  ***********************************************************************/
 
 import type * as extensionApi from '@podman-desktop/api';
+
 import { Emitter } from './events/emitter.js';
 import type { IDisposable } from './types/disposable.js';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const shortcutEvent: extensionApi.Event<any> = Object.freeze(function (callback, context?): IDisposable {
+const shortcutEvent: extensionApi.Event<unknown> = Object.freeze((callback, context?): IDisposable => {
   const handle = setTimeout(callback.bind(context), 0);
   return {
-    dispose() {
+    dispose(): void {
       clearTimeout(handle);
     },
   };
@@ -32,14 +32,13 @@ const shortcutEvent: extensionApi.Event<any> = Object.freeze(function (callback,
 
 export class CancellationTokenImpl implements extensionApi.CancellationToken {
   private _isCancellationRequested: boolean;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private emitter: Emitter<any> | undefined;
+  private emitter: Emitter<unknown> | undefined;
 
   constructor() {
     this._isCancellationRequested = false;
   }
 
-  public cancel() {
+  public cancel(): void {
     if (!this._isCancellationRequested) {
       this._isCancellationRequested = true;
       if (this.emitter) {
@@ -53,14 +52,12 @@ export class CancellationTokenImpl implements extensionApi.CancellationToken {
     return this._isCancellationRequested;
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  get onCancellationRequested(): extensionApi.Event<any> {
+  get onCancellationRequested(): extensionApi.Event<unknown> {
     if (this._isCancellationRequested) {
       return shortcutEvent;
     }
     if (!this.emitter) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      this.emitter = new Emitter<any>();
+      this.emitter = new Emitter<unknown>();
     }
     return this.emitter.event;
   }

@@ -21,14 +21,17 @@
 /* eslint-disable @typescript-eslint/no-empty-function */
 
 import '@testing-library/jest-dom/vitest';
-import { test, expect, vi } from 'vitest';
+
 import { render, screen } from '@testing-library/svelte';
-import { providerInfos } from '../../stores/providers';
-import type { ProviderInfo } from '../../../../main/src/plugin/api/provider-info';
 import userEvent from '@testing-library/user-event';
 import { router } from 'tinro';
-import PreferencesContainerConnectionRendering from './PreferencesContainerConnectionRendering.svelte';
+import { expect, test, vi } from 'vitest';
+
 import { lastPage } from '/@/stores/breadcrumb';
+import type { ProviderInfo } from '/@api/provider-info';
+
+import { providerInfos } from '../../stores/providers';
+import PreferencesContainerConnectionRendering from './PreferencesContainerConnectionRendering.svelte';
 
 test('Expect that the right machine is displayed', async () => {
   const socketPath = '/my/common-socket-path';
@@ -49,6 +52,7 @@ test('Expect that the right machine is displayed', async () => {
     containerConnections: [
       {
         name: podmanMachineName1,
+        displayName: podmanMachineName1,
         status: 'started',
         endpoint: {
           socketPath,
@@ -57,6 +61,7 @@ test('Expect that the right machine is displayed', async () => {
       },
       {
         name: podmanMachineName2,
+        displayName: podmanMachineName2,
         status: 'started',
         endpoint: {
           socketPath,
@@ -65,6 +70,7 @@ test('Expect that the right machine is displayed', async () => {
       },
       {
         name: podmanMachineName3,
+        displayName: podmanMachineName3,
         status: 'started',
         endpoint: {
           socketPath,
@@ -81,6 +87,7 @@ test('Expect that the right machine is displayed', async () => {
     containerProviderConnectionCreationDisplayName: 'Podman machine',
     kubernetesProviderConnectionInitialization: false,
     extensionId: '',
+    cleanupSupport: false,
   };
 
   // 3 connections with the same socket path
@@ -126,6 +133,7 @@ test('Expect that removing the connection is going back to the previous page', a
     containerConnections: [
       {
         name: podmanMachineName1,
+        displayName: podmanMachineName1,
         status: 'started',
         endpoint: {
           socketPath,
@@ -134,6 +142,7 @@ test('Expect that removing the connection is going back to the previous page', a
       },
       {
         name: podmanMachineName2,
+        displayName: podmanMachineName2,
         status: 'stopped',
         endpoint: {
           socketPath,
@@ -143,6 +152,7 @@ test('Expect that removing the connection is going back to the previous page', a
       },
       {
         name: podmanMachineName3,
+        displayName: podmanMachineName3,
         status: 'started',
         endpoint: {
           socketPath,
@@ -159,6 +169,7 @@ test('Expect that removing the connection is going back to the previous page', a
     containerProviderConnectionCreationDisplayName: 'Podman machine',
     kubernetesProviderConnectionInitialization: false,
     extensionId: '',
+    cleanupSupport: false,
   };
 
   // 3 connections with the same socket path
@@ -205,12 +216,12 @@ test('Expect that removing the connection is going back to the previous page', a
   await userEvent.click(deleteButton);
 
   // expect that we have called the router when page has been removed
-  // to jump to the previous page
-  expect(routerGotoSpy).toBeCalledWith('/last');
+  // to jump to the resources page
+  expect(routerGotoSpy).toBeCalledWith('/preferences/resources');
 
   // grab updated route
   const afterRoute = window.location;
-  expect(afterRoute.href).toBe('http://localhost:3000/last');
+  expect(afterRoute.href).toBe('http://localhost:3000/preferences/resources');
 });
 
 test('Expect to see error message if action fails', async () => {
@@ -233,6 +244,7 @@ test('Expect to see error message if action fails', async () => {
     containerConnections: [
       {
         name: podmanMachineName,
+        displayName: podmanMachineName,
         status: 'stopped',
         endpoint: {
           socketPath,
@@ -250,6 +262,7 @@ test('Expect to see error message if action fails', async () => {
     containerProviderConnectionCreationDisplayName: 'Podman machine',
     kubernetesProviderConnectionInitialization: false,
     extensionId: '',
+    cleanupSupport: false,
   };
 
   providerInfos.set([providerInfo]);
@@ -287,4 +300,146 @@ test('Expect to see error message if action fails', async () => {
 
   // expect to see the delete failed button
   expect(deleteFailedButton).toBeInTheDocument();
+});
+
+test('Expect startContainerProvider to only be called once when restarting', async () => {
+  const socketPath = '/my/common-socket-path';
+  const podmanMachineName = 'podman machine';
+
+  const stopConnectionMock = vi.fn();
+  const startConnectionMock = vi.fn();
+  (window as any).stopProviderConnectionLifecycle = stopConnectionMock;
+  (window as any).startProviderConnectionLifecycle = startConnectionMock;
+
+  const providerInfo: ProviderInfo = {
+    id: 'podman',
+    name: 'podman',
+    images: {
+      icon: 'img',
+    },
+    status: 'started',
+    warnings: [],
+    containerProviderConnectionCreation: true,
+    detectionChecks: [],
+    containerConnections: [
+      {
+        name: podmanMachineName,
+        displayName: podmanMachineName,
+        status: 'started',
+        endpoint: {
+          socketPath,
+        },
+        type: 'podman',
+        lifecycleMethods: ['start', 'stop'],
+      },
+    ],
+    installationSupport: false,
+    internalId: '0',
+    kubernetesConnections: [],
+    kubernetesProviderConnectionCreation: true,
+    links: [],
+    containerProviderConnectionInitialization: false,
+    containerProviderConnectionCreationDisplayName: 'Podman machine',
+    kubernetesProviderConnectionInitialization: false,
+    extensionId: '',
+    cleanupSupport: false,
+  };
+
+  providerInfos.set([providerInfo]);
+
+  // encode name with base64 of the second machine
+  const name = Buffer.from(podmanMachineName).toString('base64');
+
+  const connection = Buffer.from(socketPath).toString('base64');
+
+  render(PreferencesContainerConnectionRendering, {
+    name,
+    connection,
+    providerInternalId: '0',
+  });
+
+  // restart the connection
+  const restartButton = screen.getByRole('button', { name: 'Restart' });
+
+  // click on it
+  await userEvent.click(restartButton);
+
+  // update provider connection status, simulate it was stopped
+  providerInfo.containerConnections[0].status = 'stopped';
+  providerInfos.set([providerInfo]);
+
+  // wait a bit
+  await new Promise(resolve => setTimeout(resolve, 1000));
+
+  // update provider connection status - simulate it is started again
+  providerInfo.containerConnections[0].status = 'started';
+  providerInfos.set([providerInfo]);
+
+  // wait a bit
+  await new Promise(resolve => setTimeout(resolve, 1000));
+
+  expect(startConnectionMock).toBeCalledTimes(1);
+});
+
+test('Expect display name to be used in favor of name for page title', async () => {
+  const socketPath = '/my/common-socket-path';
+  const podmanMachineName = 'podman-machine-default';
+  const podmanMachineDisplayName = 'Dummy Podman Display Name';
+
+  const stopConnectionMock = vi.fn();
+  const startConnectionMock = vi.fn();
+  (window as any).stopProviderConnectionLifecycle = stopConnectionMock;
+  (window as any).startProviderConnectionLifecycle = startConnectionMock;
+
+  const providerInfo: ProviderInfo = {
+    id: 'podman',
+    name: 'podman',
+    images: {
+      icon: 'img',
+    },
+    status: 'started',
+    warnings: [],
+    containerProviderConnectionCreation: true,
+    detectionChecks: [],
+    containerConnections: [
+      {
+        name: podmanMachineName,
+        displayName: podmanMachineDisplayName,
+        status: 'started',
+        endpoint: {
+          socketPath,
+        },
+        type: 'podman',
+        lifecycleMethods: ['start', 'stop'],
+      },
+    ],
+    installationSupport: false,
+    internalId: '0',
+    kubernetesConnections: [],
+    kubernetesProviderConnectionCreation: true,
+    links: [],
+    containerProviderConnectionInitialization: false,
+    containerProviderConnectionCreationDisplayName: 'Podman machine',
+    kubernetesProviderConnectionInitialization: false,
+    extensionId: '',
+    cleanupSupport: false,
+  };
+
+  providerInfos.set([providerInfo]);
+
+  // encode name with base64 of the second machine
+  const name = Buffer.from(podmanMachineName).toString('base64');
+
+  const connection = Buffer.from(socketPath).toString('base64');
+
+  const { getByLabelText } = render(PreferencesContainerConnectionRendering, {
+    name,
+    connection,
+    providerInternalId: '0',
+  });
+
+  const header = getByLabelText(podmanMachineDisplayName);
+  expect(header).toBeDefined();
+  expect(header instanceof HTMLHeadingElement).toBeTruthy();
+  expect(header.textContent).toBe(podmanMachineDisplayName);
 });

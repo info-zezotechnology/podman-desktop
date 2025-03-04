@@ -16,20 +16,29 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
-import * as path from 'node:path';
-import * as os from 'node:os';
 import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
+
 import * as extensionApi from '@podman-desktop/api';
 
-export interface RunOptions {
-  env?: NodeJS.ProcessEnv;
-  logger?: extensionApi.Logger;
+export const localBinDir = path.join('/', 'usr', 'local', 'bin');
+export const localWindowsBinDir = path.join(os.homedir(), 'AppData', 'Local', 'Microsoft', 'WindowsApps');
+
+export function getSystemBinaryPath(binaryName: string): string {
+  switch (process.platform) {
+    case 'win32':
+      return path.join(localWindowsBinDir, binaryName.endsWith('.exe') ? binaryName : `${binaryName}.exe`);
+    case 'darwin':
+    case 'linux':
+      return path.join(localBinDir, binaryName);
+    default:
+      throw new Error(`unsupported platform: ${process.platform}.`);
+  }
 }
 
-const localBinDir = '/usr/local/bin';
-
 // Takes a binary path (e.g. /tmp/docker-compose) and installs it to the system. Renames it based on binaryName
-export async function installBinaryToSystem(binaryPath: string, binaryName: string): Promise<void> {
+export async function installBinaryToSystem(binaryPath: string, binaryName: string): Promise<string | undefined> {
   const system = process.platform;
 
   // Before copying the file, make sure it's executable (chmod +x) for Linux and Mac
@@ -44,38 +53,49 @@ export async function installBinaryToSystem(binaryPath: string, binaryName: stri
 
   // Create the appropriate destination path (Windows uses AppData/Local, Linux and Mac use /usr/local/bin)
   // and the appropriate command to move the binary to the destination path
-  let destinationPath: string;
-  let args: string[];
-  let command: string;
+  const destinationPath: string = getSystemBinaryPath(binaryName);
+  let args: string[] = [];
+  let command: string | undefined;
   if (system === 'win32') {
-    destinationPath = path.join(os.homedir(), 'AppData', 'Local', 'Microsoft', 'WindowsApps', `${binaryName}.exe`);
-    command = 'copy';
-    args = [`"${binaryPath}"`, `"${destinationPath}"`];
+    // admin privileges are are not needed on Windows
+    await fs.promises.copyFile(binaryPath, destinationPath);
+    return destinationPath;
   } else if (system === 'darwin') {
-    destinationPath = path.join(localBinDir, binaryName);
     command = 'exec';
-    args = ['cp', binaryPath, destinationPath];
+    args = ['cp', '-f', binaryPath, destinationPath];
   } else if (system === 'linux') {
-    destinationPath = path.join(localBinDir, binaryName);
     command = '/bin/sh';
     args = ['-c', `cp ${binaryPath} ${destinationPath}`];
   }
 
   // If on macOS or Linux, check to see if the /usr/local/bin directory exists,
   // if it does not, then add mkdir -p /usr/local/bin to the start of the command when moving the binary.
-  if ((system === 'linux' || system === 'darwin') && !fs.existsSync(localBinDir)) {
+  const destinationFolder = path.dirname(destinationPath);
+  if (!fs.existsSync(destinationFolder)) {
     if (system === 'darwin') {
-      args.unshift('mkdir', '-p', localBinDir, '&&');
-    } else {
+      args.unshift('mkdir', '-p', destinationFolder, '&&');
+    } else if (system === 'linux') {
       // add mkdir -p /usr/local/bin just after the first item or args array (so it'll be in the -c shell instruction)
       args[args.length - 1] = `mkdir -p /usr/local/bin && ${args[args.length - 1]}`;
+    } else {
+      args.unshift('mkdir', destinationFolder, '&&');
     }
   }
 
   try {
-    // Use admin prileges / ask for password for copying to /usr/local/bin
+    if (!command) {
+      throw new Error('No command defined');
+    }
+    // Use admin privileges / ask for password for copying to /usr/local/bin
     await extensionApi.process.exec(command, args, { isAdmin: true });
     console.log(`Successfully installed '${binaryName}' binary.`);
+    if (!process.env.PATH?.includes(destinationFolder)) {
+      await extensionApi.window.showWarningMessage(
+        `The compose binary has been installed into ${destinationFolder} but it is not in the system path. You should add it manually if you want to use compose from cli.`,
+        'OK',
+      );
+    }
+    return destinationPath;
   } catch (error) {
     console.error(`Failed to install '${binaryName}' binary: ${error}`);
     throw error;

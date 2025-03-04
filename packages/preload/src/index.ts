@@ -1,5 +1,5 @@
 /**********************************************************************
- * Copyright (C) 2022-2023 Red Hat, Inc.
+ * Copyright (C) 2022-2025 Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,129 +20,156 @@
  * @module preload
  */
 
+import EventEmitter from 'node:events';
+
+import type {
+  Cluster,
+  Context,
+  KubernetesObject,
+  V1ConfigMap,
+  V1CronJob,
+  V1Deployment,
+  V1Ingress,
+  V1Job,
+  V1NamespaceList,
+  V1Node,
+  V1PersistentVolumeClaim,
+  V1Pod,
+  V1PodList,
+  V1Secret,
+  V1Service,
+} from '@kubernetes/client-node';
 import type * as containerDesktopAPI from '@podman-desktop/api';
 import { contextBridge, ipcRenderer } from 'electron';
-import EventEmitter from 'events';
+
+import type { CliToolInfo } from '/@api/cli-tool-info';
+import type { ColorInfo } from '/@api/color-info';
+import type { CommandInfo } from '/@api/command-info';
 import type {
   ContainerCreateOptions,
+  ContainerExportOptions,
+  ContainerImportOptions,
   ContainerInfo,
+  ImageLoadOptions,
+  ImagesSaveOptions,
   SimpleContainerInfo,
   VolumeCreateOptions,
-} from '../../main/src/plugin/api/container-info';
-import type { ContributionInfo } from '../../main/src/plugin/api/contribution-info';
-import type { ImageInfo } from '../../main/src/plugin/api/image-info';
-import type { VolumeInspectInfo, VolumeListInfo } from '../../main/src/plugin/api/volume-info';
-import type { PodInfo, PodInspectInfo } from '../../main/src/plugin/api/pod-info';
-import type { NetworkInspectInfo } from '../../main/src/plugin/api/network-info';
-import type { ImageInspectInfo } from '../../main/src/plugin/api/image-inspect-info';
-import type { HistoryInfo } from '../../main/src/plugin/api/history-info';
-import type { ContainerInspectInfo } from '../../main/src/plugin/api/container-inspect-info';
-import type { ContainerStatsInfo } from '../../main/src/plugin/api/container-stats-info';
-import type { IconInfo } from '../../main/src/plugin/api/icon-info';
-import type { ExtensionInfo } from '../../main/src/plugin/api/extension-info';
-import type { FeaturedExtension } from '../../main/src/plugin/featured/featured-api';
-import type { CatalogExtension } from '../../main/src/plugin/extensions-catalog/extensions-catalog-api';
-import type { CommandInfo } from '../../main/src/plugin/api/command-info';
-
-import type { V1Route } from '../../main/src/plugin/api/openshift-types';
-import type { AuthenticationProviderInfo } from '../../main/src/plugin/authentication';
+} from '/@api/container-info';
+import type { ContainerInspectInfo } from '/@api/container-inspect-info';
+import type { ContainerStatsInfo } from '/@api/container-stats-info';
+import type { ContributionInfo } from '/@api/contribution-info';
+import type { DockerSocketMappingStatusInfo } from '/@api/docker-compatibility-info';
+import type { ExtensionDevelopmentFolderInfo } from '/@api/extension-development-folders-info';
+import type { ExtensionInfo } from '/@api/extension-info';
+import type { FeedbackProperties, GitHubIssue } from '/@api/feedback';
+import type { HistoryInfo } from '/@api/history-info';
+import type { IconInfo } from '/@api/icon-info';
+import type { ImageCheckerInfo } from '/@api/image-checker-info';
+import type { ImageFilesInfo } from '/@api/image-files-info';
+import type { ImageInfo } from '/@api/image-info';
+import type { ImageInspectInfo } from '/@api/image-inspect-info';
+import type { ImageSearchOptions, ImageSearchResult, ImageTagsListOptions } from '/@api/image-registry';
+import type { KubeContext } from '/@api/kubernetes-context';
+import type { ContextHealth } from '/@api/kubernetes-contexts-healths';
+import type { ContextPermission } from '/@api/kubernetes-contexts-permissions';
+import type { ContextGeneralState, ResourceName } from '/@api/kubernetes-contexts-states';
+import type { ForwardConfig, ForwardOptions } from '/@api/kubernetes-port-forward-model';
+import type { ResourceCount } from '/@api/kubernetes-resource-count';
+import type { KubernetesContextResources } from '/@api/kubernetes-resources';
+import type { KubernetesTroubleshootingInformation } from '/@api/kubernetes-troubleshooting';
+import type { ManifestCreateOptions, ManifestInspectInfo, ManifestPushOptions } from '/@api/manifest-info';
+import type { NetworkInspectInfo } from '/@api/network-info';
+import type { NotificationCard, NotificationCardOptions } from '/@api/notification';
+import type { OnboardingInfo, OnboardingStatus } from '/@api/onboarding';
+import type { V1Route } from '/@api/openshift-types';
 import type {
   PreflightCheckEvent,
   PreflightChecksCallback,
   ProviderContainerConnectionInfo,
   ProviderInfo,
   ProviderKubernetesConnectionInfo,
-} from '../../main/src/plugin/api/provider-info';
-import type { CliToolInfo } from '../../main/src/plugin/api/cli-tool-info';
-import type { ImageCheckerInfo } from '../../main/src/plugin/api/image-checker-info';
-import type { IConfigurationPropertyRecordedSchema } from '../../main/src/plugin/configuration-registry';
-import type { PullEvent } from '../../main/src/plugin/api/pull-event';
-import { Deferred } from './util/deferred';
-import type { StatusBarEntryDescriptor } from '../../main/src/plugin/statusbar/statusbar-registry';
-import type {
-  PlayKubeInfo,
-  PodCreateOptions,
-  ContainerCreateOptions as PodmanContainerCreateOptions,
-} from '../../main/src/plugin/dockerode/libpod-dockerode';
-import type {
-  Cluster,
-  Context,
-  V1ConfigMap,
-  V1Deployment,
-  V1Ingress,
-  V1NamespaceList,
-  V1Pod,
-  V1PodList,
-  V1Service,
-} from '@kubernetes/client-node';
-import type { Menu } from '../../main/src/plugin/menu-registry';
-import type { MessageBoxOptions, MessageBoxReturnValue } from '../../main/src/plugin/message-box';
-import type { ViewInfoUI } from '../../main/src/plugin/api/view-info';
+} from '/@api/provider-info';
+import type { ProxyState } from '/@api/proxy';
+import type { PullEvent } from '/@api/pull-event';
+import type { ReleaseNotesInfo } from '/@api/release-notes-info';
+import type { ViewInfoUI } from '/@api/view-info';
+import type { VolumeInspectInfo, VolumeListInfo } from '/@api/volume-info';
+import type { WebviewInfo } from '/@api/webview-info';
+
+import type { ApiSenderType } from '../../main/src/plugin/api';
 import type { ContextInfo } from '../../main/src/plugin/api/context-info';
-import type { OnboardingInfo, OnboardingStatus } from '../../main/src/plugin/api/onboarding';
+import type { KubernetesGeneratorInfo } from '../../main/src/plugin/api/KubernetesGeneratorInfo';
+import type { PodCreateOptions, PodInfo, PodInspectInfo } from '../../main/src/plugin/api/pod-info';
+import type { AuthenticationProviderInfo } from '../../main/src/plugin/authentication';
+import type { IConfigurationPropertyRecordedSchema } from '../../main/src/plugin/configuration-registry';
 import type {
-  KubernetesGeneratorSelector,
+  ContainerCreateOptions as PodmanContainerCreateOptions,
+  PlayKubeInfo,
+} from '../../main/src/plugin/dockerode/libpod-dockerode';
+import type { CatalogExtension } from '../../main/src/plugin/extension/catalog/extensions-catalog-api';
+import type { FeaturedExtension } from '../../main/src/plugin/featured/featured-api';
+import type {
   GenerateKubeResult,
   KubernetesGeneratorArgument,
-} from '../../main/src/plugin/kube-generator-registry';
-import type { KubeContext } from '../../main/src/plugin/kubernetes-context';
-
-import type { KubernetesGeneratorInfo } from '../../main/src/plugin/api/KubernetesGeneratorInfo';
-import type { NotificationCard, NotificationCardOptions } from '../../main/src/plugin/api/notification';
+  KubernetesGeneratorSelector,
+} from '../../main/src/plugin/kubernetes/kube-generator-registry';
+import type { Guide } from '../../main/src/plugin/learning-center/learning-center-api';
+import type { Menu } from '../../main/src/plugin/menu-registry';
+import type { MessageBoxOptions, MessageBoxReturnValue } from '../../main/src/plugin/message-box';
+import type { ExtensionBanner, RecommendedRegistry } from '../../main/src/plugin/recommendations/recommendations-api';
+import type { StatusBarEntryDescriptor } from '../../main/src/plugin/statusbar/statusbar-registry';
+import type { IDisposable } from '../../main/src/plugin/types/disposable';
+import { Deferred } from './util/deferred';
 
 export type DialogResultCallback = (openDialogReturnValue: Electron.OpenDialogReturnValue) => void;
+export type OpenSaveDialogResultCallback = (result: string | string[] | undefined) => void;
 
 export type LogType = 'log' | 'warn' | 'trace' | 'debug' | 'error';
 const originalConsole = console;
 const memoryLogs: { logType: LogType; date: Date; message: string }[] = [];
 
-export interface FeedbackProperties {
-  rating: number;
-  comment?: string;
-  contact?: string;
-}
-
 export interface KeyLogger {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  log(key: symbol, ...data: any[]): void;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  error(key: symbol, ...data: any[]): void;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  warn(key: symbol, ...data: any[]): void;
+  log(key: symbol, ...data: unknown[]): void;
+  error(key: symbol, ...data: unknown[]): void;
+  warn(key: symbol, ...data: unknown[]): void;
 }
 
-// initialize extension loader mechanism
-function initExposure(): void {
+export const buildApiSender = (): ApiSenderType => {
   const eventEmitter = new EventEmitter();
-  const apiSender = {
-    send: (channel: string, data: string) => {
+
+  return {
+    send: (channel: string, data: unknown): void => {
       eventEmitter.emit(channel, data);
     },
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    receive: (channel: string, func: any) => {
-      eventEmitter.on(channel, data => {
-        func(data);
-      });
+    receive: (channel: string, func: (...args: unknown[]) => void): IDisposable => {
+      eventEmitter.on(channel, func);
+      return {
+        dispose: (): void => {
+          eventEmitter.removeListener(channel, func);
+        },
+      };
     },
   };
+};
+
+// initialize extension loader mechanism
+export function initExposure(): void {
+  const apiSender = buildApiSender();
 
   interface ErrorMessage {
     name: string;
     message: string;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    extra: any;
+    extra: unknown;
   }
 
-  function decodeError(error: ErrorMessage) {
+  function decodeError(error: ErrorMessage): Error {
     const e = new Error(error.message);
     e.name = error.name;
     Object.assign(e, error.extra);
     return e;
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  async function ipcInvoke(channel: string, ...args: any) {
+  async function ipcInvoke<T>(channel: string, ...args: unknown[]): Promise<T> {
     const { error, result } = await ipcRenderer.invoke(channel, ...args);
     if (error) {
       throw decodeError(error);
@@ -158,10 +185,8 @@ function initExposure(): void {
   // keep console log data
   const types: LogType[] = ['log', 'warn', 'trace', 'debug', 'error'];
   types.forEach(logType => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const originalFunction = (originalConsole as any)[logType];
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (console as any)[logType] = (...args: unknown[]) => {
+    const originalFunction = originalConsole[logType];
+    console[logType] = (...args: unknown[]): void => {
       originalFunction(...args);
       memoryLogs.push({ logType: logType, date: new Date(), message: args.join(' ') });
     };
@@ -187,6 +212,18 @@ function initExposure(): void {
     apiSender.send('install-extension:from-id', extensionId);
   });
 
+  contextBridge.exposeInMainWorld('clearTasks', async (): Promise<void> => {
+    return ipcInvoke('tasks:clear-all');
+  });
+
+  contextBridge.exposeInMainWorld('clearTask', async (taskId: string): Promise<void> => {
+    return ipcInvoke('tasks:clear', taskId);
+  });
+
+  contextBridge.exposeInMainWorld('executeTask', async (taskId: string): Promise<void> => {
+    return ipcInvoke('tasks:execute', taskId);
+  });
+
   contextBridge.exposeInMainWorld('extensionSystemIsReady', async (): Promise<boolean> => {
     return ipcInvoke('extension-system:isReady');
   });
@@ -201,6 +238,17 @@ function initExposure(): void {
       return memoryLogs;
     },
   );
+
+  contextBridge.exposeInMainWorld(
+    'sendNavigationItems',
+    async (items: { name: string; visible: boolean }[]): Promise<void> => {
+      return ipcRenderer.invoke('navigation:sendNavigationItems', items);
+    },
+  );
+
+  contextBridge.exposeInMainWorld('navigateToRoute', async (routeId: string, ...args: unknown[]): Promise<void> => {
+    return ipcRenderer.invoke('navigation:navigateToRoute', routeId, ...args);
+  });
 
   contextBridge.exposeInMainWorld('listContainers', async (): Promise<ContainerInfo[]> => {
     return ipcInvoke('container-provider-registry:listContainers');
@@ -254,11 +302,8 @@ function initExposure(): void {
   );
   contextBridge.exposeInMainWorld(
     'createPod',
-    async (
-      selectedProvider: ProviderContainerConnectionInfo,
-      podCreateOptions: PodCreateOptions,
-    ): Promise<{ engineId: string; Id: string }> => {
-      return ipcInvoke('container-provider-registry:createPod', selectedProvider, podCreateOptions);
+    async (podCreateOptions: PodCreateOptions): Promise<{ engineId: string; Id: string }> => {
+      return ipcInvoke('container-provider-registry:createPod', podCreateOptions);
     },
   );
   contextBridge.exposeInMainWorld('startPod', async (engine: string, podId: string): Promise<void> => {
@@ -266,6 +311,26 @@ function initExposure(): void {
   });
   contextBridge.exposeInMainWorld('restartPod', async (engine: string, podId: string): Promise<void> => {
     return ipcInvoke('container-provider-registry:restartPod', engine, podId);
+  });
+
+  // Manifest
+  contextBridge.exposeInMainWorld(
+    'createManifest',
+    async (createOptions: ManifestCreateOptions): Promise<{ engineId: string; Id: string }> => {
+      return ipcInvoke('container-provider-registry:createManifest', createOptions);
+    },
+  );
+  contextBridge.exposeInMainWorld(
+    'inspectManifest',
+    async (engine: string, manifestId: string): Promise<ManifestInspectInfo> => {
+      return ipcInvoke('container-provider-registry:inspectManifest', engine, manifestId);
+    },
+  );
+  contextBridge.exposeInMainWorld('pushManifest', async (pushOptions: ManifestPushOptions): Promise<void> => {
+    return ipcInvoke('container-provider-registry:pushManifest', pushOptions);
+  });
+  contextBridge.exposeInMainWorld('removeManifest', async (engine: string, manifestId: string): Promise<void> => {
+    return ipcInvoke('container-provider-registry:removeManifest', engine, manifestId);
   });
 
   /**
@@ -323,6 +388,13 @@ function initExposure(): void {
     },
   );
 
+  contextBridge.exposeInMainWorld(
+    'resolveShortnameImage',
+    async (providerContainerConnectionInfo: ProviderContainerConnectionInfo, shortName: string): Promise<string[]> => {
+      return ipcInvoke('container-provider-registry:resolveShortnameImage', providerContainerConnectionInfo, shortName);
+    },
+  );
+
   let onDataCallbacksPullImageId = 0;
   const onDataCallbacksPullImage = new Map<number, (event: PullEvent) => void>();
   contextBridge.exposeInMainWorld(
@@ -331,6 +403,7 @@ function initExposure(): void {
       providerContainerConnectionInfo: ProviderContainerConnectionInfo,
       imageName: string,
       callback: (event: PullEvent) => void,
+      platform?: string,
     ): Promise<void> => {
       onDataCallbacksPullImageId++;
       onDataCallbacksPullImage.set(onDataCallbacksPullImageId, callback);
@@ -339,6 +412,7 @@ function initExposure(): void {
         providerContainerConnectionInfo,
         imageName,
         onDataCallbacksPullImageId,
+        platform,
       );
     },
   );
@@ -430,20 +504,42 @@ function initExposure(): void {
     return ipcInvoke('container-provider-registry:deleteContainer', engine, containerId);
   });
 
+  contextBridge.exposeInMainWorld(
+    'exportContainer',
+    async (engine: string, options: ContainerExportOptions): Promise<void> => {
+      return ipcInvoke('container-provider-registry:exportContainer', engine, options);
+    },
+  );
+
+  contextBridge.exposeInMainWorld('importContainer', async (options: ContainerImportOptions): Promise<void> => {
+    return ipcInvoke('container-provider-registry:importContainer', options);
+  });
+
+  contextBridge.exposeInMainWorld('saveImages', async (options: ImagesSaveOptions): Promise<void> => {
+    return ipcInvoke('container-provider-registry:saveImages', options);
+  });
+
+  contextBridge.exposeInMainWorld('loadImages', async (options: ImageLoadOptions): Promise<void> => {
+    return ipcInvoke('container-provider-registry:loadImages', options);
+  });
+
   let onDataCallbacksLogsContainerId = 0;
   const onDataCallbacksLogsContainer = new Map<number, (name: string, data: string) => void>();
 
   contextBridge.exposeInMainWorld(
     'logsContainer',
-    async (engine: string, containerId: string, callback: (name: string, data: string) => void): Promise<void> => {
+    async (logsParams: {
+      engineId: string;
+      containerId: string;
+      callback: (name: string, data: string) => void;
+    }): Promise<void> => {
       onDataCallbacksLogsContainerId++;
-      onDataCallbacksLogsContainer.set(onDataCallbacksLogsContainerId, callback);
-      return ipcInvoke(
-        'container-provider-registry:logsContainer',
-        engine,
-        containerId,
-        onDataCallbacksLogsContainerId,
-      );
+      onDataCallbacksLogsContainer.set(onDataCallbacksLogsContainerId, logsParams.callback);
+      return ipcInvoke('container-provider-registry:logsContainer', {
+        engineId: logsParams.engineId,
+        containerId: logsParams.containerId,
+        onDataId: onDataCallbacksLogsContainerId,
+      });
     },
   );
   ipcRenderer.on(
@@ -521,6 +617,88 @@ function initExposure(): void {
         callback.onEnd();
         // remove callback from the map
         onDataCallbacksShellInContainer.delete(onDataCallbacksShellInContainerId);
+      }
+    },
+  );
+
+  // callbacks for shellInProviderConnection
+  let onDataCallbacksShellInProviderConnectionId = 0;
+  const onDataCallbacksShellInProviderConnection = new Map<
+    number,
+    { onData: (data: string) => void; onError: (error: string) => void; onEnd: () => void }
+  >();
+  contextBridge.exposeInMainWorld(
+    'shellInProviderConnection',
+    async (
+      internalProviderId: string,
+      connectionInfo: ProviderContainerConnectionInfo | ProviderKubernetesConnectionInfo,
+      onData: (data: string) => void,
+      onError: (error: string) => void,
+      onEnd: () => void,
+    ): Promise<number> => {
+      onDataCallbacksShellInProviderConnectionId++;
+      onDataCallbacksShellInProviderConnection.set(onDataCallbacksShellInProviderConnectionId, {
+        onData,
+        onError,
+        onEnd,
+      });
+      return ipcInvoke(
+        'provider-registry:shellInProviderConnection',
+        internalProviderId,
+        connectionInfo,
+        onDataCallbacksShellInProviderConnectionId,
+      );
+    },
+  );
+
+  contextBridge.exposeInMainWorld(
+    'shellInProviderConnectionSend',
+    async (dataId: number, content: string): Promise<void> => {
+      return ipcInvoke('provider-registry:shellInProviderConnectionSend', dataId, content);
+    },
+  );
+
+  contextBridge.exposeInMainWorld(
+    'shellInProviderConnectionResize',
+    async (dataId: number, dimensions: containerDesktopAPI.ProviderConnectionShellDimensions) => {
+      return ipcInvoke('provider-registry:shellInProviderConnectionResize', dataId, dimensions);
+    },
+  );
+
+  contextBridge.exposeInMainWorld('shellInProviderConnectionClose', async (dataId: number) => {
+    return ipcInvoke('provider-registry:shellInProviderConnectionClose', dataId);
+  });
+
+  ipcRenderer.on(
+    'provider-registry:shellInProviderConnection-onData',
+    (_, onDataCallbacksShellInProviderConnectionId: number, data: string) => {
+      // grab callback from the map
+      const callback = onDataCallbacksShellInProviderConnection.get(onDataCallbacksShellInProviderConnectionId);
+      if (callback) {
+        callback.onData(data);
+      }
+    },
+  );
+  ipcRenderer.on(
+    'provider-registry:shellInProviderConnection-onError',
+    (_, onDataCallbacksShellInProviderConnectionId: number, error: string) => {
+      // grab callback from the map
+      const callback = onDataCallbacksShellInProviderConnection.get(onDataCallbacksShellInProviderConnectionId);
+      if (callback) {
+        callback.onError(error);
+      }
+    },
+  );
+
+  ipcRenderer.on(
+    'provider-registry:shellInProviderConnection-onEnd',
+    (_, onDataCallbacksShellInProviderConnectionId: number) => {
+      // grab callback from the map
+      const callback = onDataCallbacksShellInProviderConnection.get(onDataCallbacksShellInProviderConnectionId);
+      if (callback) {
+        callback.onEnd();
+        // remove callback from the map
+        onDataCallbacksShellInProviderConnection.delete(onDataCallbacksShellInProviderConnectionId);
       }
     },
   );
@@ -664,14 +842,17 @@ function initExposure(): void {
     },
   );
 
-  contextBridge.exposeInMainWorld('getProxySettings', async (): Promise<containerDesktopAPI.ProxySettings> => {
-    return ipcInvoke('proxy:getSettings');
-  });
+  contextBridge.exposeInMainWorld(
+    'getProxySettings',
+    async (): Promise<containerDesktopAPI.ProxySettings | undefined> => {
+      return ipcInvoke('proxy:getSettings');
+    },
+  );
 
-  contextBridge.exposeInMainWorld('isProxyEnabled', async (): Promise<boolean> => {
-    return ipcInvoke('proxy:isEnabled');
+  contextBridge.exposeInMainWorld('getProxyState', async (): Promise<ProxyState> => {
+    return ipcInvoke('proxy:getState');
   });
-  contextBridge.exposeInMainWorld('setProxyState', async (state: boolean): Promise<void> => {
+  contextBridge.exposeInMainWorld('setProxyState', async (state: ProxyState): Promise<void> => {
     return ipcInvoke('proxy:setState', state);
   });
 
@@ -693,7 +874,7 @@ function initExposure(): void {
   let checkCallbackId = 0;
   contextBridge.exposeInMainWorld(
     'runInstallPreflightChecks',
-    async (providerId: string, callBack: PreflightChecksCallback) => {
+    async (providerId: string, callBack: PreflightChecksCallback): Promise<boolean> => {
       checkCallbackId++;
       preflightChecksCallbacks.set(checkCallbackId, callBack);
       return await ipcInvoke('provider-registry:runInstallPreflightChecks', providerId, checkCallbackId);
@@ -716,7 +897,7 @@ function initExposure(): void {
 
   contextBridge.exposeInMainWorld(
     'runUpdatePreflightChecks',
-    async (providerId: string, callBack: PreflightChecksCallback) => {
+    async (providerId: string, callBack: PreflightChecksCallback): Promise<boolean> => {
       checkCallbackId++;
       preflightChecksCallbacks.set(checkCallbackId, callBack);
       return await ipcInvoke('provider-registry:runUpdatePreflightChecks', providerId, checkCallbackId);
@@ -770,11 +951,11 @@ function initExposure(): void {
     'createContainerProviderConnection',
     async (
       internalProviderId: string,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      params: { [key: string]: any },
+      params: { [key: string]: unknown },
       key: symbol,
       keyLogger: (key: symbol, eventName: 'log' | 'warn' | 'error' | 'finish', args: string[]) => void,
-      tokenId?: number,
+      tokenId: number | undefined,
+      taskId: number | undefined,
     ): Promise<void> => {
       onDataCallbacksTaskConnectionId++;
       onDataCallbacksTaskConnectionKeys.set(onDataCallbacksTaskConnectionId, key);
@@ -785,6 +966,7 @@ function initExposure(): void {
         params,
         onDataCallbacksTaskConnectionId,
         tokenId,
+        taskId,
       );
     },
   );
@@ -803,11 +985,11 @@ function initExposure(): void {
     'createKubernetesProviderConnection',
     async (
       internalProviderId: string,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      params: { [key: string]: any },
+      params: { [key: string]: unknown },
       key: symbol,
       keyLogger: (key: symbol, eventName: 'log' | 'warn' | 'error' | 'finish', args: string[]) => void,
-      tokenId?: number,
+      tokenId: number | undefined,
+      taskId: number | undefined,
     ): Promise<void> => {
       onDataCallbacksTaskConnectionId++;
       onDataCallbacksTaskConnectionKeys.set(onDataCallbacksTaskConnectionId, key);
@@ -818,6 +1000,7 @@ function initExposure(): void {
         params,
         onDataCallbacksTaskConnectionId,
         tokenId,
+        taskId,
       );
     },
   );
@@ -842,8 +1025,71 @@ function initExposure(): void {
     },
   );
 
+  let onDataCallbacksCleanupId = 0;
+
+  const onDataCallbacksCleanupProviders = new Map<
+    number,
+    (key: symbol, eventName: 'log' | 'warn' | 'error' | 'finish', args: string[]) => void
+  >();
+  const onDataCallbacksCleanupProvidersKeys = new Map<number, symbol>();
+
+  contextBridge.exposeInMainWorld(
+    'cleanupProviders',
+    async (
+      providerIds: string[],
+      key: symbol,
+      keyLogger: (key: symbol, eventName: 'log' | 'warn' | 'error' | 'finish', args: string[]) => void,
+      tokenId?: number,
+    ): Promise<void> => {
+      onDataCallbacksCleanupId++;
+      onDataCallbacksCleanupProvidersKeys.set(onDataCallbacksCleanupId, key);
+      onDataCallbacksCleanupProviders.set(onDataCallbacksCleanupId, keyLogger);
+      return ipcInvoke('provider-registry:cleanup', providerIds, onDataCallbacksCleanupId, tokenId);
+    },
+  );
+
+  ipcRenderer.on(
+    'provider-registry:cleanup-onData',
+    (_, onDataCallbacksCleanupId: number, channel: string, data: string[]) => {
+      // grab callback from the map
+      const callback = onDataCallbacksCleanupProviders.get(onDataCallbacksCleanupId);
+      const key = onDataCallbacksCleanupProvidersKeys.get(onDataCallbacksCleanupId);
+      if (callback && key) {
+        if (channel === 'log') {
+          callback(key, 'log', data);
+        } else if (channel === 'warn') {
+          callback(key, 'warn', data);
+        } else if (channel === 'error') {
+          callback(key, 'error', data);
+        } else if (channel === 'finish') {
+          callback(key, 'finish', data);
+        }
+      }
+    },
+  );
+
   ipcRenderer.on(
     'provider-registry:updateCliTool-onData',
+    (_, onDataCallbacksTaskConnectionId: number, channel: string, data: string[]) => {
+      // grab callback from the map
+      const callback = onDataCallbacksTaskConnectionLogs.get(onDataCallbacksTaskConnectionId);
+      const key = onDataCallbacksTaskConnectionKeys.get(onDataCallbacksTaskConnectionId);
+      if (callback && key) {
+        if (channel === 'log') {
+          callback(key, 'log', data);
+        } else if (channel === 'warn') {
+          callback(key, 'warn', data);
+        } else if (channel === 'error') {
+          callback(key, 'error', data);
+        } else if (channel === 'finish') {
+          callback(key, 'finish', data);
+        }
+      }
+    },
+  );
+
+  ipcRenderer.on(
+    'provider-registry:installCliTool-onData',
     (_, onDataCallbacksTaskConnectionId: number, channel: string, data: string[]) => {
       // grab callback from the map
       const callback = onDataCallbacksTaskConnectionLogs.get(onDataCallbacksTaskConnectionId);
@@ -903,6 +1149,32 @@ function initExposure(): void {
   );
 
   contextBridge.exposeInMainWorld(
+    'editProviderConnectionLifecycle',
+    async (
+      providerId: string,
+      providerConnectionInfo: ProviderContainerConnectionInfo | ProviderKubernetesConnectionInfo,
+      params: { [key: string]: unknown },
+      key: symbol,
+      keyLogger: (key: symbol, eventName: 'log' | 'warn' | 'error' | 'finish', args: string[]) => void,
+      tokenId: number | undefined,
+      taskId: number | undefined,
+    ): Promise<void> => {
+      onDataCallbacksTaskConnectionId++;
+      onDataCallbacksTaskConnectionKeys.set(onDataCallbacksTaskConnectionId, key);
+      onDataCallbacksTaskConnectionLogs.set(onDataCallbacksTaskConnectionId, keyLogger);
+      return ipcInvoke(
+        'provider-registry:editProviderConnectionLifecycle',
+        providerId,
+        providerConnectionInfo,
+        params,
+        onDataCallbacksTaskConnectionId,
+        tokenId,
+        taskId,
+      );
+    },
+  );
+
+  contextBridge.exposeInMainWorld(
     'deleteProviderConnectionLifecycle',
     async (
       providerId: string,
@@ -934,11 +1206,13 @@ function initExposure(): void {
     async (
       containerBuildContextDirectory: string,
       relativeContainerfilePath: string,
-      imageName: string,
+      imageName: string | undefined,
+      platform: string,
       selectedProvider: ProviderContainerConnectionInfo,
       key: symbol,
       eventCollect: (key: symbol, eventName: 'finish' | 'stream' | 'error', data: string) => void,
       cancellableTokenId?: number,
+      buildargs?: { [key: string]: string },
     ): Promise<unknown> => {
       onDataCallbacksBuildImageId++;
       onDataCallbacksBuildImage.set(onDataCallbacksBuildImageId, eventCollect);
@@ -948,9 +1222,11 @@ function initExposure(): void {
         containerBuildContextDirectory,
         relativeContainerfilePath,
         imageName,
+        platform,
         selectedProvider,
         onDataCallbacksBuildImageId,
         cancellableTokenId,
+        buildargs,
       );
     },
   );
@@ -972,11 +1248,22 @@ function initExposure(): void {
 
   contextBridge.exposeInMainWorld(
     'executeStatusBarEntryCommand',
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    async (command: string, args: any[]): Promise<void> => {
+    async (command: string, args: unknown[]): Promise<void> => {
       return ipcInvoke('status-bar:executeStatusBarEntryCommand', command, args);
     },
   );
+
+  contextBridge.exposeInMainWorld('updatePodmanDesktop', async (): Promise<void> => {
+    return ipcInvoke('app:update');
+  });
+
+  contextBridge.exposeInMainWorld('podmanDesktopUpdateAvailable', async (): Promise<boolean> => {
+    return ipcInvoke('app:update-available');
+  });
+
+  contextBridge.exposeInMainWorld('podmanDesktopGetReleaseNotes', async (): Promise<ReleaseNotesInfo> => {
+    return ipcInvoke('app:get-release-notes');
+  });
 
   contextBridge.exposeInMainWorld('getProviderInfos', async (): Promise<ProviderInfo[]> => {
     return ipcInvoke('provider-registry:getProviderInfos');
@@ -986,8 +1273,46 @@ function initExposure(): void {
     return ipcInvoke('cli-tool-registry:getCliToolInfos');
   });
 
+  contextBridge.exposeInMainWorld('selectCliToolVersionToUpdate', async (id: string): Promise<string> => {
+    return ipcInvoke('cli-tool-registry:selectCliToolVersionToUpdate', id);
+  });
+
   contextBridge.exposeInMainWorld(
     'updateCliTool',
+    async (
+      id: string,
+      key: symbol,
+      version: string,
+      keyLogger: (key: symbol, eventName: 'log' | 'warn' | 'error' | 'finish', args: string[]) => void,
+    ): Promise<void> => {
+      onDataCallbacksTaskConnectionId++;
+      onDataCallbacksTaskConnectionKeys.set(onDataCallbacksTaskConnectionId, key);
+      onDataCallbacksTaskConnectionLogs.set(onDataCallbacksTaskConnectionId, keyLogger);
+      return ipcInvoke('cli-tool-registry:updateCliTool', id, version, onDataCallbacksTaskConnectionId);
+    },
+  );
+
+  contextBridge.exposeInMainWorld('selectCliToolVersionToInstall', async (id: string): Promise<string> => {
+    return ipcInvoke('cli-tool-registry:selectCliToolVersionToInstall', id);
+  });
+
+  contextBridge.exposeInMainWorld(
+    'installCliTool',
+    async (
+      id: string,
+      versionToInstall: string,
+      key: symbol,
+      keyLogger: (key: symbol, eventName: 'log' | 'warn' | 'error' | 'finish', args: string[]) => void,
+    ): Promise<void> => {
+      onDataCallbacksTaskConnectionId++;
+      onDataCallbacksTaskConnectionKeys.set(onDataCallbacksTaskConnectionId, key);
+      onDataCallbacksTaskConnectionLogs.set(onDataCallbacksTaskConnectionId, keyLogger);
+      return ipcInvoke('cli-tool-registry:installCliTool', id, versionToInstall, onDataCallbacksTaskConnectionId);
+    },
+  );
+
+  contextBridge.exposeInMainWorld(
+    'uninstallCliTool',
     async (
       id: string,
       key: symbol,
@@ -996,7 +1321,20 @@ function initExposure(): void {
       onDataCallbacksTaskConnectionId++;
       onDataCallbacksTaskConnectionKeys.set(onDataCallbacksTaskConnectionId, key);
       onDataCallbacksTaskConnectionLogs.set(onDataCallbacksTaskConnectionId, keyLogger);
-      return ipcInvoke('cli-tool-registry:updateCliTool', id, onDataCallbacksTaskConnectionId);
+      return ipcInvoke('cli-tool-registry:uninstallCliTool', id, onDataCallbacksTaskConnectionId);
+    },
+  );
+
+  contextBridge.exposeInMainWorld('troubleshootingSaveLogs', async (destinaton: string): Promise<string[]> => {
+    return ipcInvoke('troubleshooting:saveLogs', memoryLogs, destinaton);
+  });
+
+  contextBridge.exposeInMainWorld(
+    'troubleshootingGenerateLogFileUri',
+    async (filename: string, extension?: string): Promise<containerDesktopAPI.Uri> => {
+      const generatedFile = await ipcInvoke('troubleshooting:generateLogFileName', filename, extension);
+      // transform into URI Object
+      return { fsPath: generatedFile, scheme: 'file' } as containerDesktopAPI.Uri;
     },
   );
 
@@ -1092,6 +1430,20 @@ function initExposure(): void {
   );
 
   contextBridge.exposeInMainWorld(
+    'searchImageInRegistry',
+    async (options: ImageSearchOptions): Promise<ImageSearchResult[]> => {
+      return ipcInvoke('image-registry:searchImages', options);
+    },
+  );
+
+  contextBridge.exposeInMainWorld(
+    'listImageTagsInRegistry',
+    async (options: ImageTagsListOptions): Promise<string[]> => {
+      return ipcInvoke('image-registry:listImageTags', options);
+    },
+  );
+
+  contextBridge.exposeInMainWorld(
     'getAuthenticationProvidersInfo',
     async (): Promise<readonly AuthenticationProviderInfo[]> => {
       return ipcInvoke('authentication-provider-registry:getAuthenticationProvidersInfo');
@@ -1107,6 +1459,10 @@ function initExposure(): void {
 
   contextBridge.exposeInMainWorld('requestAuthenticationProviderSignIn', async (requestId: string): Promise<void> => {
     return ipcInvoke('authentication-provider-registry:requestAuthenticationProviderSignIn', requestId);
+  });
+
+  contextBridge.exposeInMainWorld('showAccountsMenu', async (x: number, y: number) => {
+    return ipcInvoke('authentication:showAccountsMenu', x, y);
   });
 
   contextBridge.exposeInMainWorld(
@@ -1129,8 +1485,7 @@ function initExposure(): void {
     'updateConfigurationValue',
     async (
       key: string,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      value: any,
+      value: unknown,
       scope?: containerDesktopAPI.ConfigurationScope | containerDesktopAPI.ConfigurationScope[],
     ): Promise<void> => {
       return ipcInvoke('configuration-registry:updateConfigurationValue', key, value, scope);
@@ -1140,8 +1495,21 @@ function initExposure(): void {
   contextBridge.exposeInMainWorld('getFeaturedExtensions', async (): Promise<FeaturedExtension[]> => {
     return ipcInvoke('featured:getFeaturedExtensions');
   });
+
+  contextBridge.exposeInMainWorld('getExtensionBanners', async (): Promise<ExtensionBanner[]> => {
+    return ipcInvoke('recommended:getExtensionBanners');
+  });
+
+  contextBridge.exposeInMainWorld('getRecommendedRegistries', async (): Promise<RecommendedRegistry[]> => {
+    return ipcInvoke('recommended:getRegistries');
+  });
+
   contextBridge.exposeInMainWorld('getCatalogExtensions', async (): Promise<CatalogExtension[]> => {
     return ipcInvoke('catalog:getExtensions');
+  });
+
+  contextBridge.exposeInMainWorld('refreshCatalogExtensions', async (): Promise<void> => {
+    return ipcInvoke('catalog:refreshExtensions');
   });
 
   contextBridge.exposeInMainWorld('getCommandPaletteCommands', async (): Promise<CommandInfo[]> => {
@@ -1153,7 +1521,7 @@ function initExposure(): void {
   });
 
   contextBridge.exposeInMainWorld('stopExtension', async (extensionId: string): Promise<void> => {
-    return ipcInvoke('extension-loader:deactivateExtension', extensionId);
+    return ipcInvoke('extension-loader:stopExtension', extensionId);
   });
 
   contextBridge.exposeInMainWorld('startExtension', async (extensionId: string): Promise<void> => {
@@ -1180,82 +1548,92 @@ function initExposure(): void {
     return ipcInvoke('iconRegistry:listIcons');
   });
 
+  contextBridge.exposeInMainWorld('listColors', async (themeId: string): Promise<ColorInfo[]> => {
+    return ipcInvoke('colorRegistry:listColors', themeId);
+  });
+
   // Handle callback to open devtools for extensions
   // by delegating to the renderer process
   ipcRenderer.on('dev-tools:open-extension', (_, extensionId: string) => {
     apiSender.send('dev-tools:open-extension', extensionId);
   });
 
-  // Handle callback on dialog file/folder by calling the callback once we get the answer
-  ipcRenderer.on(
-    'dialog:open-file-or-folder-response',
-    (_, dialogId: string, openDialogReturnValue: Electron.OpenDialogReturnValue) => {
-      // grab from stored map
-      const callback = dialogResponses.get(dialogId);
-      if (callback) {
-        callback(openDialogReturnValue);
+  // Handle callback to open devtools for webviews
+  // by delegating to the renderer process
+  ipcRenderer.on('dev-tools:open-webview', (_, webviewId: string) => {
+    apiSender.send('dev-tools:open-webview', webviewId);
+  });
 
-        // remove callback
-        dialogResponses.delete(dialogId);
-      } else {
-        console.error('Got response for an unknown dialog id', dialogId);
-      }
-    },
-  );
+  ipcRenderer.on('context-menu:visible', (_, visible: boolean) => {
+    apiSender.send('context-menu:visible', visible);
+  });
 
-  let idDialog = 0;
+  // Handle callback on dialogs by calling the callback once we get the answer
+  ipcRenderer.on('dialog:open-save-dialog-response', (_, dialogId: string, result: string | string[] | undefined) => {
+    // grab from stored map
+    const callback = openSaveDialogResponses.get(dialogId);
+    if (callback) {
+      callback(result);
 
-  const dialogResponses = new Map<string, DialogResultCallback>();
+      // remove callback
+      openSaveDialogResponses.delete(dialogId);
+    } else {
+      console.error('Got response for an unknown dialog id', dialogId);
+    }
+  });
+
+  let idOpenSaveDialog = 0;
+
+  const openSaveDialogResponses = new Map<string, OpenSaveDialogResultCallback>();
+
+  const deferedHandleDialog = (): {
+    id: string;
+    deferred: Deferred<containerDesktopAPI.Uri | string | string[] | undefined>;
+  } => {
+    // generate id
+    const dialogId = idOpenSaveDialog;
+    idOpenSaveDialog++;
+
+    // create defer object
+    const deferred = new Deferred<containerDesktopAPI.Uri | string | string[] | undefined>();
+
+    // store the dialogID
+    openSaveDialogResponses.set(`${dialogId}`, (result: containerDesktopAPI.Uri | string | string[] | undefined) => {
+      deferred.resolve(result);
+    });
+
+    return { deferred: deferred, id: `${dialogId}` };
+  };
 
   contextBridge.exposeInMainWorld(
-    'openFileDialog',
-    async (message: string, filter?: { extensions: string[]; name: string }) => {
-      // generate id
-      const dialogId = idDialog;
-      idDialog++;
-
-      // create defer object
-      const defer = new Deferred<Electron.OpenDialogReturnValue>();
-
-      // store the dialogID
-      dialogResponses.set(`${dialogId}`, (result: Electron.OpenDialogReturnValue) => {
-        defer.resolve(result);
-      });
+    'openDialog',
+    async (options?: containerDesktopAPI.OpenDialogOptions): Promise<string[] | undefined> => {
+      const handle = deferedHandleDialog();
 
       // ask to open file dialog
-      ipcRenderer.send('dialog:openFile', {
-        dialogId: `${dialogId}`,
-        message,
-        filter,
+      ipcInvoke('dialog:openDialog', handle.id, options).catch((error: unknown) => {
+        handle.deferred.reject(error);
       });
 
       // wait for response
-      return defer.promise;
+      return handle.deferred.promise as Promise<string[] | undefined>;
     },
   );
 
-  contextBridge.exposeInMainWorld('openFolderDialog', async (message: string) => {
-    // generate id
-    const dialogId = idDialog;
-    idDialog++;
+  contextBridge.exposeInMainWorld(
+    'saveDialog',
+    async (options?: containerDesktopAPI.SaveDialogOptions): Promise<containerDesktopAPI.Uri | undefined> => {
+      const handle = deferedHandleDialog();
 
-    // create defer object
-    const defer = new Deferred<Electron.OpenDialogReturnValue>();
+      // ask to open file dialog
+      ipcInvoke('dialog:saveDialog', handle.id, options).catch((error: unknown) => {
+        handle.deferred.reject(error);
+      });
 
-    // store the dialogID
-    dialogResponses.set(`${dialogId}`, (result: Electron.OpenDialogReturnValue) => {
-      defer.resolve(result);
-    });
-
-    // ask to open file dialog
-    ipcRenderer.send('dialog:openFolder', {
-      dialogId: `${dialogId}`,
-      message,
-    });
-
-    // wait for response
-    return defer.promise;
-  });
+      // wait for response
+      return handle.deferred.promise as Promise<containerDesktopAPI.Uri | undefined>;
+    },
+  );
 
   contextBridge.exposeInMainWorld('getFreePort', async (port: number): Promise<number> => {
     return ipcInvoke('system:get-free-port', port);
@@ -1327,14 +1705,14 @@ function initExposure(): void {
 
   contextBridge.exposeInMainWorld(
     'sendShowInputBoxValue',
-    async (inputBoxId: number, value: string | undefined, error: string | undefined): Promise<void> => {
+    async (inputBoxId: number, value?: string, error?: string): Promise<void> => {
       return ipcInvoke('showInputBox:value', inputBoxId, value, error);
     },
   );
 
   contextBridge.exposeInMainWorld(
     'sendShowQuickPickValues',
-    async (quickPickId: number, selectedIndexes: number[]): Promise<void> => {
+    async (quickPickId: number, selectedIndexes?: number[]): Promise<void> => {
       return ipcInvoke('showQuickPick:values', quickPickId, selectedIndexes);
     },
   );
@@ -1433,8 +1811,16 @@ function initExposure(): void {
     }
   });
 
-  contextBridge.exposeInMainWorld('ddExtensionDelete', async (extensionName: string): Promise<void> => {
-    return ipcInvoke('docker-desktop-plugin:delete', extensionName);
+  contextBridge.exposeInMainWorld('ddExtensionDelete', async (extensionId: string): Promise<void> => {
+    return ipcInvoke('docker-desktop-plugin:delete', extensionId);
+  });
+
+  contextBridge.exposeInMainWorld('getWebviewPreloadPath', async (): Promise<string> => {
+    return ipcInvoke('webview:get-preload-script');
+  });
+
+  contextBridge.exposeInMainWorld('getWebviewRegistryHttpPort', async (): Promise<number> => {
+    return ipcInvoke('webview:get-registry-http-port');
   });
 
   contextBridge.exposeInMainWorld('getDDPreloadPath', async (): Promise<string> => {
@@ -1463,6 +1849,46 @@ function initExposure(): void {
   contextBridge.exposeInMainWorld('kubernetesSetContext', async (contextName: string): Promise<void> => {
     return ipcInvoke('kubernetes-client:setContext', contextName);
   });
+  contextBridge.exposeInMainWorld(
+    'kubernetesGetContextsGeneralState',
+    async (): Promise<Map<string, ContextGeneralState>> => {
+      return ipcInvoke('kubernetes-client:getContextsGeneralState');
+    },
+  );
+  contextBridge.exposeInMainWorld('kubernetesGetCurrentContextGeneralState', async (): Promise<ContextGeneralState> => {
+    return ipcInvoke('kubernetes-client:getCurrentContextGeneralState');
+  });
+  contextBridge.exposeInMainWorld(
+    'kubernetesRegisterGetCurrentContextResources',
+    async (resourceName: ResourceName): Promise<KubernetesObject[]> => {
+      return ipcInvoke('kubernetes-client:registerGetCurrentContextResources', resourceName);
+    },
+  );
+  contextBridge.exposeInMainWorld(
+    'kubernetesUnregisterGetCurrentContextResources',
+    async (resourceName: ResourceName): Promise<KubernetesObject[]> => {
+      return ipcInvoke('kubernetes-client:unregisterGetCurrentContextResources', resourceName);
+    },
+  );
+
+  contextBridge.exposeInMainWorld('kubernetesGetContextsHealths', async (): Promise<ContextHealth[]> => {
+    return ipcInvoke('kubernetes:getContextsHealths');
+  });
+
+  contextBridge.exposeInMainWorld('kubernetesGetContextsPermissions', async (): Promise<ContextPermission[]> => {
+    return ipcInvoke('kubernetes:getContextsPermissions');
+  });
+
+  contextBridge.exposeInMainWorld('kubernetesGetResourcesCount', async (): Promise<ResourceCount[]> => {
+    return ipcInvoke('kubernetes:getResourcesCount');
+  });
+
+  contextBridge.exposeInMainWorld(
+    'kubernetesGetResources',
+    async (contextNames: string[], resourceName: string): Promise<KubernetesContextResources[]> => {
+      return ipcInvoke('kubernetes:getResources', contextNames, resourceName);
+    },
+  );
 
   contextBridge.exposeInMainWorld('kubernetesGetClusters', async (): Promise<Cluster[]> => {
     return ipcInvoke('kubernetes-client:getClusters');
@@ -1487,9 +1913,67 @@ function initExposure(): void {
   );
 
   contextBridge.exposeInMainWorld(
+    'kubernetesReadNamespacedDeployment',
+    async (name: string, namespace: string): Promise<V1Deployment | undefined> => {
+      return ipcInvoke('kubernetes-client:readNamespacedDeployment', name, namespace);
+    },
+  );
+
+  contextBridge.exposeInMainWorld(
+    'kubernetesReadNamespacedPersistentVolumeClaim',
+    async (name: string, namespace: string): Promise<V1PersistentVolumeClaim | undefined> => {
+      return ipcInvoke('kubernetes-client:readNamespacedPersistentVolumeClaim', name, namespace);
+    },
+  );
+
+  contextBridge.exposeInMainWorld('kubernetesReadNode', async (name: string): Promise<V1Node | undefined> => {
+    return ipcInvoke('kubernetes-client:readNode', name);
+  });
+
+  contextBridge.exposeInMainWorld(
+    'kubernetesReadNamespacedIngress',
+    async (name: string, namespace: string): Promise<V1Ingress | undefined> => {
+      return ipcInvoke('kubernetes-client:readNamespacedIngress', name, namespace);
+    },
+  );
+
+  contextBridge.exposeInMainWorld(
+    'kubernetesReadNamespacedRoute',
+    async (name: string, namespace: string): Promise<V1Route | undefined> => {
+      return ipcInvoke('kubernetes-client:readNamespacedRoute', name, namespace);
+    },
+  );
+
+  contextBridge.exposeInMainWorld(
+    'kubernetesReadNamespacedService',
+    async (name: string, namespace: string): Promise<V1Service | undefined> => {
+      return ipcInvoke('kubernetes-client:readNamespacedService', name, namespace);
+    },
+  );
+  contextBridge.exposeInMainWorld(
     'kubernetesReadNamespacedConfigMap',
     async (name: string, namespace: string): Promise<V1ConfigMap | undefined> => {
       return ipcInvoke('kubernetes-client:readNamespacedConfigMap', name, namespace);
+    },
+  );
+  contextBridge.exposeInMainWorld(
+    'kubernetesReadNamespacedSecret',
+    async (name: string, namespace: string): Promise<V1Secret | undefined> => {
+      return ipcInvoke('kubernetes-client:readNamespacedSecret', name, namespace);
+    },
+  );
+
+  contextBridge.exposeInMainWorld(
+    'kubernetesReadNamespacedCronJob',
+    async (name: string, namespace: string): Promise<V1CronJob | undefined> => {
+      return ipcInvoke('kubernetes-client:readNamespacedCronJob', name, namespace);
+    },
+  );
+
+  contextBridge.exposeInMainWorld(
+    'kubernetesReadNamespacedJob',
+    async (name: string, namespace: string): Promise<V1Job | undefined> => {
+      return ipcInvoke('kubernetes-client:readNamespacedJob', name, namespace);
     },
   );
 
@@ -1515,24 +1999,8 @@ function initExposure(): void {
     },
   );
 
-  contextBridge.exposeInMainWorld('kubernetesListPods', async (): Promise<PodInfo[]> => {
-    return ipcInvoke('kubernetes-client:listPods');
-  });
-
-  contextBridge.exposeInMainWorld('kubernetesListDeployments', async (): Promise<V1Deployment[]> => {
-    return ipcInvoke('kubernetes-client:listDeployments');
-  });
-
-  contextBridge.exposeInMainWorld('kubernetesListIngresses', async (): Promise<V1Ingress[]> => {
-    return ipcInvoke('kubernetes-client:listIngresses');
-  });
-
   contextBridge.exposeInMainWorld('kubernetesListRoutes', async (): Promise<V1Route[]> => {
     return ipcInvoke('kubernetes-client:listRoutes');
-  });
-
-  contextBridge.exposeInMainWorld('kubernetesListServices', async (): Promise<V1Service[]> => {
-    return ipcInvoke('kubernetes-client:listServices');
   });
 
   let onDataCallbacksKubernetesPodLogId = 0;
@@ -1563,6 +2031,26 @@ function initExposure(): void {
     return ipcInvoke('kubernetes-client:deleteDeployment', name);
   });
 
+  contextBridge.exposeInMainWorld('kubernetesDeleteConfigMap', async (name: string): Promise<void> => {
+    return ipcInvoke('kubernetes-client:deleteConfigMap', name);
+  });
+
+  contextBridge.exposeInMainWorld('kubernetesDeleteSecret', async (name: string): Promise<void> => {
+    return ipcInvoke('kubernetes-client:deleteSecret', name);
+  });
+
+  contextBridge.exposeInMainWorld('kubernetesDeleteCronJob', async (name: string): Promise<void> => {
+    return ipcInvoke('kubernetes-client:deleteCronJob', name);
+  });
+
+  contextBridge.exposeInMainWorld('kubernetesDeleteJob', async (name: string): Promise<void> => {
+    return ipcInvoke('kubernetes-client:deleteJob', name);
+  });
+
+  contextBridge.exposeInMainWorld('kubernetesDeletePersistentVolumeClaim', async (name: string): Promise<void> => {
+    return ipcInvoke('kubernetes-client:deletePersistentVolumeClaim', name);
+  });
+
   contextBridge.exposeInMainWorld('kubernetesDeleteIngress', async (name: string): Promise<void> => {
     return ipcInvoke('kubernetes-client:deleteIngress', name);
   });
@@ -1581,6 +2069,92 @@ function initExposure(): void {
       return ipcInvoke('kubernetes-client:createResourcesFromFile', context, file, namespace);
     },
   );
+
+  // callbacks for shellInContainer
+  let kubernetesCallbackId = 0;
+  const kubernetesCallbackMap = new Map<
+    number,
+    { onStdOut: (data: Buffer) => void; onStdErr: (data: Buffer) => void; onClose: () => void }
+  >();
+  contextBridge.exposeInMainWorld(
+    'kubernetesExec',
+    async (
+      podName: string,
+      containerName: string,
+      onStdOut: (data: Buffer) => void,
+      onStdErr: (data: Buffer) => void,
+      onClose: () => void,
+    ): Promise<number> => {
+      kubernetesCallbackId++;
+      kubernetesCallbackMap.set(kubernetesCallbackId, { onStdOut, onStdErr, onClose });
+      return ipcInvoke('kubernetes-client:execIntoContainer', podName, containerName, kubernetesCallbackId);
+    },
+  );
+
+  contextBridge.exposeInMainWorld('kubernetesExecSend', async (dataId: number, content: string): Promise<void> => {
+    return ipcInvoke('kubernetes-client:execIntoContainerSend', dataId, content);
+  });
+
+  contextBridge.exposeInMainWorld('kubernetesExecResize', async (dataId: number, width: number, height: number) => {
+    return ipcInvoke('kubernetes-client:execIntoContainerResize', dataId, width, height);
+  });
+
+  ipcRenderer.on('kubernetes-client:execIntoContainer-onData', (_, kubernetesCallbackId: number, data: Buffer) => {
+    const callback = kubernetesCallbackMap.get(kubernetesCallbackId);
+    if (callback) {
+      callback.onStdOut(data);
+    }
+  });
+  ipcRenderer.on('kubernetes-client:execIntoContainer-onError', (_, kubernetesCallbackId: number, data: Buffer) => {
+    const callback = kubernetesCallbackMap.get(kubernetesCallbackId);
+    if (callback) {
+      callback.onStdErr(data);
+    }
+  });
+  ipcRenderer.on('kubernetes-client:execIntoContainer-onClose', (_, kubernetesCallbackId: number) => {
+    const callback = kubernetesCallbackMap.get(kubernetesCallbackId);
+    if (callback) {
+      callback.onClose();
+      onDataCallbacksShellInContainer.delete(kubernetesCallbackId);
+    }
+  });
+
+  contextBridge.exposeInMainWorld('restartKubernetesPod', async (name: string): Promise<void> => {
+    return ipcInvoke('kubernetes-client:restartPod', name);
+  });
+
+  contextBridge.exposeInMainWorld(
+    'kubernetesApplyResourcesFromFile',
+    async (context: string, file: string | string[], namespace?: string): Promise<KubernetesObject[]> => {
+      return ipcInvoke('kubernetes-client:applyResourcesFromFile', context, file, namespace);
+    },
+  );
+
+  contextBridge.exposeInMainWorld(
+    'kubernetesApplyResourcesFromYAML',
+    async (context: string, yaml: string): Promise<KubernetesObject[]> => {
+      return ipcInvoke('kubernetes-client:applyResourcesFromYAML', context, yaml);
+    },
+  );
+
+  contextBridge.exposeInMainWorld('kubernetesRefreshContextState', async (context: string): Promise<void> => {
+    return ipcInvoke('kubernetes-client:refreshContextState', context);
+  });
+
+  contextBridge.exposeInMainWorld('getKubernetesPortForwards', async (): Promise<ForwardConfig[]> => {
+    return ipcInvoke('kubernetes-client:getPortForwards');
+  });
+
+  contextBridge.exposeInMainWorld(
+    'createKubernetesPortForward',
+    async (options: ForwardOptions): Promise<ForwardConfig> => {
+      return ipcInvoke('kubernetes-client:createPortForward', options);
+    },
+  );
+
+  contextBridge.exposeInMainWorld('deleteKubernetesPortForward', async (config: ForwardConfig): Promise<void> => {
+    return ipcInvoke('kubernetes-client:deletePortForward', config);
+  });
 
   contextBridge.exposeInMainWorld(
     'openshiftCreateRoute',
@@ -1601,8 +2175,8 @@ function initExposure(): void {
     return ipcInvoke('container-provider-registry:pruneVolumes', engine);
   });
 
-  contextBridge.exposeInMainWorld('pruneImages', async (engine: string): Promise<string> => {
-    return ipcInvoke('container-provider-registry:pruneImages', engine);
+  contextBridge.exposeInMainWorld('pruneImages', async (engine: string, all = true): Promise<string> => {
+    return ipcInvoke('container-provider-registry:pruneImages', engine, all);
   });
 
   contextBridge.exposeInMainWorld('getOsPlatform', async (): Promise<string> => {
@@ -1641,8 +2215,11 @@ function initExposure(): void {
     return ipcInvoke('feedback:send', feedback);
   });
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  contextBridge.exposeInMainWorld('telemetryTrack', async (event: string, eventProperties?: any): Promise<void> => {
+  contextBridge.exposeInMainWorld('previewOnGitHub', async (feedback: GitHubIssue): Promise<void> => {
+    return ipcInvoke('feedback:GitHubPreview', feedback);
+  });
+
+  contextBridge.exposeInMainWorld('telemetryTrack', async (event: string, eventProperties?: unknown): Promise<void> => {
     return ipcInvoke('telemetry:track', event, eventProperties);
   });
 
@@ -1665,6 +2242,7 @@ function initExposure(): void {
       imageName: string,
       logCallback: (data: string) => void,
       errorCallback: (data: string) => void,
+      catalogExtensionId?: string,
     ): Promise<void> => {
       onDataCallbacksShellInContainerExtensionInstallId++;
       onDataCallbacksShellInContainerExtension.set(onDataCallbacksShellInContainerExtensionInstallId, logCallback);
@@ -1676,6 +2254,7 @@ function initExposure(): void {
         'extension-installer:install-from-image',
         imageName,
         onDataCallbacksShellInContainerExtensionInstallId,
+        catalogExtensionId,
       );
 
       return new Promise(resolve => {
@@ -1711,6 +2290,12 @@ function initExposure(): void {
 
   contextBridge.exposeInMainWorld('listViewsContributions', async (): Promise<ViewInfoUI[]> => {
     return ipcInvoke('viewRegistry:listViewsContributions');
+  });
+  contextBridge.exposeInMainWorld('listWebviews', async (): Promise<WebviewInfo[]> => {
+    return ipcInvoke('webviewRegistry:listWebviews');
+  });
+  contextBridge.exposeInMainWorld('makeDefaultWebviewVisible', async (webviewId: string): Promise<void> => {
+    return ipcInvoke('webviewRegistry:makeDefaultWebviewVisible', webviewId);
   });
 
   contextBridge.exposeInMainWorld(
@@ -1785,6 +2370,62 @@ function initExposure(): void {
       cancellationToken?: number,
     ): Promise<containerDesktopAPI.ImageChecks | undefined> => {
       return ipcInvoke('image-checker:check', id, image, cancellationToken);
+    },
+  );
+
+  contextBridge.exposeInMainWorld('getImageFilesProviders', async (): Promise<ImageFilesInfo[]> => {
+    return ipcInvoke('image-files:getProviders');
+  });
+
+  contextBridge.exposeInMainWorld(
+    'imageGetFilesystemLayers',
+    async (
+      id: string,
+      image: containerDesktopAPI.ImageInfo,
+      cancellationToken?: number,
+    ): Promise<containerDesktopAPI.ImageFilesystemLayers | undefined> => {
+      return ipcInvoke('image-files:getFilesystemLayers', id, image, cancellationToken);
+    },
+  );
+
+  contextBridge.exposeInMainWorld('listGuides', async (): Promise<Guide[]> => {
+    return ipcInvoke('learning-center:listGuides');
+  });
+
+  contextBridge.exposeInMainWorld('contextCollectAllValues', async (): Promise<Record<string, unknown>> => {
+    return ipcInvoke('context:collectAllValues');
+  });
+
+  contextBridge.exposeInMainWorld(
+    'getSystemDockerSocketMappingStatus',
+    async (): Promise<DockerSocketMappingStatusInfo> => {
+      return ipcInvoke('docker-compatibility:getSystemDockerSocketMappingStatus');
+    },
+  );
+
+  contextBridge.exposeInMainWorld('pathRelative', async (from: string, to: string): Promise<string> => {
+    return ipcInvoke('path:relative', from, to);
+  });
+
+  contextBridge.exposeInMainWorld(
+    'listExtensionDevelopmentFolders',
+    async (): Promise<ExtensionDevelopmentFolderInfo[]> => {
+      return ipcInvoke('extension-development-folders:getDevelopmentFolders');
+    },
+  );
+
+  contextBridge.exposeInMainWorld('untrackExtensionFolder', async (path: string): Promise<void> => {
+    return ipcInvoke('extension-development-folders:removeDevelopmentFolder', path);
+  });
+
+  contextBridge.exposeInMainWorld('trackExtensionFolder', async (path: string): Promise<void> => {
+    return ipcInvoke('extension-development-folders:addDevelopmentFolder', path);
+  });
+
+  contextBridge.exposeInMainWorld(
+    'kubernetesGetTroubleshootingInformation',
+    async (): Promise<KubernetesTroubleshootingInformation> => {
+      return ipcInvoke('kubernetes:getTroubleshootingInformation');
     },
   );
 }

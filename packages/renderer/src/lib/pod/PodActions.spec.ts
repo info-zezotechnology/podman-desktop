@@ -17,49 +17,136 @@
  ***********************************************************************/
 
 import '@testing-library/jest-dom/vitest';
-import { test, expect, vi, beforeEach, afterEach } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/svelte';
+
+import type { ContainerInfo, Port } from '@podman-desktop/api';
+import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
+import { beforeAll, beforeEach, expect, test, vi } from 'vitest';
+
 import PodActions from './PodActions.svelte';
 import type { PodInfoUI } from './PodInfoUI';
-import type { ContainerInfo, Port } from '@podman-desktop/api';
 
-const pod: PodInfoUI = {
-  id: 'pod',
-  containers: [{ Id: 'pod' }],
-  status: 'RUNNING',
-  kind: 'podman',
-} as PodInfoUI;
+class Pod {
+  #status: string;
+  #actionError: string;
+  constructor(
+    public id: string,
+    public containers: { Id: string }[],
+    initialStatus: string,
+    public kind: string,
+    actionError: string,
+  ) {
+    this.#status = initialStatus;
+    this.#actionError = actionError;
+  }
+  set acitonError(error: string) {
+    this.#actionError = error;
+  }
+  get acitonError(): string {
+    return this.#actionError;
+  }
+  set status(status: string) {
+    this.#status = status;
+  }
+  get status(): string {
+    return this.#status;
+  }
+}
 
-const errorCallback = vi.fn();
+const podmanPod: PodInfoUI = new Pod('pod', [{ Id: 'pod' }], 'RUNNING', 'podman', '') as unknown as PodInfoUI;
+
 const listContainersMock = vi.fn();
 const getContributedMenusMock = vi.fn();
+const updateMock = vi.fn();
+const showMessageBoxMock = vi.fn();
+const openExternalSpy = vi.fn();
+
+class ResizeObserver {
+  observe = vi.fn();
+  disconnect = vi.fn();
+  unobserve = vi.fn();
+}
+
+beforeAll(() => {
+  Object.defineProperty(window, 'ResizeObserver', { value: ResizeObserver });
+  Object.defineProperty(window, 'showMessageBox', { value: showMessageBoxMock });
+  Object.defineProperty(window, 'listContainers', { value: listContainersMock });
+  Object.defineProperty(window, 'startPod', { value: vi.fn() });
+  Object.defineProperty(window, 'stopPod', { value: vi.fn() });
+  Object.defineProperty(window, 'restartPod', { value: vi.fn() });
+  Object.defineProperty(window, 'removePod', { value: vi.fn() });
+  Object.defineProperty(window, 'getContributedMenus', { value: getContributedMenusMock });
+  Object.defineProperty(window, 'openExternal', { value: openExternalSpy });
+});
 
 beforeEach(() => {
-  (window as any).kubernetesDeletePod = vi.fn();
-  (window as any).listContainers = listContainersMock;
-  (window as any).removePod = vi.fn();
+  vi.resetAllMocks();
 
   listContainersMock.mockResolvedValue([
     { Id: 'pod', Ports: [{ PublicPort: 8080 } as Port] as Port[] } as ContainerInfo,
   ]);
 
-  (window as any).getContributedMenus = getContributedMenusMock;
-  getContributedMenusMock.mockImplementation(() => Promise.resolve([]));
+  getContributedMenusMock.mockResolvedValue([]);
 });
 
-afterEach(() => {
-  vi.resetAllMocks();
-  vi.clearAllMocks();
-});
-
-test('Expect no error deleting pod', async () => {
+test('Expect no error and status starting pod', async () => {
   listContainersMock.mockResolvedValue([]);
 
-  render(PodActions, { pod, errorCallback });
+  render(PodActions, { pod: podmanPod, onUpdate: updateMock });
 
+  // click on start button
+  const startButton = screen.getByRole('button', { name: 'Start Pod' });
+  await fireEvent.click(startButton);
+
+  expect(podmanPod.status).toEqual('STARTING');
+  expect(podmanPod.actionError).toEqual('');
+  expect(updateMock).toHaveBeenCalled();
+});
+
+test('Expect no error and status stopping pod', async () => {
+  listContainersMock.mockResolvedValue([]);
+
+  render(PodActions, { pod: podmanPod, onUpdate: updateMock });
+
+  // click on stop button
+  const stopButton = screen.getByRole('button', { name: 'Stop Pod' });
+  await fireEvent.click(stopButton);
+
+  expect(podmanPod.status).toEqual('STOPPING');
+  expect(podmanPod.actionError).toEqual('');
+  expect(updateMock).toHaveBeenCalled();
+});
+
+test('Expect no error and status restarting pod', async () => {
+  listContainersMock.mockResolvedValue([]);
+
+  render(PodActions, { pod: podmanPod, onUpdate: updateMock });
+
+  // click on restart button
+  const restartButton = screen.getByRole('button', { name: 'Restart Pod' });
+  await fireEvent.click(restartButton);
+
+  expect(podmanPod.status).toEqual('RESTARTING');
+  expect(podmanPod.actionError).toEqual('');
+  expect(updateMock).toHaveBeenCalled();
+});
+
+test('Expect no error and status deleting pod', async () => {
+  // Mock the showMessageBox to return 0 (yes)
+  showMessageBoxMock.mockResolvedValue({ response: 0 });
+  listContainersMock.mockResolvedValue([]);
+
+  render(PodActions, { pod: podmanPod, onUpdate: updateMock });
   // click on delete button
   const deleteButton = screen.getByRole('button', { name: 'Delete Pod' });
   await fireEvent.click(deleteButton);
 
-  expect(errorCallback).not.toHaveBeenCalled();
+  // Wait for confirmation modal to disappear after clicking on delete
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+
+  // Wait for confirmation modal to disappear after clicking on delete
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+
+  expect(podmanPod.status).toEqual('DELETING');
+  expect(podmanPod.actionError).toEqual('');
+  expect(updateMock).toHaveBeenCalled();
 });

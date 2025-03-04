@@ -17,11 +17,13 @@
  ***********************************************************************/
 
 import type { Writable } from 'svelte/store';
-import { writable, derived } from 'svelte/store';
-import { findMatchInLeaves } from './search-util';
-import { EventStore } from './event-store';
-import type { ImageInfo } from '../../../main/src/plugin/api/image-info';
+import { derived, writable } from 'svelte/store';
+
+import type { ImageInfo } from '/@api/image-info';
+
 import ImageIcon from '../lib/images/ImageIcon.svelte';
+import { EventStore } from './event-store';
+import { findMatchInLeaves } from './search-util';
 
 const windowEvents = [
   'extension-started',
@@ -35,6 +37,7 @@ const windowEvents = [
   'image-tag-event',
   'image-untag-event',
   'extensions-started',
+  'image-loadfromarchive-event',
 ];
 const windowListeners = ['image-build', 'extensions-already-started'];
 
@@ -56,7 +59,7 @@ const listImages = (): Promise<ImageInfo[]> => {
   return window.listImages();
 };
 
-const imagesEventStore = new EventStore<ImageInfo[]>(
+export const imagesEventStore = new EventStore<ImageInfo[]>(
   'images',
   imagesInfos,
   checkForUpdate,

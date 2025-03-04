@@ -1,22 +1,46 @@
 <script lang="ts">
-import type { ContainerInfoUI } from './ContainerInfoUI';
-import { TerminalSettings } from '../../../../main/src/plugin/terminal-settings';
-import { router } from 'tinro';
+import '@xterm/xterm/css/xterm.css';
+
+import { EmptyScreen } from '@podman-desktop/ui-svelte';
+import { FitAddon } from '@xterm/addon-fit';
+import { SerializeAddon } from '@xterm/addon-serialize';
+import { Terminal } from '@xterm/xterm';
 import { onDestroy, onMount } from 'svelte';
-import { Terminal } from 'xterm';
-import { FitAddon } from 'xterm-addon-fit';
-import 'xterm/css/xterm.css';
-import { getPanelDetailColor } from '../color/color';
-import EmptyScreen from '../ui/EmptyScreen.svelte';
-import NoLogIcon from '../ui/NoLogIcon.svelte';
+import { router } from 'tinro';
+
 import { getExistingTerminal, registerTerminal } from '/@/stores/container-terminal-store';
 
-export let container: ContainerInfoUI;
-export let screenReaderMode = false;
+import { TerminalSettings } from '../../../../main/src/plugin/terminal-settings';
+import { getTerminalTheme } from '../../../../main/src/plugin/terminal-theme';
+import NoLogIcon from '../ui/NoLogIcon.svelte';
+import type { ContainerInfoUI } from './ContainerInfoUI';
+
+interface ContainerDetailsTerminalProps {
+  container: ContainerInfoUI;
+  screenReaderMode?: boolean;
+}
+
+let { container, screenReaderMode = false }: ContainerDetailsTerminalProps = $props();
 let terminalXtermDiv: HTMLDivElement;
 let shellTerminal: Terminal;
 let currentRouterPath: string;
 let sendCallbackId: number | undefined;
+let terminalContent: string = '';
+let serializeAddon: SerializeAddon;
+let lastState = $state('');
+let containerState = $derived(container.state);
+
+$effect(() => {
+  if (lastState === 'STARTING' && containerState === 'RUNNING') {
+    restartTerminal().catch((err: unknown) => console.error('Error restarting terminal', err));
+  }
+  lastState = container.state;
+});
+
+async function restartTerminal(): Promise<void> {
+  await executeShellIntoContainer();
+  window.dispatchEvent(new Event('resize'));
+}
 
 // update current route scheme
 router.subscribe(route => {
@@ -24,51 +48,51 @@ router.subscribe(route => {
 });
 
 // update terminal when receiving data
-function receiveDataCallback(data: Buffer) {
+function receiveDataCallback(data: Buffer): void {
   shellTerminal.write(data.toString());
 }
 
-function receiveEndCallback() {
-  // need to reopen a new terminal
-  window
-    .shellInContainer(container.engineId, container.id, receiveDataCallback, () => {}, receiveEndCallback)
-    .then(id => {
-      sendCallbackId = id;
-
-      shellTerminal?.onData(data => {
-        window.shellInContainerSend(id, data);
-      });
-    });
+function receiveEndCallback(): void {
+  // need to reopen a new terminal if container is running
+  if (sendCallbackId && containerState === 'RUNNING') {
+    window
+      .shellInContainer(container.engineId, container.id, receiveDataCallback, () => {}, receiveEndCallback)
+      .then(id => {
+        sendCallbackId = id;
+        shellTerminal?.onData(async data => {
+          await window.shellInContainerSend(id, data);
+        });
+      })
+      .catch((err: unknown) => console.error(`Error opening terminal for container ${container.id}`, err));
+  }
 }
 
 // call exec command
-async function executeShellIntoContainer() {
+async function executeShellIntoContainer(): Promise<void> {
   if (container.state !== 'RUNNING') {
     return;
   }
 
-  if (!sendCallbackId) {
-    // grab logs of the container
-    const callbackId = await window.shellInContainer(
-      container.engineId,
-      container.id,
-      receiveDataCallback,
-      () => {},
-      receiveEndCallback,
-    );
-    await window.shellInContainerResize(callbackId, shellTerminal.cols, shellTerminal.rows);
-    // pass data from xterm to container
-    shellTerminal?.onData(data => {
-      window.shellInContainerSend(callbackId, data);
-    });
+  // grab logs of the container
+  const callbackId = await window.shellInContainer(
+    container.engineId,
+    container.id,
+    receiveDataCallback,
+    () => {},
+    receiveEndCallback,
+  );
+  await window.shellInContainerResize(callbackId, shellTerminal.cols, shellTerminal.rows);
+  // pass data from xterm to container
+  shellTerminal?.onData(data => {
+    window.shellInContainerSend(callbackId, data).catch((error: unknown) => console.log(String(error)));
+  });
 
-    // store it
-    sendCallbackId = callbackId;
-  }
+  // store it
+  sendCallbackId = callbackId;
 }
 
 // refresh
-async function refreshTerminal() {
+async function refreshTerminal(): Promise<void> {
   // missing element, return
   if (!terminalXtermDiv) {
     return;
@@ -85,22 +109,24 @@ async function refreshTerminal() {
   // get terminal if any
   const existingTerminal = getExistingTerminal(container.engineId, container.id);
 
+  shellTerminal = new Terminal({
+    fontSize,
+    lineHeight,
+    screenReaderMode,
+    theme: getTerminalTheme(),
+  });
   if (existingTerminal) {
-    sendCallbackId = existingTerminal.callbackId;
-    shellTerminal = existingTerminal.terminal;
-  } else {
-    shellTerminal = new Terminal({
+    shellTerminal.options = {
       fontSize,
       lineHeight,
-      screenReaderMode,
-      theme: {
-        background: getPanelDetailColor(),
-      },
-    });
+    };
+    shellTerminal.write(existingTerminal.terminal);
   }
 
   const fitAddon = new FitAddon();
+  serializeAddon = new SerializeAddon();
   shellTerminal.loadAddon(fitAddon);
+  shellTerminal.loadAddon(serializeAddon);
 
   shellTerminal.open(terminalXtermDiv);
 
@@ -109,7 +135,9 @@ async function refreshTerminal() {
     if (currentRouterPath === `/containers/${container.id}/terminal`) {
       fitAddon.fit();
       if (sendCallbackId) {
-        window.shellInContainerResize(sendCallbackId, shellTerminal.cols, shellTerminal.rows);
+        window
+          .shellInContainerResize(sendCallbackId, shellTerminal.cols, shellTerminal.rows)
+          .catch((err: unknown) => console.error(`Error resizing terminal for container ${container.id}`, err));
       }
     }
   });
@@ -121,20 +149,28 @@ onMount(async () => {
 });
 
 onDestroy(() => {
+  terminalContent = serializeAddon.serialize();
   // register terminal for reusing it
   registerTerminal({
     engineId: container.engineId,
     containerId: container.id,
-    terminal: shellTerminal,
+    terminal: terminalContent,
     callbackId: sendCallbackId,
   });
+  serializeAddon?.dispose();
+  shellTerminal?.dispose();
+  sendCallbackId = undefined;
 });
 </script>
 
-<div class="h-full" bind:this="{terminalXtermDiv}" class:hidden="{container.state !== 'RUNNING'}"></div>
+<div
+  class="h-full p-[5px] pr-0 bg-[var(--pd-terminal-background)]"
+  bind:this={terminalXtermDiv}
+  class:hidden={container.state !== 'RUNNING'}>
+</div>
 
 <EmptyScreen
-  hidden="{container.state === 'RUNNING'}"
-  icon="{NoLogIcon}"
+  hidden={container.state === 'RUNNING'}
+  icon={NoLogIcon}
   title="No Terminal"
   message="Container is not running" />

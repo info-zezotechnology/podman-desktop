@@ -1,5 +1,5 @@
 /**********************************************************************
- * Copyright (C) 2023 Red Hat, Inc.
+ * Copyright (C) 2023-2024 Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,7 +15,8 @@
  *
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
-import type { ViewContribution, ViewInfoUI } from './api/view-info.js';
+import type { ViewContribution, ViewInfoUI } from '/@api/view-info.js';
+
 import { Disposable } from './types/disposable.js';
 
 export class ViewRegistry {
@@ -26,8 +27,8 @@ export class ViewRegistry {
   }
 
   registerView(extensionId: string, viewId: string, contribution: ViewContribution): void {
-    const view = this.extViewContribution.get(extensionId) || new Map();
-    const contributions = view.get(viewId) || [];
+    const view = this.extViewContribution.get(extensionId) ?? new Map();
+    const contributions = view.get(viewId) ?? [];
     contributions.push(contribution);
     view.set(viewId, contributions);
     this.extViewContribution.set(extensionId, view);
@@ -60,7 +61,7 @@ export class ViewRegistry {
       value.forEach((contributions, view) => {
         contributions.forEach(contribution => {
           listViewInfoUI.push({
-            ...contribution,
+            value: contribution,
             extensionId: extension,
             viewId: view,
           });
@@ -79,7 +80,7 @@ export class ViewRegistry {
     viewContributions.forEach((contributions, view) => {
       contributions.forEach(contribution => {
         listViewInfoUI.push({
-          ...contribution,
+          value: contribution,
           extensionId: extensionId,
           viewId: view,
         });

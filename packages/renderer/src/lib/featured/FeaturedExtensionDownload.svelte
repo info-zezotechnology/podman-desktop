@@ -1,10 +1,17 @@
 <script lang="ts">
-import type { FeaturedExtension } from '../../../../main/src/plugin/featured/featured-api';
 import { faDownload } from '@fortawesome/free-solid-svg-icons';
-import LoadingIcon from '../ui/LoadingIcon.svelte';
-import ErrorMessage from '../ui/ErrorMessage.svelte';
+import { ErrorMessage } from '@podman-desktop/ui-svelte';
 
-export let featuredExtension: FeaturedExtension;
+import LoadingIcon from '../ui/LoadingIcon.svelte';
+
+export let extension: {
+  id: string;
+  fetchLink?: string;
+  fetchVersion?: string;
+  displayName: string;
+  fetchable: boolean;
+};
+export let oninstall: (extensionId: string) => void = () => {};
 
 let installInProgress = false;
 
@@ -13,15 +20,16 @@ let errorInstall = '';
 
 let percentage = '0%';
 
-async function installExtension() {
+async function installExtension(): Promise<void> {
+  oninstall(extension.id);
   errorInstall = '';
-  console.log('User asked to install the extension with the following properties', featuredExtension);
+  console.log('User asked to install the extension with the following properties', extension);
   logs = [];
 
   installInProgress = true;
 
   // do a trim on the image name
-  const ociImage = featuredExtension?.fetchLink?.trim();
+  const ociImage = extension?.fetchLink?.trim();
 
   if (!ociImage) {
     console.log('No image to install');
@@ -31,6 +39,7 @@ async function installExtension() {
   }
 
   try {
+    const percentageMatchRegexp = RegExp(/(\d+)%/);
     // download image
     await window.extensionInstallFromImage(
       ociImage,
@@ -40,16 +49,18 @@ async function installExtension() {
 
         // try to extract percentage from string like
         // data Downloading sha256:e8d2c9e5c69499c41ba39b7828c00e55087572884cac466b4d1b47243b085c7d.tar - 11% - (55132/521578)
-        const percentageMatch = data.match(/(\d+)%/);
+        const percentageMatch = percentageMatchRegexp.exec(data);
+
         if (percentageMatch) {
           percentage = percentageMatch[1] + '%';
         }
       },
       (error: string) => {
-        console.log(`got an error when installing ${featuredExtension.id}`, error);
+        console.log(`got an error when installing ${extension.id}`, error);
         installInProgress = false;
         errorInstall = error;
       },
+      extension.id,
     );
     logs = [...logs, '☑️ installation finished !'];
     percentage = '100%';
@@ -61,26 +72,24 @@ async function installExtension() {
 </script>
 
 <button
-  aria-label="Install {featuredExtension.id} Extension"
-  on:click="{() => installExtension()}"
-  hidden="{!featuredExtension.fetchable}"
-  title="Install {featuredExtension.displayName} v{featuredExtension.fetchVersion} Extension"
-  class="border-2 relative rounded border-dustypurple-700 text-dustypurple-700 hover:bg-charcoal-800 hover:text-dustypurple-600 w-10 p-2 text-center cursor-pointer flex flex-row">
-  <!--<Fa  class="ml-1.5" size="16" icon={faDownload} />-->
-  <span class="ml-0.5"></span>
+  aria-label="Install {extension.id} Extension"
+  on:click={installExtension}
+  hidden={!extension.fetchable}
+  title="Install {extension.displayName} v{extension.fetchVersion} Extension"
+  class="border-2 relative rounded-sm border-[var(--pd-button-secondary)] text-[var(--pd-button-secondary)] hover:text-[var(--pd-button-text)] hover:bg-[var(--pd-button-secondary-hover)] hover:border-[var(--pd-button-secondary-hover)] w-10 p-2 text-center cursor-pointer flex flex-row justify-center">
   <LoadingIcon
-    icon="{faDownload}"
-    iconSize="16"
+    icon={faDownload}
+    iconSize="1x"
     loadingWidthClass="w-7"
     loadingHeightClass="h-7"
     positionTopClass="top-[2px]"
     positionLeftClass="left-[4px]"
-    loading="{installInProgress}" />
+    loading={installInProgress} />
   <span
-    class:hidden="{!installInProgress}"
-    class="absolute -top-[15px] right-0 text-dustypurple-500"
+    class:hidden={!installInProgress}
+    class="absolute -top-[15px] right-0 text-[var(--pd-action-button-spinner)]"
     style="font-size: 8px">{percentage}</span>
-  <div class:hidden="{!errorInstall}" class="absolute w-56 -top-[25px] right-0" style="font-size: 8px">
-    <ErrorMessage error="{errorInstall}" />
+  <div class:hidden={!errorInstall} class="absolute w-56 -top-[25px] right-0" style="font-size: 8px">
+    <ErrorMessage error={errorInstall} />
   </div>
 </button>

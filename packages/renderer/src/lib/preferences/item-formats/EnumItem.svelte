@@ -1,30 +1,28 @@
 <script lang="ts">
+import { Dropdown } from '@podman-desktop/ui-svelte';
+
 import type { IConfigurationPropertyRecordedSchema } from '../../../../../main/src/plugin/configuration-registry';
+
 export let record: IConfigurationPropertyRecordedSchema;
 export let value: string | undefined;
-export let onChange = async (_id: string, _value: string) => {};
+export let onChange = async (_id: string, _value: string): Promise<void> => {};
 
 let invalidEntry = false;
 
-function onInput(event: Event) {
+function onChangeHandler(newValue: unknown): void {
   invalidEntry = false;
-  const target = event.target as HTMLInputElement;
-  if (record.id && target.value !== value)
-    onChange(record.id, target.value).catch((_: unknown) => (invalidEntry = true));
+  if (record.id && newValue !== value) {
+    onChange(record.id, newValue as string).catch((_: unknown) => (invalidEntry = true));
+  }
 }
 </script>
 
-<select
-  class="border-b block w-full p-1 bg-zinc-700 border-violet-500 text-white text-sm checked:bg-violet-50"
-  name="{record.id}"
+<Dropdown
+  name={record.id}
   id="input-standard-{record.id}"
-  on:input="{onInput}"
-  bind:value="{value}"
-  aria-invalid="{invalidEntry}"
-  aria-label="{record.description}">
-  {#if record.enum}
-    {#each record.enum as recordEnum}
-      <option value="{recordEnum}">{recordEnum}</option>
-    {/each}
-  {/if}
-</select>
+  onChange={onChangeHandler}
+  bind:value={value}
+  ariaInvalid={invalidEntry}
+  ariaLabel={record.description}
+  options={record.enum?.map(recordEnum => ({label: recordEnum, value: recordEnum}))}>
+</Dropdown>

@@ -18,8 +18,10 @@
 
 import type { Writable } from 'svelte/store';
 import { writable } from 'svelte/store';
+
+import type { NotificationCard } from '/@api/notification';
+
 import { EventStore } from './event-store';
-import type { NotificationCard } from '../../../main/src/plugin/api/notification';
 
 const windowEvents = ['notifications-updated'];
 const windowListeners = ['extensions-already-started'];
@@ -51,6 +53,6 @@ export const notificationEventStore = new EventStore<NotificationCard[]>(
 );
 const notificationEventStoreInfo = notificationEventStore.setup();
 
-export const fetchNotifications = async () => {
+export const fetchNotifications = async (): Promise<void> => {
   await notificationEventStoreInfo.fetch();
 };

@@ -1,10 +1,9 @@
 <script lang="ts">
-import type { ProviderContainerConnectionInfo } from '../../../../main/src/plugin/api/provider-info';
-
-import { Buffer } from 'buffer';
-import ErrorMessage from '../ui/ErrorMessage.svelte';
-import Button from '../ui/Button.svelte';
 import { faSignal } from '@fortawesome/free-solid-svg-icons';
+import { Button, ErrorMessage } from '@podman-desktop/ui-svelte';
+import { Buffer } from 'buffer';
+
+import type { ProviderContainerConnectionInfo } from '/@api/provider-info';
 
 export let providerContainerEngine: ProviderContainerConnectionInfo;
 
@@ -12,7 +11,7 @@ let pingResult = '';
 let pingInProgress = false;
 let pingError = '';
 
-async function pingConnection() {
+async function pingConnection(): Promise<void> {
   const start = performance.now();
   pingInProgress = true;
   pingError = '';
@@ -33,16 +32,12 @@ async function pingConnection() {
 
 <div class="flex flex-row items-center">
   <div class="w-36">
-    <Button
-      bind:inProgress="{pingInProgress}"
-      class="my-1 w-full"
-      on:click="{() => pingConnection()}"
-      icon="{faSignal}">
+    <Button bind:inProgress={pingInProgress} class="my-1 w-full" on:click={pingConnection} icon={faSignal}>
       Ping
     </Button>
   </div>
   <div role="status" class="mx-2">{pingResult}</div>
   {#if pingError}
-    <ErrorMessage class="mx-2" error="{pingError}" />
+    <ErrorMessage class="mx-2" error={pingError} />
   {/if}
 </div>

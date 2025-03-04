@@ -1,19 +1,21 @@
 <script lang="ts">
-import { providerInfos } from '../../stores/providers';
+import { Button, Checkbox, ErrorMessage, Input, StatusIcon } from '@podman-desktop/ui-svelte';
+import { ContainerIcon } from '@podman-desktop/ui-svelte/icons';
 import { onDestroy, onMount } from 'svelte';
-import type { ProviderContainerConnectionInfo, ProviderInfo } from '../../../../main/src/plugin/api/provider-info';
-import { type PodCreation, podCreationHolder } from '../../stores/creation-from-containers-store';
-import FormPage from '../ui/FormPage.svelte';
-import { router } from 'tinro';
 import type { Unsubscriber } from 'svelte/store';
-import ErrorMessage from '../ui/ErrorMessage.svelte';
-import StatusIcon from '../images/StatusIcon.svelte';
-import ContainerIcon from '../images/ContainerIcon.svelte';
-import { faTriangleExclamation } from '@fortawesome/free-solid-svg-icons';
-import Fa from 'svelte-fa';
-import SolidPodIcon from '../images/SolidPodIcon.svelte';
-import Button from '../ui/Button.svelte';
+import { router } from 'tinro';
+
+import ContainerConnectionDropdown from '/@/lib/forms/ContainerConnectionDropdown.svelte';
+import { handleNavigation } from '/@/navigation';
+import { NavigationPage } from '/@api/navigation-page';
+import type { ProviderContainerConnectionInfo, ProviderInfo } from '/@api/provider-info';
+
 import type { PodCreatePortOptions } from '../../../../main/src/plugin/dockerode/libpod-dockerode';
+import { type PodCreation, podCreationHolder } from '../../stores/creation-from-containers-store';
+import { providerInfos } from '../../stores/providers';
+import SolidPodIcon from '../images/SolidPodIcon.svelte';
+import EngineFormPage from '../ui/EngineFormPage.svelte';
+import WarningMessage from '../ui/WarningMessage.svelte';
 
 let podCreation: PodCreation;
 let createInProgress = false;
@@ -32,7 +34,7 @@ $: selectedProviderConnection = providerConnections.length > 0 ? providerConnect
 let selectedProvider: ProviderContainerConnectionInfo | undefined = undefined;
 $: selectedProvider = !selectedProvider && selectedProviderConnection ? selectedProviderConnection : selectedProvider;
 
-async function createPodFromContainers() {
+async function createPodFromContainers(): Promise<void> {
   createInProgress = true;
   try {
     await doCreatePodFromContainers();
@@ -41,7 +43,7 @@ async function createPodFromContainers() {
   }
   createInProgress = false;
 }
-async function doCreatePodFromContainers() {
+async function doCreatePodFromContainers(): Promise<void> {
   if (!selectedProvider) {
     throw new Error('no provider selected');
   }
@@ -53,6 +55,7 @@ async function doCreatePodFromContainers() {
 
       // convert port bindings to an port mapping object
       return Object.entries(containerInspect.HostConfig.PortBindings).map(([key, value]) => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const valueAny: any = value;
         const container_port = parseInt(key.split('/')[0]);
         // we may not have any value
@@ -85,7 +88,7 @@ async function doCreatePodFromContainers() {
     .filter(item => item !== undefined) as PodCreatePortOptions[];
 
   // first create pod
-  const { Id, engineId } = await window.createPod(selectedProvider, { name: podCreation.name, portmappings });
+  const { Id, engineId } = await window.createPod({ name: podCreation.name, portmappings, provider: selectedProvider });
   // now, for each container, recreate it with the pod
   // but before, stop the container
 
@@ -136,7 +139,7 @@ onMount(() => {
           exposed: true,
           container: container.name,
         });
-        mapPortPrivate.set(port.PrivatePort, [...(mapPortPrivate.get(port.PrivatePort) || []), container.name]);
+        mapPortPrivate.set(port.PrivatePort, [...(mapPortPrivate.get(port.PrivatePort) ?? []), container.name]);
       });
     });
     mapPortPrivate.forEach((value, key) => {
@@ -182,7 +185,7 @@ onDestroy(() => {
   podCreationHolder.set(undefined);
 });
 
-function updatePortExposure(port: number, checked: boolean) {
+function updatePortExposure(port: number, checked: boolean): void {
   const val = mapPortExposed.get(port);
   if (val) {
     mapPortExposed.set(port, {
@@ -192,136 +195,122 @@ function updatePortExposure(port: number, checked: boolean) {
     mapPortExposed = mapPortExposed;
   }
 }
+
+function getWarningText(): string {
+  let text = '';
+  containersPorts.forEach(item => {
+    text += 'Containers ';
+    item.containers.forEach((container, index) => {
+      text += `${container} `;
+      if (index === item.containers.length - 2) {
+        text += 'and ';
+      } else if (index < item.containers.length - 1) {
+        text += ', ';
+      }
+    });
+    text += `use same ${item.ports.length > 1 ? 'ports' : 'port'} ${item.ports.join(', ')}\n`;
+  });
+  return text;
+}
+
+function navigateToContainers(): void {
+  return handleNavigation({ page: NavigationPage.CONTAINERS });
+}
 </script>
 
-<FormPage title="Copy containers to a pod">
+<EngineFormPage title="Copy containers to a pod" inProgress={createInProgress}>
   <SolidPodIcon slot="icon" size="40" />
 
-  <div class="min-w-full h-fit" slot="content">
-    <div class="m-5 p-6 bg-charcoal-800 rounded-sm text-gray-700">
-      <div>
-        {#if podCreation}
-          {#if containersPorts.length > 0}
-            <div class="bg-charcoal-600 border-t-2 border-amber-500 p-4 mb-2" role="alert" aria-label="warning">
-              <div class="flex flex-row">
-                <div class="mr-3">
-                  <Fa size="18" class="text-amber-400" icon="{faTriangleExclamation}" />
-                </div>
-                <div class="flex flex-col">
-                  <div class="text-sm text-amber-400">Possible runtime error</div>
-                  {#each containersPorts as { containers, ports }}
-                    <div class="mt-1 text-sm text-white">
-                      Containers
-                      {#each containers as container, index}
-                        <span class="font-bold">{container}</span>
-                        {#if index === containers.length - 2}
-                          and
-                        {:else if index < containers.length - 1}
-                          ,
-                        {/if}
-                        {' '}
-                      {/each}
-                      use same <span class="font-bold">{ports.length > 1 ? 'ports' : 'port'} {ports.join(', ')}</span>.
-                    </div>
-                  {/each}
-                </div>
-              </div>
-            </div>
-          {/if}
-          <div class="mb-2">
-            <span class="block text-sm font-semibold rounded text-gray-400 dark:text-gray-400">Name of the pod:</span>
-          </div>
-          <div class="mb-4">
-            <input
-              name="podName"
-              id="podName"
-              bind:value="{podCreation.name}"
-              placeholder="Select name of the pod..."
-              aria-label="Pod name"
-              class="w-full mt-1 p-2 outline-0 text-sm bg-charcoal-500 focus:bg-charcoal-900 border-violet-700 border-b focus:border-violet-700 focus:border rounded-sm text-gray-500 focus:text-gray-700 placeholder-gray-700"
-              required />
-          </div>
+  <div slot="content">
+    <div>
+      {#if podCreation}
+        {#if containersPorts.length > 0}
+          <WarningMessage class="flex flex-row w-full  mb-2" error={getWarningText()} />
+        {/if}
+        <div class="mb-2">
+          <span class="block font-semibold rounded-sm text-[var(--pd-content-card-header-text)]"
+            >Name of the pod:</span>
+        </div>
+        <div class="mb-4">
+          <Input
+            name="podName"
+            id="podName"
+            bind:value={podCreation.name}
+            placeholder="Select name of the pod..."
+            aria-label="Pod name"
+            required />
+        </div>
 
+        <div class="mb-2">
+          <span
+            class="block font-semibold rounded-sm text-[var(--pd-content-card-header-text)]"
+            aria-label="Containers">Containers to replicate to the pod:</span>
+        </div>
+        <div class="w-full bg-[var(--pd-content-card-inset-bg)] mb-4 max-h-40 overflow-y-auto">
+          {#each podCreation.containers as container, index}
+            <div class="p-2 flex flex-row items-center text-[var(--pd-content-card-text)]">
+              <div class="w-10"><StatusIcon icon={ContainerIcon} status="STOPPED" /></div>
+              <div class="w-16 pl-3">{index + 1}.</div>
+              <div class="grow">{container.name}</div>
+              <div class="w-28">({container.id.substring(0, 7)})</div>
+            </div>
+          {/each}
+        </div>
+
+        {#if mapPortExposed.size > 0}
           <div class="mb-2">
-            <span class="block text-sm font-semibold rounded text-gray-400 dark:text-gray-400" aria-label="Containers"
-              >Containers to replicate to the pod:</span>
+            <span
+              class="block font-semibold rounded-sm text-[var(--pd-content-card-header-text)]"
+              aria-label="Exposed ports">All selected ports will be exposed:</span>
           </div>
-          <div class="w-full bg-charcoal-900 mb-4 max-h-40 overflow-y-auto">
-            {#each podCreation.containers as container, index}
-              <div class="p-2 flex flex-row items-center text-gray-700">
-                <div class="w-10"><StatusIcon icon="{ContainerIcon}" status="STOPPED" /></div>
-                <div class="w-16 pl-3">{index + 1}.</div>
-                <div class="grow">{container.name}</div>
-                <div class="w-28">({container.id.substring(0, 7)})</div>
+          <div class="bg-[var(--pd-content-card-inset-bg)] mb-4 max-h-40 overflow-y-auto">
+            {#each [...mapPortExposed] as [port, value]}
+              <div class="p-2 flex flex-row align-items text-sm text-[var(--pd-content-card-text)]">
+                <Checkbox
+                  class="pt-0.5 mr-5"
+                  bind:checked={value.exposed}
+                  on:click={(event): void => updatePortExposure(port, event.detail)} />
+                <div class="w-28 mr-5">Port {port.toString()}</div>
+                <span>{value.container}</span>
               </div>
             {/each}
           </div>
-
-          {#if mapPortExposed.size > 0}
-            <div class="mb-2">
-              <span
-                class="block text-sm font-semibold rounded text-gray-400 dark:text-gray-400"
-                aria-label="Exposed ports">All selected ports will be exposed:</span>
-            </div>
-            <div class="bg-charcoal-900 mb-4 max-h-40 overflow-y-auto">
-              {#each [...mapPortExposed] as [port, value]}
-                <div class="p-2 flex flex-row align-items text-gray-700">
-                  <input
-                    type="checkbox"
-                    class="mr-5"
-                    checked="{value.exposed}"
-                    on:click="{event => updatePortExposure(port, event.currentTarget.checked)}" />
-                  <div class="w-28 mr-5">
-                    <span class="text-sm">Port {port.toString()}</span>
-                  </div>
-                  <span class="text-sm">{value.container}</span>
-                </div>
-              {/each}
-            </div>
-          {/if}
         {/if}
+      {/if}
 
+      {#if providerConnections.length > 1}
+        <label
+          for="providerConnectionName"
+          class="block mb-2 font-semibold rounded-sm text-[var(--pd-content-card-header-text)]"
+          >Container engine:</label>
+        <ContainerConnectionDropdown
+          class="w-full"
+          name="providerChoice"
+          bind:value={selectedProvider}
+          connections={providerConnections}
+        />
+      {/if}
+      {#if providerConnections.length === 1 && selectedProviderConnection?.name}
+        <input type="hidden" name="providerChoice" readonly bind:value={selectedProviderConnection.name} />
+      {/if}
+
+      <div class="w-full grid justify-items-end mt-5">
         <div>
-          {#if providerConnections.length > 1}
-            <label
-              for="providerConnectionName"
-              class="p-2 block mb-2 text-sm font-medium rounded bg-zinc-700 text-gray-300 dark:text-gray-300"
-              >Container Engine
-              <select
-                class="w-full p-2 outline-none text-sm bg-charcoal-800 rounded-sm text-gray-400 placeholder-gray-400"
-                name="providerChoice"
-                bind:value="{selectedProvider}">
-                {#each providerConnections as providerConnection}
-                  <option value="{providerConnection}">{providerConnection.name}</option>
-                {/each}
-              </select>
-            </label>
-          {/if}
-          {#if providerConnections.length === 1 && selectedProviderConnection?.name}
-            <input type="hidden" name="providerChoice" readonly bind:value="{selectedProviderConnection.name}" />
-          {/if}
+          <Button type="link" on:click={navigateToContainers}>Close</Button>
+          <Button
+            icon={SolidPodIcon}
+            bind:disabled={createInProgress}
+            on:click={createPodFromContainers}
+            bind:inProgress={createInProgress}
+            aria-label="Create pod">
+            Create Pod
+          </Button>
         </div>
-
-        <div class="w-full grid justify-items-end">
-          <div>
-            <Button type="link" on:click="{() => router.goto('/containers')}">Close</Button>
-            <Button
-              icon="{SolidPodIcon}"
-              bind:disabled="{createInProgress}"
-              on:click="{() => {
-                createPodFromContainers();
-              }}"
-              bind:inProgress="{createInProgress}"
-              aria-label="Create pod">
-              Create Pod
-            </Button>
-          </div>
-        </div>
-
-        {#if createError}
-          <ErrorMessage class="pt-2 text-sm" error="{createError}" />
-        {/if}
       </div>
+
+      {#if createError}
+        <ErrorMessage class="pt-2 text-sm" error={createError} />
+      {/if}
     </div>
   </div>
-</FormPage>
+</EngineFormPage>

@@ -1,5 +1,5 @@
 /**********************************************************************
- * Copyright (C) 2023 Red Hat, Inc.
+ * Copyright (C) 2023-2024 Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the 'License');
  * you may not use this file except in compliance with the License.
@@ -16,15 +16,17 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
-import { afterEach, beforeEach, describe, expect, expectTypeOf, test, vi } from 'vitest';
-import { OnboardingRegistry } from './onboarding-registry.js';
-import type { ConfigurationRegistry } from './configuration-registry.js';
-import type { AnalyzedExtension } from './extension-loader.js';
 import * as fs from 'node:fs';
-import { Context } from './context/context.js';
+
+import { afterEach, beforeEach, describe, expect, expectTypeOf, test, vi } from 'vitest';
+
+import type { AnalyzedExtension } from '/@/plugin/extension/extension-analyzer.js';
+import type { OnboardingState } from '/@api/onboarding.js';
+
 import type { ApiSenderType } from './api.js';
+import { Context } from './context/context.js';
+import { OnboardingRegistry } from './onboarding-registry.js';
 import type { Disposable } from './types/disposable.js';
-import type { OnboardingState } from './api/onboarding.js';
 
 let onboardingRegistry: OnboardingRegistry;
 const extensionId = 'myextension.id';
@@ -35,14 +37,8 @@ const getConfigurationMock = vi.fn();
 getConfigurationMock.mockReturnValue({
   get: getConfigMock,
 });
-const configurationRegistry = {
-  registerConfigurations: vi.fn(),
-  onDidChangeConfiguration: vi.fn(),
-  getConfiguration: getConfigurationMock,
-} as unknown as ConfigurationRegistry;
 
 const readFileSync = vi.spyOn(fs, 'readFileSync');
-const bufferFrom = vi.spyOn(Buffer, 'from');
 const apiSender: ApiSenderType = { send: vi.fn() } as unknown as ApiSenderType;
 const context = new Context(apiSender);
 
@@ -52,11 +48,13 @@ describe('an OnboardingRegistry instance exists', () => {
   /* eslint-disable @typescript-eslint/no-empty-function */
   beforeEach(() => {
     vi.clearAllMocks();
-    onboardingRegistry = new OnboardingRegistry(configurationRegistry, context);
+    onboardingRegistry = new OnboardingRegistry(context);
     const manifest = {
       contributes: {
         onboarding: {
           title: 'Get started with Podman Desktop',
+          priority: 1,
+          removable: false,
           steps: [
             {
               id: 'checkInstalledCommand',
@@ -81,7 +79,6 @@ describe('an OnboardingRegistry instance exists', () => {
 
     vi.mock('node:fs');
     readFileSync.mockReturnValue(JSON.stringify({}));
-    bufferFrom.mockReturnValue(Buffer.from(''));
   });
 
   test('Should always return onboarding', async () => {
@@ -117,15 +114,15 @@ describe('an OnboardingRegistry instance exists', () => {
     expect(onboarding).toBeDefined();
     expectTypeOf(onboarding).toBeArray();
     expect(onboarding.length).toBe(1);
-    expect(onboarding[0].title).toBe('Get started with Podman Desktop');
+    expect(onboarding[0]?.title).toBe('Get started with Podman Desktop');
   });
 
   test('Should update state of step', async () => {
     onboardingRegistry.updateStepState('completed', extensionId, stepId);
     const onboarding = onboardingRegistry.getOnboarding(extensionId);
     expect(onboarding).toBeDefined();
-    expect(onboarding?.steps[0].status).toBeDefined();
-    expect(onboarding?.steps[0].status).toBe('completed');
+    expect(onboarding?.steps[0]?.status).toBeDefined();
+    expect(onboarding?.steps[0]?.status).toBe('completed');
   });
 
   test('Should update state of onboarding', async () => {
@@ -136,7 +133,7 @@ describe('an OnboardingRegistry instance exists', () => {
     expect(onboarding?.status).toBe('completed');
   });
 
-  test('Should throw if no onboarding for that extension', async () => {
+  test('updateStepState should throw if no onboarding for that extension', async () => {
     expect(() => onboardingRegistry.updateStepState('completed', 'unknown', stepId)).toThrowError(
       'No onboarding for extension unknown',
     );
@@ -159,8 +156,8 @@ describe('an OnboardingRegistry instance exists', () => {
     expect(onboarding).toBeDefined();
     expect(onboarding?.status).toBeDefined();
     expect(onboarding?.status).toBe('completed');
-    expect(onboarding?.steps[0].status).toBeDefined();
-    expect(onboarding?.steps[0].status).toBe('completed');
+    expect(onboarding?.steps[0]?.status).toBeDefined();
+    expect(onboarding?.steps[0]?.status).toBe('completed');
     expect(context.getValue(contextKey)).toBe('test');
     // reset all states
     onboardingRegistry.resetOnboarding([extensionId]);
@@ -168,11 +165,11 @@ describe('an OnboardingRegistry instance exists', () => {
     onboarding = onboardingRegistry.getOnboarding(extensionId);
     expect(onboarding).toBeDefined();
     expect(onboarding?.status).toBe(undefined);
-    expect(onboarding?.steps[0].status).toBe(undefined);
+    expect(onboarding?.steps[0]?.status).toBe(undefined);
     expect('test' in context.collectAllValues()).toBe(false);
   });
 
-  test('Should throw if no onboarding for that extension', async () => {
+  test('resetOnboarding should throw if no onboarding for that extension', async () => {
     expect(() => onboardingRegistry.resetOnboarding(['unknown'])).toThrowError(
       'No onboarding found for extensions unknown',
     );
@@ -193,7 +190,7 @@ describe('checkIdsReadability tests', () => {
   });
 
   test('checkIdsReadability should detect non valid ids', () => {
-    const onboardingRegistry = new OnboardingRegistry(configurationRegistry, context);
+    const onboardingRegistry = new OnboardingRegistry(context);
     const extensionPath = '/root/path';
     const extension = {
       path: extensionPath,
@@ -201,6 +198,7 @@ describe('checkIdsReadability tests', () => {
     } as AnalyzedExtension;
     const onboarding = {
       title: 'Get started with Podman Desktop',
+      priority: 50,
       steps: [
         {
           id: 'welcomeViewNotOK',
@@ -268,5 +266,56 @@ describe('checkIdsReadability tests', () => {
     expect(consoleWarnMock).toBeCalledWith(
       `[myextension.id]: Missing suffix 'View' for the step 'welcomeViewNotOK' that is neither a Command, Failure or Success step`,
     );
+  });
+
+  test('onboarding list sorting by priority and removable', () => {
+    const onboardingRegistry = new OnboardingRegistry(context);
+    function registerOnboarding(id: number, removable: boolean, priority?: number): void {
+      onboardingRegistry.registerOnboarding(
+        {
+          path: `extension${id}`,
+          id: `extension.id${id}`,
+          removable,
+        } as AnalyzedExtension,
+        {
+          title: `Get started with Podman Desktop ${id}`,
+          priority,
+          enablement: '',
+          steps: [
+            {
+              id: 'welcomeViewNotOK',
+              title: `Checking for Podman installation ${id}`,
+            },
+          ],
+        },
+      );
+    }
+
+    registerOnboarding(1, false, 50);
+    registerOnboarding(2, true, 50);
+    registerOnboarding(3, false, 99);
+    registerOnboarding(4, true, 99);
+    registerOnboarding(5, false, 1);
+    registerOnboarding(6, true, 1);
+    registerOnboarding(7, false);
+    registerOnboarding(8, true);
+
+    const onboardings = onboardingRegistry.listOnboarding();
+    expect(onboardings[0]?.priority).equals(1);
+    expect(onboardings[0]?.removable).equals(false);
+    expect(onboardings[1]?.priority).equals(50);
+    expect(onboardings[1]?.removable).equals(false);
+    expect(onboardings[2]?.priority).equals(99);
+    expect(onboardings[2]?.removable).equals(false);
+    expect(onboardings[3]?.priority).toBeUndefined();
+    expect(onboardings[3]?.removable).equals(false);
+    expect(onboardings[4]?.priority).equals(1);
+    expect(onboardings[4]?.removable).equals(true);
+    expect(onboardings[5]?.priority).equals(50);
+    expect(onboardings[5]?.removable).equals(true);
+    expect(onboardings[6]?.priority).equals(99);
+    expect(onboardings[6]?.removable).equals(true);
+    expect(onboardings[7]?.priority).toBeUndefined();
+    expect(onboardings[7]?.removable).equals(true);
   });
 });

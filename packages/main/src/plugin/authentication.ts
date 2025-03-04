@@ -1,5 +1,5 @@
 /**********************************************************************
- * Copyright (C) 2023 Red Hat, Inc.
+ * Copyright (C) 2023-2024 Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,18 +17,20 @@
  ***********************************************************************/
 
 import type {
-  AuthenticationProvider,
-  AuthenticationSession,
-  AuthenticationSessionsChangeEvent,
   AuthenticationGetSessionOptions,
-  Event,
-  AuthenticationSessionAccountInformation,
+  AuthenticationProvider,
   AuthenticationProviderOptions,
+  AuthenticationSession,
+  AuthenticationSessionAccountInformation,
+  AuthenticationSessionsChangeEvent,
   Disposable,
+  Event,
   ProviderImages,
 } from '@podman-desktop/api';
-import { Emitter } from './events/emitter.js';
+
 import type { ApiSenderType } from './api.js';
+import { Emitter } from './events/emitter.js';
+import type { MessageBox } from './message-box.js';
 
 /**
  * Structure to save authentication provider information
@@ -61,8 +63,15 @@ export interface AllowedExtension {
   allowed?: boolean;
 }
 
+interface AccountUsageRecord {
+  providerId: string;
+  sessionId: string;
+  extensionId: string;
+  extensionName: string;
+}
+
 export interface SessionRequest {
-  [scopes: string]: string[]; // maps sting with scopes to provider ids
+  [scopes: string]: string[]; // maps string with scopes to extension id's
 }
 
 export interface SessionRequestInfo {
@@ -73,14 +82,59 @@ export interface SessionRequestInfo {
   extensionLabel: string;
 }
 
+export type MenuInfo = AuthenticationRequestMenuInfo | AuthenticationSessionMenuInfo;
+
+export interface AuthenticationRequestMenuInfo {
+  label: string;
+  requestId: string;
+}
+
+export interface AuthenticationSessionMenuInfo {
+  label: string;
+  providerId: string;
+  sessionId: string;
+}
+
 export class AuthenticationImpl {
+  async getAccountsMenuInfo(): Promise<MenuInfo[]> {
+    const requestsMenuInfo: MenuInfo[] = this.getSessionRequests().reduce((prev: MenuInfo[], current) => {
+      const provider = this._authenticationProviders.get(current.providerId);
+      if (provider) {
+        prev.push({
+          label: `Sign in with ${provider.label} to use ${current.extensionLabel}`,
+          requestId: current.id,
+        });
+      }
+      return prev;
+    }, []);
+
+    const providersInfo = await this.getAuthenticationProvidersInfo();
+    const sessionMenuInfo: MenuInfo[] = providersInfo.reduce((prev: MenuInfo[], current) => {
+      current.accounts.forEach(account => {
+        prev.push({
+          label: `${account.label} (${current.displayName})`,
+          providerId: current.id,
+          sessionId: account.id,
+        });
+      });
+      return prev;
+    }, []);
+
+    return [...sessionMenuInfo, ...requestsMenuInfo];
+  }
+
   private _authenticationProviders: Map<string, ProviderWithMetadata> = new Map<string, ProviderWithMetadata>();
   // map of scopes to extension ids
   private _signInRequests: Map<string, SessionRequest> = new Map();
   // map id to getSession call
   private _signInRequestsData: Map<string, SessionRequestInfo> = new Map();
+  // store account usage to show confirmation when sign out requested
+  private _accountUsageData: AccountUsageRecord[] = [];
 
-  constructor(private apiSender: ApiSenderType) {}
+  constructor(
+    private apiSender: ApiSenderType,
+    private messageBox: MessageBox,
+  ) {}
 
   public async getAuthenticationProvidersInfo(): Promise<AuthenticationProviderInfo[]> {
     const values = Array.from(this._authenticationProviders.values());
@@ -103,7 +157,32 @@ export class AuthenticationImpl {
   }
 
   public async signOut(providerId: string, sessionId: string): Promise<void> {
-    await this.removeSession(providerId, sessionId);
+    const providerData = this._authenticationProviders.get(providerId);
+    if (providerData) {
+      const sessions = await providerData?.provider.getSessions();
+      const session = sessions.find(entry => entry.id === sessionId);
+      if (session) {
+        // show confirmation to sign out with all affected extensions
+        const multiple = this._accountUsageData.length > 1;
+        const accountMessage = `The account '${session.account.label}' has been used by:`;
+        const extensionNames: string[] = this._accountUsageData.reduce((prev: string[], current) => {
+          if (current.providerId === providerId && current.sessionId === session.id) {
+            prev.push(current.extensionName);
+          }
+          return prev;
+        }, []);
+        const message = `${accountMessage}\n\n\t${extensionNames.join('\n\t')}\n\nSign out from ${multiple ? 'these' : 'this'} extension${multiple ? 's' : ''}?`;
+        const choice = await this.messageBox.showMessageBox({
+          title: 'Sign Out Request',
+          message,
+          buttons: ['Cancel', 'Sign Out'],
+        });
+        if (choice.response) {
+          await this.removeSession(providerId, sessionId);
+          this.removeAccountUsage(providerId, sessionId);
+        }
+      }
+    }
   }
 
   registerAuthenticationProvider(
@@ -127,29 +206,47 @@ export class AuthenticationImpl {
       this.apiSender.send('authentication-provider-update', { id });
     });
     return {
-      dispose: () => {
+      dispose: (): void => {
         onDidChangeSessionDisposable.dispose();
         this._authenticationProviders.delete(id);
+        this.apiSender.send('authentication-provider-update', { id });
       },
     };
   }
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  addAccountUsage(providerId: string, accountLabel: string, extensionId: string, extensionName: string): void {
-    throw new Error('The method is not implemented!');
+  addAccountUsage(providerId: string, sessionId: string, extensionId: string, extensionName: string): void {
+    if (
+      !this._accountUsageData.find(
+        entry => entry.providerId === providerId && entry.sessionId === sessionId && entry.extensionId === extensionId,
+      )
+    ) {
+      this._accountUsageData.push({
+        providerId,
+        sessionId,
+        extensionId,
+        extensionName,
+      });
+    }
+  }
+
+  removeAccountUsage(providerId: string, sessionId: string): void {
+    this._accountUsageData = this._accountUsageData.filter(
+      entry => entry.providerId !== providerId || entry.sessionId !== sessionId,
+    );
   }
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  readAllowedExtensions(providerId: string, accountName: string): AllowedExtension[] {
+  readAllowedExtensions(_providerId: string, _accountName: string): AllowedExtension[] {
     throw new Error('The method is not implemented!');
   }
 
   updateAllowedExtension(
-    providerId: string, // eslint-disable-line @typescript-eslint/no-unused-vars
-    accountName: string, // eslint-disable-line @typescript-eslint/no-unused-vars
-    extensionId: string, // eslint-disable-line @typescript-eslint/no-unused-vars
-    extensionName: string, // eslint-disable-line @typescript-eslint/no-unused-vars
-    isAllowed: boolean, // eslint-disable-line @typescript-eslint/no-unused-vars
+    _providerId: string, // eslint-disable-line @typescript-eslint/no-unused-vars
+    _accountName: string, // eslint-disable-line @typescript-eslint/no-unused-vars
+    _extensionId: string, // eslint-disable-line @typescript-eslint/no-unused-vars
+    _extensionName: string, // eslint-disable-line @typescript-eslint/no-unused-vars
+    _isAllowed: boolean, // eslint-disable-line @typescript-eslint/no-unused-vars
   ): void {
     throw new Error('The method is not implemented!');
   }
@@ -163,7 +260,7 @@ export class AuthenticationImpl {
    * if they haven't made a choice yet
    */
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  isAccessAllowed(providerId: string, accountName: string, extensionId: string): boolean | undefined {
+  isAccessAllowed(_providerId: string, _accountName: string, _extensionId: string): boolean | undefined {
     return true; // To be implemented later
   }
 
@@ -197,17 +294,41 @@ export class AuthenticationImpl {
     }
 
     const providerData = this._authenticationProviders.get(providerId);
-    const sortedScopes = [...scopes].sort();
+    const sortedScopes = [...scopes].sort((a, b) => a.localeCompare(b));
 
     const sessions = providerData ? await providerData.provider.getSessions(sortedScopes) : [];
 
-    if (sessions.length && this.isAccessAllowed(providerId, sessions[0].account.label, requestingExtension.id)) {
+    if (
+      sessions.length &&
+      sessions[0]?.account.label &&
+      this.isAccessAllowed(providerId, sessions[0].account.label, requestingExtension.id)
+    ) {
+      // add account usage to show confirmation on sign out request
+      this.addAccountUsage(providerId, sessions[0].id, requestingExtension.id, requestingExtension.label);
       return sessions[0];
     }
 
     if (options.createIfNone) {
       if (providerData) {
-        return providerData.provider.createSession(sortedScopes);
+        const allowRsp = await this.messageBox.showMessageBox({
+          title: 'Sign In Request',
+          message: `The extension '${requestingExtension.label}' wants to sign in using ${providerData.label}.`,
+          buttons: ['Cancel', 'Allow'],
+          type: 'info',
+        });
+        if (!allowRsp.response) {
+          return;
+        }
+        const newSession = await providerData.provider.createSession(sortedScopes);
+        const request = Array.from(this._signInRequestsData.values()).find(request => {
+          return request.extensionId === requestingExtension.id;
+        });
+        if (request) {
+          this._signInRequestsData.delete(request.id);
+          this._signInRequests.delete(providerId);
+        }
+        this.addAccountUsage(providerId, newSession.id, requestingExtension.id, requestingExtension.label);
+        return newSession;
       } else {
         throw new Error(`Requested authentication provider ${providerId} is not installed.`);
       }
@@ -221,7 +342,7 @@ export class AuthenticationImpl {
         // request was added already by this extension
         return;
       }
-      const requestId = `${providerId}:${requestingExtension.id}:signIn${Object.keys(providerRequests || []).length}`;
+      const requestId = `${providerId}:${requestingExtension.id}:signIn${Object.keys(providerRequests ?? []).length}`;
       this._signInRequestsData.set(requestId, {
         id: requestId,
         providerId,
@@ -231,13 +352,14 @@ export class AuthenticationImpl {
       });
 
       if (providerRequests) {
-        const existingRequests = providerRequests[scopesList] || [];
+        const existingRequests = providerRequests[scopesList] ?? [];
         providerRequests[scopesList] = [...existingRequests, requestingExtension.id];
       } else {
         this._signInRequests.set(providerId, { [scopesList]: [requestingExtension.id] });
       }
       this.apiSender.send('authentication-provider-update', { id: providerId });
     }
+    return undefined;
   }
 
   getSessionRequests(): SessionRequestInfo[] {
@@ -245,7 +367,7 @@ export class AuthenticationImpl {
   }
 
   // called by the UI to indicate that the user has requested a sing-in
-  async executeSessionRequest(id: string) {
+  async executeSessionRequest(id: string): Promise<void> {
     const data = this._signInRequestsData.get(id);
     if (!data) {
       throw new Error(`Session request '${id}' is not found.`);
@@ -256,7 +378,11 @@ export class AuthenticationImpl {
       throw new Error(`Requested authentication provider '${data.providerId}' is not installed.`);
     }
 
-    await provider.createSession(data.scopes);
+    const session = await provider.createSession(data.scopes);
+    if (session) {
+      this._signInRequestsData.delete(id);
+      this._signInRequests.delete(data.providerId);
+    }
   }
 
   async removeSession(providerId: string, sessionId: string): Promise<void> {

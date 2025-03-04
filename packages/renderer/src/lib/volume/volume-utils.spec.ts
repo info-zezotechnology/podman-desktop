@@ -17,7 +17,9 @@
  ***********************************************************************/
 
 import { beforeEach, expect, test, vi } from 'vitest';
-import type { VolumeInfo } from '../../../../main/src/plugin/api/volume-info';
+
+import type { VolumeInfo } from '/@api/volume-info';
+
 import { VolumeUtils } from './volume-utils';
 
 let volumeUtils: VolumeUtils;

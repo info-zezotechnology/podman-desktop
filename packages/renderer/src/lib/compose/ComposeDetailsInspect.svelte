@@ -1,8 +1,10 @@
 <script lang="ts">
-import type { ComposeInfoUI } from './ComposeInfoUI';
 import { onMount } from 'svelte';
+
+import type { ContainerInspectInfo } from '/@api/container-inspect-info';
+
 import MonacoEditor from '../editor/MonacoEditor.svelte';
-import type { ContainerInspectInfo } from '../../../../main/src/plugin/api/container-inspect-info';
+import type { ComposeInfoUI } from './ComposeInfoUI';
 
 export let compose: ComposeInfoUI;
 
@@ -31,5 +33,5 @@ onMount(async () => {
 </script>
 
 {#if inspectDetails}
-  <MonacoEditor content="{inspectDetails}" language="json" />
+  <MonacoEditor content={inspectDetails} language="json" />
 {/if}

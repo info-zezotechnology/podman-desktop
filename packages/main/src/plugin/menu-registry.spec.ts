@@ -1,5 +1,5 @@
 /**********************************************************************
- * Copyright (C) 2023 Red Hat, Inc.
+ * Copyright (C) 2023-2024 Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,14 +17,16 @@
  ***********************************************************************/
 
 import { beforeEach, expect, expectTypeOf, test, vi } from 'vitest';
-import { MenuRegistry } from './menu-registry.js';
-import { CommandRegistry } from './command-registry.js';
+
 import type { Telemetry } from '/@/plugin/telemetry/telemetry.js';
-import type { Disposable } from './types/disposable.js';
+
 import type { ApiSenderType } from './api.js';
+import { CommandRegistry } from './command-registry.js';
+import { MenuRegistry } from './menu-registry.js';
+import type { Disposable } from './types/disposable.js';
 
 let menuRegistry: MenuRegistry;
-let commandRegistry;
+let commandRegistry: CommandRegistry;
 
 let registerMenuDisposable: Disposable;
 
@@ -87,8 +89,8 @@ test('Image context should have a single entry', async () => {
   expect(menus).toBeDefined();
   expectTypeOf(menus).toBeArray();
   expect(menus.length).toBe(1);
-  expect(menus[0].command).toBe('image.command1');
-  expect(menus[0].title).toBe('Image 1');
+  expect(menus[0]?.command).toBe('image.command1');
+  expect(menus[0]?.title).toBe('Image 1');
 });
 
 test('Container context should have two entries', async () => {
@@ -96,10 +98,10 @@ test('Container context should have two entries', async () => {
   expect(menus).toBeDefined();
   expectTypeOf(menus).toBeArray();
   expect(menus.length).toBe(2);
-  expect(menus[0].command).toBe('container.command1');
-  expect(menus[0].title).toBe('Container 1');
-  expect(menus[1].command).toBe('container.command2');
-  expect(menus[1].title).toBe('Container 2');
+  expect(menus[0]?.command).toBe('container.command1');
+  expect(menus[0]?.title).toBe('Container 1');
+  expect(menus[1]?.command).toBe('container.command2');
+  expect(menus[1]?.title).toBe('Container 2');
 });
 
 test('Menus with unregistered commands should not be returned', async () => {
@@ -113,4 +115,58 @@ test('Should not find menus after dispose', async () => {
   registerMenuDisposable.dispose();
   const menus = menuRegistry.getContributedMenus('dashboard/image');
   expect(menus).toStrictEqual([]);
+});
+
+test('Should find icon', async () => {
+  menuRegistry = new MenuRegistry(commandRegistry);
+
+  const manifest = {
+    contributes: {
+      menus: {
+        'dashboard/image': [
+          {
+            command: 'image.command1',
+            title: 'Image 1',
+            icon: '${myIcon1}',
+          },
+        ],
+        'dashboard/container': [
+          {
+            command: 'container.command1',
+            title: 'Container 1',
+            icon: '${myIcon2}',
+          },
+          {
+            command: 'container.command2',
+            title: 'Container 2',
+          },
+        ],
+        'dashboard/unregistered': [
+          {
+            command: 'unregistered.command1',
+            title: 'Unregistered 1',
+          },
+        ],
+      },
+    },
+  };
+
+  // commands are already registered
+  // register the menus now
+  registerMenuDisposable = menuRegistry.registerMenus(manifest.contributes.menus);
+
+  const menus = menuRegistry.getContributedMenus('dashboard/image');
+
+  // icon should be set for the command
+  expect(menus[0]?.icon).toBe('${myIcon1}');
+
+  const menus2 = menuRegistry.getContributedMenus('dashboard/container');
+  // check icons
+  expect(menus2[0]?.icon).toBe('${myIcon2}');
+  // other one should be undefined
+  expect(menus2[1]?.icon).toBe(undefined);
+
+  // and now last item should be undefined as commands is not registered
+  const menus3 = menuRegistry.getContributedMenus('dashboard/unregistered');
+  expect(menus3).toStrictEqual([]);
 });

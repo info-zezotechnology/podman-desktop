@@ -16,9 +16,11 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
-import { app } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
+
+import { app } from 'electron';
+
 import type { ConfigurationRegistry } from '../plugin/configuration-registry.js';
 
 /**
@@ -112,7 +114,7 @@ if FSO.FileExists("${this.podmanDesktopBinaryPath}") then
   WshShell.Run """" & "${this.podmanDesktopBinaryPath}" & """` +
       minimizeSettings +
       `", 0, False
-end if  
+end if
 Set WshShell = Nothing
 `;
 
@@ -122,7 +124,7 @@ Set WshShell = Nothing
     );
   }
 
-  async disable() {
+  async disable(): Promise<void> {
     // remove the file at this.podmanDesktopBinaryPath only if it exists
     if (fs.existsSync(this.startupFile)) {
       await fs.promises.unlink(this.startupFile);

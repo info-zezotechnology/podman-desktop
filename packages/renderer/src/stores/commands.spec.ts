@@ -21,18 +21,20 @@
 import { get } from 'svelte/store';
 import type { Mock } from 'vitest';
 import { beforeAll, expect, test, vi } from 'vitest';
-import type { CommandInfo } from '../../../main/src/plugin/api/command-info';
+
+import type { CommandInfo } from '/@api/command-info';
+
 import { commandsEventStore, commandsEventStoreInfo, commandsInfos } from './commands';
 
 // first, patch window object
 const callbacks = new Map<string, any>();
 const eventEmitter = {
-  receive: (message: string, callback: any) => {
+  receive: (message: string, callback: any): void => {
     callbacks.set(message, callback);
   },
 };
 
-const getCommandPaletteCommandsMock: Mock<any, Promise<CommandInfo[]>> = vi.fn();
+const getCommandPaletteCommandsMock: Mock<() => Promise<CommandInfo[]>> = vi.fn();
 
 Object.defineProperty(global, 'window', {
   value: {

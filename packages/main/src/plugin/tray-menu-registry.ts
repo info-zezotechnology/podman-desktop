@@ -1,5 +1,5 @@
 /**********************************************************************
- * Copyright (C) 2022-2023 Red Hat, Inc.
+ * Copyright (C) 2022-2024 Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,10 +17,12 @@
  ***********************************************************************/
 
 import type { ProviderConnectionStatus, ProviderStatus } from '@podman-desktop/api';
-import { ipcMain, dialog } from 'electron';
+import { dialog, ipcMain } from 'electron';
+
+import type { ProviderContainerConnectionInfo, ProviderInfo } from '/@api/provider-info.js';
+import type { MenuItem } from '/@api/tray-menu-info.js';
+
 import type { TrayMenu } from '../tray-menu.js';
-import type { ProviderContainerConnectionInfo, ProviderInfo } from './api/provider-info.js';
-import type { MenuItem } from './api/tray-menu-info.js';
 import type { CommandRegistry } from './command-registry.js';
 import type { ProviderRegistry } from './provider-registry.js';
 import type { Telemetry } from './telemetry/telemetry.js';
@@ -57,7 +59,7 @@ export class TrayMenuRegistry {
         this.trayMenu.updateProvider(providerInfo);
       }
     });
-    providerRegistry.addProviderLifecycleListener((name: string, provider: ProviderInfo) => {
+    providerRegistry.addProviderLifecycleListener((_name: string, provider: ProviderInfo) => {
       this.registerProvider(provider);
     });
 
@@ -155,7 +157,7 @@ export class TrayMenuRegistry {
     this.trayMenu.addProviderItems(providerInfo);
   }
 
-  unregisterProvider(providerInfo: ProviderInfo) {
+  unregisterProvider(providerInfo: ProviderInfo): void {
     this.trayMenu.deleteProvider(providerInfo);
   }
 }

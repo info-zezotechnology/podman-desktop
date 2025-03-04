@@ -1,5 +1,5 @@
 /**********************************************************************
- * Copyright (C) 2022 Red Hat, Inc.
+ * Copyright (C) 2022-2025 Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,100 +15,45 @@
  *
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
+import dns from 'node:dns';
 
-import type { BrowserWindow } from 'electron';
-import { app, ipcMain, Tray } from 'electron';
-import './security-restrictions';
+import { app, ipcMain, Menu, Tray } from 'electron';
+
 import { createNewWindow, restoreWindow } from '/@/mainWindow.js';
+import type { ExtensionLoader } from '/@/plugin/extension/extension-loader.js';
+
+import { ApplicationMenuBuilder } from './application-menu-builder.js';
+import { type AdditionalData, Main } from './main.js';
+import type { ConfigurationRegistry } from './plugin/configuration-registry.js';
+import type { Event } from './plugin/events/emitter.js';
+import { Emitter } from './plugin/events/emitter.js';
+import { PluginSystem } from './plugin/index.js';
+import { ZoomLevelHandler } from './plugin/zoom-level-handler.js';
+import { StartupInstall } from './system/startup-install.js';
+import { WindowHandler } from './system/window/window-handler.js';
+import { AnimatedTray } from './tray-animate-icon.js';
 import { TrayMenu } from './tray-menu.js';
 import { isMac, isWindows, stoppedExtensions } from './util.js';
-import { AnimatedTray } from './tray-animate-icon.js';
-import { PluginSystem } from './plugin/index.js';
-import { StartupInstall } from './system/startup-install.js';
-import type { ExtensionLoader } from './plugin/extension-loader.js';
-import dns from 'node:dns';
-import { Deferred } from './plugin/util/deferred.js';
 
 let extensionLoader: ExtensionLoader | undefined;
 
-type AdditionalData = {
-  argv: string[];
-};
+// Main startup
+const podmanDesktopMain = new Main(app);
+podmanDesktopMain.main(process.argv);
 
-export const mainWindowDeferred = new Deferred<BrowserWindow>();
-
-const argv = process.argv.slice(2);
-const additionalData: AdditionalData = {
-  argv: argv,
-};
-
-/**
- * Prevent multiple instances
- */
-// provide additional data to the second instance
-const isSingleInstance = app.requestSingleInstanceLock(additionalData);
-if (!isSingleInstance) {
-  app.quit();
-  process.exit(0);
-}
-
-const handleAdditionalProtocolLauncherArgs = (args: ReadonlyArray<string>) => {
-  // On Windows protocol handler will call the app with '<url>' args
-  // on macOS it's done with 'open-url' event
-  if (isWindows()) {
-    // now search if we have 'open-url' in the list of args and give it to the handler
-    for (const arg of args) {
-      if (arg.startsWith('podman-desktop:extension/')) {
-        handleOpenUrl(arg);
-      }
-    }
-  }
-};
-
-export const handleOpenUrl = (url: string) => {
-  // if the url starts with podman-desktop:extension/<id>
-  // we need to install the extension
-  if (!url.startsWith('podman-desktop:extension/')) {
-    console.log(`url ${url} does not start with podman-desktop:extension/, skipping.`);
-    return;
-  }
-  // grab the extension id
-  const extensionId = url.substring('podman-desktop:extension/'.length);
-
-  // wait that the window is ready
-  mainWindowDeferred.promise
-    .then(w => {
-      w.webContents.send('podman-desktop-protocol:install-extension', extensionId);
-    })
-    .catch((error: unknown) => {
-      console.error('Error sending open-url event to webcontents', error);
-    });
-};
+// TODO: remove when index.spec.ts tests are migrated in podmanDesktopMain-main.spec
+export const mainWindowDeferred = podmanDesktopMain.mainWindowDeferred;
 
 // do not use _args as it may contain additional arguments
 app.on('second-instance', (_event, _args, _workingDirectory, additionalData: unknown) => {
   // if we are on Windows, we need to handle the protocol
   if (isWindows() && additionalData && (additionalData as AdditionalData).argv) {
-    handleAdditionalProtocolLauncherArgs((additionalData as AdditionalData).argv);
+    podmanDesktopMain.protocolLauncher.handleAdditionalProtocolLauncherArgs((additionalData as AdditionalData).argv);
   }
 
   restoreWindow().catch((error: unknown) => {
     console.error('Error restoring window', error);
   });
-});
-
-/**
- * Disable Hardware Acceleration for more power-save
- */
-app.disableHardwareAcceleration();
-
-/**
- * Shout down background process if all windows was closed
- */
-app.on('window-all-closed', () => {
-  if (!isMac()) {
-    app.quit();
-  }
 });
 
 app.once('before-quit', event => {
@@ -130,12 +75,6 @@ app.once('before-quit', event => {
       app.quit();
     });
 });
-/**
- *  @see https://www.electronjs.org/docs/latest/api/app#appsetappusermodelidid-windows
- */
-if (isWindows()) {
-  app.setAppUserModelId(app.name);
-}
 
 let tray: Tray;
 
@@ -144,7 +83,7 @@ app.on('will-finish-launching', () => {
   app.on('open-url', (event, url) => {
     event.preventDefault();
     // delegate to the handler
-    handleOpenUrl(url);
+    podmanDesktopMain.protocolLauncher.handleOpenUrl(url);
   });
 });
 
@@ -165,7 +104,7 @@ app.whenReady().then(
     // Platforms: Linux, macOS, Windows
     // Create the main window
     createNewWindow()
-      .then(w => mainWindowDeferred.resolve(w))
+      .then(w => podmanDesktopMain.mainWindowDeferred.resolve(w))
       .catch((error: unknown) => {
         console.error('Error creating window', error);
       });
@@ -174,12 +113,20 @@ app.whenReady().then(
     // Required for macOS to start the app correctly (this is will be shown in the dock)
     // We use 'activate' within whenReady in order to gracefully start on macOS, see this link:
     // https://www.electronjs.org/docs/latest/tutorial/quick-start#open-a-window-if-none-are-open-macos
-    app.on('activate', () => {
+    app.on('activate', (_event, hasVisibleWindows) => {
       createNewWindow()
-        .then(w => mainWindowDeferred.resolve(w))
+        .then(w => podmanDesktopMain.mainWindowDeferred.resolve(w))
         .catch((error: unknown) => {
           console.log('Error creating window', error);
         });
+
+      // try to restore the window if it's not visible
+      // for example user click on the dock icon
+      if (isMac() && !hasVisibleWindows) {
+        restoreWindow().catch((error: unknown) => {
+          console.error('Error restoring window', error);
+        });
+      }
     });
 
     // prefer ipv4 over ipv6
@@ -193,28 +140,58 @@ app.whenReady().then(
     animatedTray.setTray(tray);
     const trayMenu = new TrayMenu(tray, animatedTray);
 
+    const _onDidCreatedConfigurationRegistry = new Emitter<ConfigurationRegistry>();
+    const onDidCreatedConfigurationRegistry: Event<ConfigurationRegistry> = _onDidCreatedConfigurationRegistry.event;
+
     // Start extensions
-    const pluginSystem = new PluginSystem(trayMenu);
-    extensionLoader = await pluginSystem.initExtensions();
+    const pluginSystem = new PluginSystem(trayMenu, podmanDesktopMain.mainWindowDeferred);
 
-    // Get the configuration registry (saves all our settings)
-    const configurationRegistry = extensionLoader.getConfigurationRegistry();
-
-    // If we've manually set the tray icon color, update the tray icon. This can only be done
-    // after configurationRegistry is loaded. Windows or Linux support only for icon color change.
-    if (!isMac()) {
-      const color = configurationRegistry.getConfiguration('preferences').get('TrayIconColor');
-      if (typeof color === 'string') {
-        animatedTray.setColor(color);
+    onDidCreatedConfigurationRegistry(async (configurationRegistry: ConfigurationRegistry) => {
+      // If we've manually set the tray icon color, update the tray icon. This can only be done
+      // after configurationRegistry is loaded. Windows or Linux support only for icon color change.
+      if (!isMac()) {
+        const color = configurationRegistry.getConfiguration('preferences').get('TrayIconColor');
+        if (typeof color === 'string') {
+          animatedTray.setColor(color);
+        }
       }
-    }
 
-    // Share configuration registry with renderer process
-    ipcMain.emit('configuration-registry', '', configurationRegistry);
+      // Share configuration registry with renderer process
+      ipcMain.emit('configuration-registry', '', configurationRegistry);
 
-    // Configure automatic startup
-    const automaticStartup = new StartupInstall(configurationRegistry);
-    await automaticStartup.configure();
+      // Register the window configuration
+      // This is used to save/restore the window size and position
+      podmanDesktopMain.mainWindowDeferred.promise
+        .then(browserWindow => {
+          const windowHandler = new WindowHandler(configurationRegistry, browserWindow);
+          windowHandler.init();
+
+          // Configure the zoom level handler
+          // handle zoom level
+          const zoomLevelHandler = new ZoomLevelHandler(browserWindow, configurationRegistry);
+          zoomLevelHandler.init();
+
+          // sets the menu
+          const applicationMenuBuilder = new ApplicationMenuBuilder(zoomLevelHandler);
+          const menu = applicationMenuBuilder.build();
+
+          if (menu) {
+            Menu.setApplicationMenu(menu);
+          }
+
+          // send window Handler
+          ipcMain.emit('window-handler', '', windowHandler);
+        })
+        .catch((error: unknown) => {
+          console.error('Error initializing window handler', error);
+        });
+
+      // Configure automatic startup
+      const automaticStartup = new StartupInstall(configurationRegistry);
+      await automaticStartup.configure();
+    });
+
+    extensionLoader = await pluginSystem.initExtensions(_onDidCreatedConfigurationRegistry);
   },
   (e: unknown) => console.error('Failed to start app:', e),
 );

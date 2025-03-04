@@ -1,5 +1,5 @@
 /**********************************************************************
- * Copyright (C) 2022-2023 Red Hat, Inc.
+ * Copyright (C) 2022-2024 Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,12 +17,13 @@
  ***********************************************************************/
 
 import type { Writable } from 'svelte/store';
-import { writable, derived } from 'svelte/store';
-import type { VolumeListInfo } from '../../../main/src/plugin/api/volume-info';
+import { derived, writable } from 'svelte/store';
 
-import { findMatchInLeaves } from './search-util';
-import { EventStore } from './event-store';
+import type { VolumeListInfo } from '/@api/volume-info';
+
 import VolumeIcon from '../lib/images/VolumeIcon.svelte';
+import { EventStore } from './event-store';
+import { findMatchInLeaves } from './search-util';
 
 const windowEvents = [
   'extension-started',
@@ -31,6 +32,8 @@ const windowEvents = [
   'container-stopped-event',
   'container-die-event',
   'container-kill-event',
+  'container-init-event',
+  'container-created-event',
   'container-started-event',
   'container-removed-event',
   'volume-event',
@@ -86,6 +89,6 @@ export const filtered = derived([searchPattern, volumeListInfos], ([$searchPatte
   });
 });
 
-export const fetchVolumesWithData = async () => {
+export const fetchVolumesWithData = async (): Promise<void> => {
   await volumesEventStoreInfo.fetch('fetchUsage');
 };

@@ -1,27 +1,22 @@
 <script lang="ts">
-import type { ContainerInfoUI } from './ContainerInfoUI';
-import { onDestroy, onMount } from 'svelte';
-import { Terminal } from 'xterm';
-import { FitAddon } from 'xterm-addon-fit';
-import 'xterm/css/xterm.css';
-import { TerminalSettings } from '../../../../main/src/plugin/terminal-settings';
-import { getPanelDetailColor } from '../color/color';
+import '@xterm/xterm/css/xterm.css';
+
+import { EmptyScreen } from '@podman-desktop/ui-svelte';
+import type { Terminal } from '@xterm/xterm';
+import { mount, onDestroy, onMount } from 'svelte';
 
 import { isMultiplexedLog } from '../stream/stream-utils';
-import EmptyScreen from '../ui/EmptyScreen.svelte';
 import NoLogIcon from '../ui/NoLogIcon.svelte';
+import TerminalWindow from '../ui/TerminalWindow.svelte';
+import ContainerDetailsLogsClear from './ContainerDetailsLogsClear.svelte';
+import type { ContainerInfoUI } from './ContainerInfoUI';
 
 export let container: ContainerInfoUI;
 
 // Log
-let logsXtermDiv: HTMLDivElement;
 let refContainer: ContainerInfoUI;
 // logs has been initialized
 let noLogs = true;
-
-// Terminal resize
-let resizeObserver: ResizeObserver;
-let termFit: FitAddon;
 
 // need to refresh logs when container is switched or state changes
 $: {
@@ -30,16 +25,15 @@ $: {
     (refContainer.id !== container.id || (refContainer.state !== container.state && container.state !== 'EXITED'))
   ) {
     logsTerminal?.clear();
-    fetchContainerLogs();
+    fetchContainerLogs().catch((err: unknown) => console.error(`Error fetching container logs ${container.id}`, err));
   }
   refContainer = container;
 }
-
-let currentRouterPath: string;
+let terminalParentDiv: HTMLDivElement;
 
 let logsTerminal: Terminal;
 
-function callback(name: string, data: string) {
+function callback(name: string, data: string): void {
   if (name === 'first-message') {
     noLogs = false;
     // clear on the first message
@@ -52,78 +46,47 @@ function callback(name: string, data: string) {
       logsTerminal?.write(data + '\r');
     }
   }
-}
-
-async function fetchContainerLogs() {
-  // grab logs of the container
-  await window.logsContainer(container.engineId, container.id, callback);
-}
-
-async function refreshTerminal() {
-  // missing element, return
-  if (!logsXtermDiv) {
-    console.log('missing xterm div, exiting...');
-    return;
+  if (!noLogs) {
+    window.dispatchEvent(new Event('resize'));
   }
-  // grab font size
-  const fontSize = await window.getConfigurationValue<number>(
-    TerminalSettings.SectionName + '.' + TerminalSettings.FontSize,
-  );
-  const lineHeight = await window.getConfigurationValue<number>(
-    TerminalSettings.SectionName + '.' + TerminalSettings.LineHeight,
-  );
+}
 
-  logsTerminal = new Terminal({
-    fontSize,
-    lineHeight,
-    disableStdin: true,
-    theme: {
-      background: getPanelDetailColor(),
+async function fetchContainerLogs(): Promise<void> {
+  // grab logs of the container
+  await window.logsContainer({ engineId: container.engineId, containerId: container.id, callback });
+}
+
+function afterTerminalInit(): void {
+  // mount the svelte5 component to the terminal xterm element
+  let xtermElement = terminalParentDiv.querySelector('.xterm');
+  if (!xtermElement) {
+    xtermElement = terminalParentDiv;
+  }
+  // add svelte component using this xterm element
+  mount(ContainerDetailsLogsClear, {
+    target: xtermElement,
+    props: {
+      terminal: logsTerminal,
     },
-    convertEol: true,
   });
-  termFit = new FitAddon();
-  logsTerminal.loadAddon(termFit);
-
-  logsTerminal.open(logsXtermDiv);
-
-  // disable cursor
-  logsTerminal.write('\x1b[?25l');
-
-  // call fit addon each time we resize the window
-  window.addEventListener('resize', () => {
-    if (currentRouterPath === `/containers/${container.id}/logs`) {
-      termFit.fit();
-    }
-  });
-  termFit.fit();
 }
 
 onMount(async () => {
-  // Refresh the terminal on initial load
-  await refreshTerminal();
-  fetchContainerLogs();
-  // Resize the terminal each time we change the div size
-  resizeObserver = new ResizeObserver(() => {
-    termFit?.fit();
-  });
-
-  // Observe the terminal div
-  resizeObserver.observe(logsXtermDiv);
+  await fetchContainerLogs();
 });
 
 onDestroy(() => {
-  // Cleanup the observer on destroy
-  resizeObserver?.unobserve(logsXtermDiv);
+  logsTerminal?.dispose();
 });
 </script>
 
-<EmptyScreen icon="{NoLogIcon}" title="No Log" message="Log output of {container.name}" hidden="{noLogs === false}" />
+<EmptyScreen icon={NoLogIcon} title="No Log" message="Log output of {container.name}" hidden={noLogs === false} />
 
 <div
   class="min-w-full flex flex-col"
-  class:invisible="{noLogs === true}"
-  class:h-0="{noLogs === true}"
-  class:h-full="{noLogs === false}"
-  bind:this="{logsXtermDiv}">
+  class:invisible={noLogs === true}
+  class:h-0={noLogs === true}
+  class:h-full={noLogs === false}
+  bind:this={terminalParentDiv}>
+  <TerminalWindow search on:init={afterTerminalInit} class="h-full" bind:terminal={logsTerminal} convertEol disableStdIn />
 </div>

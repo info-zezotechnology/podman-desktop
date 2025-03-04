@@ -16,18 +16,18 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
-import type { Mock, SpyInstance } from 'vitest';
-import * as shellPath from 'shell-path';
 import { EventEmitter } from 'node:events';
+import * as fs from 'node:fs';
+import * as http from 'node:http';
+import * as path from 'node:path';
+
+import * as extensionApi from '@podman-desktop/api';
+import * as shellPath from 'shell-path';
+import type { Mock, MockInstance } from 'vitest';
 import { afterEach, beforeEach, describe, expect, test, vi, vitest } from 'vitest';
+
 import { Detect } from './detect';
 import type { OS } from './os';
-import * as http from 'node:http';
-import * as extensionApi from '@podman-desktop/api';
-import * as fs from 'node:fs';
-import * as path from 'node:path';
 
 const osMock: OS = {
   isWindows: vi.fn(),
@@ -48,6 +48,11 @@ vi.mock('@podman-desktop/api', async () => {
     process: {
       exec: vi.fn(),
     },
+    env: {
+      isLinux: false,
+      isWindows: false,
+      isMac: false,
+    },
   };
 });
 
@@ -66,51 +71,36 @@ afterEach(() => {
 
 describe('Check for Docker Compose', async () => {
   test('not installed', async () => {
-    vi.spyOn(extensionApi.process, 'exec').mockImplementation(
-      () =>
-        new Promise<extensionApi.RunResult>((resolve, reject) => {
-          // eslint-disable-next-line prefer-promise-reject-errors
-          reject({ exitCode: -1 } as extensionApi.RunError);
-        }),
-    );
+    const customError = { exitCode: -1 } as extensionApi.RunError;
+    vi.spyOn(extensionApi.process, 'exec').mockImplementation(() => {
+      throw customError;
+    });
     const result = await detect.checkForDockerCompose();
     expect(result).toBeFalsy();
   });
 
   test('installed', async () => {
-    vi.spyOn(extensionApi.process, 'exec').mockImplementation(
-      () =>
-        new Promise<extensionApi.RunResult>(resolve => {
-          resolve({} as extensionApi.RunResult);
-        }),
-    );
+    vi.spyOn(extensionApi.process, 'exec').mockImplementation(() => Promise.resolve({} as extensionApi.RunResult));
     const result = await detect.checkForDockerCompose();
     expect(result).toBeTruthy();
   });
 });
 
 describe('Check for path', async () => {
+  const customError = { exitCode: -1 } as extensionApi.RunError;
   test('not included', async () => {
-    vi.spyOn(extensionApi.process, 'exec').mockImplementation(
-      () =>
-        new Promise<extensionApi.RunResult>((resolve, reject) => {
-          // eslint-disable-next-line prefer-promise-reject-errors
-          reject({ exitCode: -1 } as extensionApi.RunError);
-        }),
-    );
+    vi.spyOn(extensionApi.process, 'exec').mockImplementation(() => {
+      throw customError;
+    });
     vitest.spyOn(shellPath, 'shellPath').mockResolvedValue('/different-path');
     const result = await detect.checkStoragePath();
     expect(result).toBeFalsy();
   });
 
   test('included', async () => {
-    vi.spyOn(extensionApi.process, 'exec').mockImplementation(
-      () =>
-        new Promise<extensionApi.RunResult>((resolve, reject) => {
-          // eslint-disable-next-line prefer-promise-reject-errors
-          reject({ exitCode: -1 } as extensionApi.RunError);
-        }),
-    );
+    vi.spyOn(extensionApi.process, 'exec').mockImplementation(() => {
+      throw customError;
+    });
     vitest.spyOn(shellPath, 'shellPath').mockResolvedValue(path.resolve('/', 'storage-path', 'bin'));
     const result = await detect.checkStoragePath();
     expect(result).toBeTruthy();
@@ -131,6 +121,69 @@ describe('Check storage path', async () => {
 
     const result = await detect.getStoragePath();
     expect(result).toBe(path.resolve('/', 'storage-path', 'bin', 'docker-compose'));
+  });
+});
+
+describe('Check getDockerComposePath uses proper tooling by platform', () => {
+  beforeEach(() => {
+    vi.mocked(extensionApi.process.exec).mockImplementation(() =>
+      Promise.resolve({ exitCode: 0, stdout: 'hello-world' } as extensionApi.RunError),
+    );
+  });
+
+  test('linux should use which', async () => {
+    (extensionApi.env.isLinux as boolean) = true;
+    (extensionApi.env.isWindows as boolean) = false;
+    (extensionApi.env.isMac as boolean) = false;
+
+    await detect.getDockerComposePath('docker-compose');
+    expect(extensionApi.process.exec).toHaveBeenCalledWith('which', ['docker-compose']);
+  });
+
+  test('mac should use which', async () => {
+    (extensionApi.env.isMac as boolean) = true;
+    (extensionApi.env.isWindows as boolean) = false;
+    (extensionApi.env.isLinux as boolean) = false;
+
+    await detect.getDockerComposePath('docker-compose');
+    expect(extensionApi.process.exec).toHaveBeenCalledWith('which', ['docker-compose']);
+  });
+
+  test('windows should use which', async () => {
+    (extensionApi.env.isWindows as boolean) = true;
+    (extensionApi.env.isMac as boolean) = false;
+    (extensionApi.env.isLinux as boolean) = false;
+
+    await detect.getDockerComposePath('docker-compose');
+    expect(extensionApi.process.exec).toHaveBeenCalledWith('where.exe', ['docker-compose']);
+  });
+});
+
+describe('parseVersion', () => {
+  test('missing content', async () => {
+    expect(() => {
+      detect['parseVersion']('{}');
+    }).toThrowError('malformed version output');
+  });
+
+  test('invalid version type', async () => {
+    expect(() => {
+      detect['parseVersion'](
+        JSON.stringify({
+          version: true,
+        }),
+      );
+    }).toThrowError('malformed version output');
+  });
+
+  test('valid version', async () => {
+    expect(
+      detect['parseVersion'](
+        JSON.stringify({
+          version: 'potatoes',
+        }),
+      ),
+    ).toBe('potatoes');
   });
 });
 
@@ -160,6 +213,11 @@ describe('Check default socket path', async () => {
   });
 });
 
+type HttpGet = (
+  options: http.RequestOptions | string | URL,
+  callback?: (res: http.IncomingMessage) => void,
+) => http.ClientRequest;
+
 describe('Check docker socket', async () => {
   test('is alive', async () => {
     const socketPathMock = vitest.spyOn(detect, 'getSocketPath');
@@ -173,19 +231,19 @@ describe('Check docker socket', async () => {
       };
     });
 
-    const spyGet = vi.spyOn(http, 'get') as unknown as SpyInstance;
+    const spyGet: MockInstance<HttpGet> = vi.spyOn(http, 'get');
     const clientRequestEmitter = new EventEmitter();
-    const myRequest = clientRequestEmitter as unknown as http.ClientRequest;
+    const myRequest = clientRequestEmitter as http.ClientRequest;
 
-    spyGet.mockImplementation((_url: any, callback: (res: http.IncomingMessage) => void) => {
+    spyGet.mockImplementation((_url, callback?: (res: http.IncomingMessage) => void) => {
       const emitter = new EventEmitter();
-      callback(emitter as unknown as http.IncomingMessage);
+      callback?.(emitter as http.IncomingMessage);
 
       // mock fake data
       emitter.emit('data', 'foo');
 
       // mock a successful response
-      (emitter as any).statusCode = 200;
+      (emitter as http.IncomingMessage).statusCode = 200;
       emitter.emit('end', {});
       return myRequest;
     });
@@ -206,16 +264,16 @@ describe('Check docker socket', async () => {
       };
     });
 
-    const spyGet = vi.spyOn(http, 'get') as unknown as SpyInstance;
+    const spyGet: MockInstance<HttpGet> = vi.spyOn(http, 'get');
     const clientRequestEmitter = new EventEmitter();
-    const myRequest = clientRequestEmitter as unknown as http.ClientRequest;
+    const myRequest = clientRequestEmitter as http.ClientRequest;
 
-    spyGet.mockImplementation((_url: any, callback: (res: http.IncomingMessage) => void) => {
+    spyGet.mockImplementation((_url, callback?: (res: http.IncomingMessage) => void) => {
       const emitter = new EventEmitter();
-      callback(emitter as unknown as http.IncomingMessage);
+      callback?.(emitter as http.IncomingMessage);
 
       // mock an invalid response
-      (emitter as any).statusCode = 500;
+      (emitter as http.IncomingMessage).statusCode = 500;
       emitter.emit('end', {});
       return myRequest;
     });
@@ -236,14 +294,14 @@ describe('Check docker socket', async () => {
       };
     });
 
-    const spyGet = vi.spyOn(http, 'get') as unknown as SpyInstance;
+    const spyGet: MockInstance<HttpGet> = vi.spyOn(http, 'get');
     const clientRequestEmitter = new EventEmitter();
-    const myRequest = clientRequestEmitter as unknown as http.ClientRequest;
+    const myRequest = clientRequestEmitter as http.ClientRequest;
     const spyOnce = vi.spyOn(clientRequestEmitter, 'once');
 
-    spyGet.mockImplementation((_url: any, callback: (res: http.IncomingMessage) => void) => {
+    spyGet.mockImplementation((_url, callback?: (res: http.IncomingMessage) => void) => {
       const emitter = new EventEmitter();
-      callback(emitter as unknown as http.IncomingMessage);
+      callback?.(emitter as http.IncomingMessage);
 
       // send an error
       setTimeout(() => {

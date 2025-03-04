@@ -21,20 +21,21 @@
 /* eslint-disable @typescript-eslint/no-empty-function */
 
 import '@testing-library/jest-dom/vitest';
-import { test, expect, vi, beforeAll } from 'vitest';
+
 import { render, screen } from '@testing-library/svelte';
-import type { IConfigurationPropertyRecordedSchema } from '../../../../main/src/plugin/configuration-registry';
-import PreferencesRendering from './PreferencesRendering.svelte';
-import { CONFIGURATION_DEFAULT_SCOPE } from '../../../../main/src/plugin/configuration-registry-constants';
-import { ContextUI } from '../context/context';
+import { tick } from 'svelte';
+import { beforeAll, expect, test, vi } from 'vitest';
+
 import { context } from '/@/stores/context';
+import { CONFIGURATION_DEFAULT_SCOPE } from '/@api/configuration/constants.js';
+
+import type { IConfigurationPropertyRecordedSchema } from '../../../../main/src/plugin/configuration-registry';
+import { ContextUI } from '../context/context';
+import PreferencesRendering from './PreferencesRendering.svelte';
 
 async function waitRender(customProperties: any): Promise<void> {
-  const result = render(PreferencesRendering, { ...customProperties });
-  // wait that result.component.$$.ctx[0] is set
-  while (result.component.$$.ctx[0] === undefined) {
-    await new Promise(resolve => setTimeout(resolve, 100));
-  }
+  render(PreferencesRendering, { ...customProperties });
+  await tick();
 }
 
 beforeAll(() => {
@@ -80,6 +81,7 @@ test('Expect to see one record when filtering with unknown keyword', async () =>
   render(PreferencesRendering, { properties: records, key: 'key', searchValue: 'unknwon' });
   const noSettingsDiv = screen.getAllByText('No Settings Found');
   expect(noSettingsDiv.length > 0).toBe(true);
+  expect(noSettingsDiv[0].parentElement).toHaveClass('text-[var(--pd-content-header)]');
 });
 
 test('Expect extension title used a section name', async () => {
@@ -105,7 +107,7 @@ test('Expect example when property to be missing if when statement is not satisf
     scope: CONFIGURATION_DEFAULT_SCOPE,
   };
 
-  waitRender({ properties: [whenProperty], key: 'key' });
+  await waitRender({ properties: [whenProperty], key: 'key' });
 
   // Expect "example when property" to NOT be found when running getByLabelText
   const exampleWhenProperty = screen.queryByLabelText('example when property');
@@ -129,7 +131,7 @@ test('Expect example when property to show if when statement is satisfied from c
     scope: CONFIGURATION_DEFAULT_SCOPE,
   };
 
-  waitRender({ properties: [whenProperty], key: 'key' });
+  await waitRender({ properties: [whenProperty], key: 'key' });
 
   // Expect "example when property" to be found when running getByLabelText
   const exampleWhenProperty = screen.queryByLabelText('example when property');

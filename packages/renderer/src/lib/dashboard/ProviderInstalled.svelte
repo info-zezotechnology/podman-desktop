@@ -1,15 +1,18 @@
 <script lang="ts">
-import type { CheckStatus, ProviderInfo } from '../../../../main/src/plugin/api/provider-info';
-import PreflightChecks from './PreflightChecks.svelte';
-import ProviderLinks from './ProviderLinks.svelte';
-import ProviderLogo from './ProviderLogo.svelte';
-import ProviderUpdateButton from './ProviderUpdateButton.svelte';
+import '@xterm/xterm/css/xterm.css';
+
+import { Spinner } from '@podman-desktop/ui-svelte';
+import { FitAddon } from '@xterm/addon-fit';
+import { Terminal } from '@xterm/xterm';
 import { onDestroy, onMount } from 'svelte';
-import { Terminal } from 'xterm';
-import { FitAddon } from 'xterm-addon-fit';
-import 'xterm/css/xterm.css';
+
+import type { CheckStatus, ProviderInfo } from '/@api/provider-info';
+
 import { TerminalSettings } from '../../../../main/src/plugin/terminal-settings';
-import { getPanelDetailColor } from '../color/color';
+import { getTerminalTheme } from '../../../../main/src/plugin/terminal-theme';
+import Steps from '../ui/Steps.svelte';
+import PreflightChecks from './PreflightChecks.svelte';
+import ProviderCard from './ProviderCard.svelte';
 import {
   type InitializationContext,
   type InitializationMode,
@@ -17,8 +20,7 @@ import {
   InitializeAndStartMode,
   InitializeOnlyMode,
 } from './ProviderInitUtils';
-import Steps from '../ui/Steps.svelte';
-import Spinner from '../ui/Spinner.svelte';
+import ProviderUpdateButton from './ProviderUpdateButton.svelte';
 
 export let provider: ProviderInfo;
 export let initializationContext: InitializationContext;
@@ -29,8 +31,6 @@ let initializeInProgress = false;
 let initializeError: string | undefined = undefined;
 
 let preflightChecks: CheckStatus[] = [];
-
-let noErrors = true;
 
 let logsXtermDiv: HTMLDivElement;
 let logsTerminal: Terminal;
@@ -45,13 +45,13 @@ let installationOptionSelected = InitializeAndStartMode;
 $: initializationButtonVisible =
   provider.containerProviderConnectionInitialization || provider.kubernetesProviderConnectionInitialization;
 
-function showLastExecutionError() {
+function showLastExecutionError(): void {
   initializeError = initializationContext.error;
   logsTerminal?.write('Initialization failed. Please check the error below and try again' + '\r\n');
   logsTerminal?.write(initializeError + '\r');
 }
 
-async function initializeProvider() {
+async function initializeProvider(): Promise<void> {
   initializeError = undefined;
   logsTerminal.clear();
   initializeInProgress = true;
@@ -65,7 +65,7 @@ async function initializeProvider() {
   initializeInProgress = false;
 }
 
-async function refreshTerminal() {
+async function refreshTerminal(): Promise<void> {
   // missing element, return
   if (!logsXtermDiv) {
     console.log('missing xterm div, exiting...');
@@ -83,9 +83,7 @@ async function refreshTerminal() {
     fontSize,
     lineHeight,
     disableStdin: true,
-    theme: {
-      background: getPanelDetailColor(),
-    },
+    theme: getTerminalTheme(),
     convertEol: true,
   });
   termFit = new FitAddon();
@@ -122,84 +120,75 @@ onDestroy(() => {
   resizeObserver?.unobserve(logsXtermDiv);
 });
 
-function updateOptionsMenu(visible: boolean) {
+function updateOptionsMenu(visible: boolean): void {
   installationOptionsMenuVisible = visible;
 }
 
-function onInstallationClick() {
+async function onInstallationClick(): Promise<void> {
   initializeInProgress = true;
   initializationButtonVisible = false;
   initializationContext.mode = installationOptionSelected as InitializationMode;
-  initializeProvider();
+  await initializeProvider();
 }
 </script>
 
-<div class="p-2 flex flex-col bg-charcoal-800 rounded-lg" role="region" aria-label="{provider.name} Provider">
-  <ProviderLogo provider="{provider}" />
-  <div class="flex flex-col items-center text-center">
-    <p class="text-xl text-gray-400" aria-label="Actual State">
-      {provider.name}
-      {#if provider.version}
-        v{provider.version}
-      {/if}
-      is installed but not ready
-    </p>
-    <p class="text-base text-gray-700" aria-label="Suggested Actions">
+<ProviderCard provider={provider}>
+  <svelte:fragment slot="content">
+    <p class="text-sm text-[var(--pd-content-text)] w-2/3 text-center" aria-label="Suggested Actions">
       To start working with containers, {provider.name} needs to be initialized.
     </p>
 
-    <div class="mt-5" class:hidden="{!initializationButtonVisible}">
-      <div class="bg-gray-300 text-white">
-        <button
-          class="float-left bg-purple-600 hover:bg-purple-500 pt-2 pr-3 pl-3 pb-2 text-[13px] text-white mr-px w-[180px]"
-          on:click="{onInstallationClick}">
-          {installationOptionSelected}
-        </button>
-        <button
-          class="inline-block bg-purple-600 hover:bg-purple-500 text-[13px] text-white pt-2 pr-3 pl-3 pb-2 w-[32px]"
-          on:click="{() => updateOptionsMenu(!installationOptionsMenuVisible)}">
-          <i class="fas fa-caret-down"></i>
-        </button>
-      </div>
-      <div
-        class="-z-1 min-w-[130px] m-auto bg-primary text-[13px] text-white"
-        class:hidden="{!installationOptionsMenuVisible}">
-        <ul class="w-full outline-none bg-charcoal-800 rounded-sm placeholder-gray-700">
-          <li>
-            <button
-              class="w-full p-2 {installationOptionSelected === InitializeOnlyMode
-                ? 'bg-purple-600 text-white'
-                : 'bg-purple-700 text-gray-700'} hover:bg-purple-500 cursor-pointer"
-              on:click="{() => {
-                installationOptionSelected = InitializeOnlyMode;
-                installationOptionsMenuVisible = false;
-              }}">
-              {InitializeOnlyMode}
-              {provider.name}
-            </button>
-          </li>
-          <li>
-            <button
-              class="w-full p-2 {installationOptionSelected === InitializeAndStartMode
-                ? 'bg-purple-600 text-white'
-                : 'bg-purple-700 text-gray-700'} hover:bg-purple-500 cursor-pointer"
-              on:click="{() => {
-                installationOptionSelected = InitializeAndStartMode;
-                installationOptionsMenuVisible = false;
-              }}">
-              {InitializeAndStartMode}
-              {provider.name}
-            </button>
-          </li>
-        </ul>
+    <div class="min-w-[230px] w-1/3 flex justify-center" class:hidden={!initializationButtonVisible}>
+      <div class="w-[212px] relative">
+        <div class="bg-[var(--pd-invert-content-card-bg)] text-[var(--pd-button-text)] flex w-[212px]">
+          <button
+            class="float-left bg-[var(--pd-button-primary-bg)] hover:bg-[var(--pd-button-primary-hover-bg)] pt-2 pr-3 pl-3 pb-2 text-[13px] text-[var(--pd-button-text)] mr-px w-[180px]"
+            on:click={onInstallationClick}>
+            {installationOptionSelected}
+          </button>
+          <button
+            class="inline-block bg-[var(--pd-button-primary-bg)] hover:bg-[var(--pd-button-primary-hover-bg)] text-[13px] text-[var(--pd-button-text)] pt-2 pr-3 pl-3 pb-2 w-[32px]"
+            aria-label="Installation options menu"
+            on:click={(): void => updateOptionsMenu(!installationOptionsMenuVisible)}>
+            <i class="fas fa-caret-down"></i>
+          </button>
+        </div>
+        <div
+          class="z-10 min-w-[130px] m-auto bg-primary text-[13px] text-[var(--pd-button-text)] absolute w-full"
+          class:hidden={!installationOptionsMenuVisible}>
+          <ul class="w-full outline-hidden bg-[var(--pd-dropdown-bg)] rounded-xs placeholder-[var(--pd-content-text)]">
+            <li>
+              <button
+                class="w-full p-2 bg-[var(--pd-button-primary-bg)] text-[var(--pd-button-text)] hover:bg-[var(--pd-button-primary-hover-bg)] cursor-pointer"
+                on:click={(): void => {
+                  installationOptionSelected = InitializeOnlyMode;
+                  installationOptionsMenuVisible = false;
+                }}>
+                {InitializeOnlyMode}
+                {provider.name}
+              </button>
+            </li>
+            <li>
+              <button
+                class="w-full p-2 bg-[var(--pd-button-primary-bg)] text-[var(--pd-button-text)] hover:bg-[var(--pd-button-primary-hover-bg)] cursor-pointer"
+                on:click={(): void => {
+                  installationOptionSelected = InitializeAndStartMode;
+                  installationOptionsMenuVisible = false;
+                }}>
+                {InitializeAndStartMode}
+                {provider.name}
+              </button>
+            </li>
+          </ul>
+        </div>
       </div>
     </div>
 
-    <div class="mt-5" class:hidden="{!initializeInProgress}">
+    <div class="flex flex-col w-full lg:w-2/3 justify-center items-center" class:hidden={!initializeInProgress}>
       {#if installationOptionSelected === InitializeAndStartMode}
-        <Steps steps="{InitializationSteps}" />
+        <Steps steps={InitializationSteps} />
       {/if}
-      <div class="flex flex-col text-gray-700">
+      <div class="flex flex-col text-[var(--pd-content-text)]">
         <div>Initializing</div>
         <div class="my-2">
           <Spinner />
@@ -208,22 +197,16 @@ function onInstallationClick() {
     </div>
 
     <div
-      class=""
-      style="background-color: {getPanelDetailColor()}; width: 100%; text-align: left; display: {initializeError
-        ? 'block'
-        : 'none'}"
-      class:h-full="{noErrors === false}"
-      class:min-w-full="{noErrors === false}"
-      bind:this="{logsXtermDiv}">
+      class="bg-[var(--pd-terminal-background)] p-[5px] pr-0"
+      style="width: 100%; text-align: left; display: {initializeError ? 'block' : 'none'}"
+      bind:this={logsXtermDiv}>
     </div>
-  </div>
 
-  {#if provider.updateInfo?.version && provider.version !== provider.updateInfo?.version}
-    <div class="mt-5 mb-1 w-full flex justify-around">
-      <ProviderUpdateButton onPreflightChecks="{checks => (preflightChecks = checks)}" provider="{provider}" />
-    </div>
-  {/if}
-  <PreflightChecks preflightChecks="{preflightChecks}" />
-
-  <ProviderLinks provider="{provider}" />
-</div>
+    <PreflightChecks preflightChecks={preflightChecks} />
+  </svelte:fragment>
+  <svelte:fragment slot="update">
+    {#if provider.updateInfo?.version && provider.version !== provider.updateInfo?.version}
+      <ProviderUpdateButton onPreflightChecks={(checks): CheckStatus[] => (preflightChecks = checks)} provider={provider} />
+    {/if}
+  </svelte:fragment>
+</ProviderCard>

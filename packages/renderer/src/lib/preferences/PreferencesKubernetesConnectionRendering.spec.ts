@@ -21,14 +21,16 @@
 /* eslint-disable @typescript-eslint/no-empty-function */
 
 import '@testing-library/jest-dom/vitest';
-import { test, expect, vi } from 'vitest';
+
 import { render, screen } from '@testing-library/svelte';
-import { providerInfos } from '../../stores/providers';
-import type { ProviderContainerConnectionInfo, ProviderInfo } from '../../../../main/src/plugin/api/provider-info';
 import userEvent from '@testing-library/user-event';
 import { router } from 'tinro';
+import { expect, test, vi } from 'vitest';
+
+import type { ProviderInfo } from '/@api/provider-info';
+
+import { providerInfos } from '../../stores/providers';
 import PreferencesKubernetesConnectionRendering from './PreferencesKubernetesConnectionRendering.svelte';
-import { lastPage } from '/@/stores/breadcrumb';
 
 test('Expect that removing the connection is going back to the previous page', async () => {
   const kindCluster1 = 'kind cluster 1';
@@ -83,6 +85,7 @@ test('Expect that removing the connection is going back to the previous page', a
     containerProviderConnectionCreationDisplayName: 'Podman machine',
     kubernetesProviderConnectionInitialization: false,
     extensionId: '',
+    cleanupSupport: false,
   };
 
   // 3 connections with the same socket path
@@ -90,9 +93,6 @@ test('Expect that removing the connection is going back to the previous page', a
 
   // encode apiUrl of the second cluster
   const apiUrlBase64 = Buffer.from('http://localhost:8181').toString('base64');
-
-  // defines a fake lastPage so we can check where we will be redirected
-  lastPage.set({ name: 'Fake Previous', path: '/last' });
 
   // delete current cluster 2 from the provider info
   deleteMock.mockImplementation(() => {
@@ -126,12 +126,12 @@ test('Expect that removing the connection is going back to the previous page', a
   await userEvent.click(deleteButton);
 
   // expect that we have called the router when page has been removed
-  // to jump to the previous page
-  expect(routerGotoSpy).toBeCalledWith('/last');
+  // to jump to the resources page
+  expect(routerGotoSpy).toBeCalledWith('/preferences/resources');
 
   // grab updated route
   const afterRoute = window.location;
-  expect(afterRoute.href).toBe('http://localhost:3000/last');
+  expect(afterRoute.href).toBe('http://localhost:3000/preferences/resources');
 });
 
 test('Expect to see error message if action fails', async () => {
@@ -170,6 +170,7 @@ test('Expect to see error message if action fails', async () => {
     containerProviderConnectionCreationDisplayName: 'Podman machine',
     kubernetesProviderConnectionInitialization: false,
     extensionId: '',
+    cleanupSupport: false,
   };
 
   providerInfos.set([providerInfo]);

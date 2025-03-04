@@ -1,6 +1,5 @@
 <style>
 .progress-bar-indeterminate {
-  background-color: rgb(109 72 191);
   animation: indeterminateAnimation 1s infinite linear;
   transform-origin: 0% 50%;
 }
@@ -15,21 +14,45 @@
     transform: translateX(100%) scaleX(0.5);
   }
 }
+.progress-bar-incremental {
+  animation: incrementalAnimation 1s infinite linear;
+}
+@keyframes incrementalAnimation {
+  20%,
+  80% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
 </style>
 
 <script lang="ts">
-export let progress: number | undefined;
+import type { HTMLAttributes } from 'svelte/elements';
+
+interface Props extends HTMLAttributes<HTMLElement> {
+  progress?: number;
+  width?: string;
+  height?: string;
+}
+
+let { progress, width = 'w-36', height = 'h-4', class: className, ...restProps }: Props = $props();
 </script>
 
-<div class="w-32">
-  <div class="w-full h-4 mb-4 rounded-full bg-gray-900 progress-bar overflow-hidden">
+<div class="flex flex-row {className}" {...restProps} >
+  <div class="{width} {height} rounded-full bg-[var(--pd-progressBar-bg)] progress-bar overflow-hidden">
     {#if progress !== undefined}
-      <div class="h-4 bg-purple-500 rounded-full" role="progressbar" style="width {progress}%"></div>
+      <div
+        class="{width} {height} bg-[var(--pd-progressBar-in-progress-bg)] rounded-full progress-bar-incremental"
+        role="progressbar"
+        style="width:{progress}%">
+      </div>
     {:else}
-      <div class="h-4 bg-purple-500 rounded-full progress-bar-indeterminate" role="progressbar"></div>
+      <div class="{width} {height} bg-[var(--pd-progressBar-in-progress-bg)] rounded-full progress-bar-indeterminate" role="progressbar"></div>
     {/if}
   </div>
+  {#if progress !== undefined}
+    <div class="ml-2 text-xs">{Math.round(progress)}%</div>
+  {/if}
 </div>
-{#if progress !== undefined}
-  <div class="ml-2 text-xs">{progress}%</div>
-{/if}
